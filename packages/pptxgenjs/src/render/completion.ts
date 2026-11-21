@@ -1,5 +1,5 @@
 /**
- * Completes a hand-written or edited PdfLapas HTML profile document (docs/HTML_PROFILE.md, version 1): fills
+ * Completes a hand-written or edited PdfLapas HTML profile document (docs/HTML_PROFILE.md): fills
  * the values the profile requires that PptxGenJS defines a default for, so both renderers read the same
  * values a PptxGenJS deck would have. The WASM reader has no PptxGenJS rules (#69); the defaults live here.
  *
@@ -332,9 +332,9 @@ function metaContent(head: Element, name: string): { kind: "content"; content: s
 }
 
 /**
- * Fills the values a profile document (version 1 or 2) may omit (docs/HTML_PROFILE.md, "Completion") with PptxGenJS's
+ * Fills the values a profile document may omit (docs/HTML_PROFILE.md, "Completion") with PptxGenJS's
  * defaults. Throws when `html` is not a profile document: empty, without
- * `<meta name="pdflapas-profile" content="2">` (or `<meta name="pdfdeck-profile" content="1">`), or of another
+ * `<meta name="pdflapas-profile" content="2">`, or of another
  * version. A complete document, such as any `toHtml()` result, is returned unchanged, byte for byte.
  */
 export function completeProfileHtml(html: string): string {

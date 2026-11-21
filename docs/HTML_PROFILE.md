@@ -11,33 +11,24 @@ version before a release writes the new one. Fixes that only change error messag
 as do changes to the Puppeteer print step and to the shared stylesheet outside its `@page` size, since a
 reader never sees them.
 
-**Version 2** (#102) adds the [document properties](#document-properties): `<title>` and the `author`,
-`description`, `pdflapas-company` and `pdflapas-revision` meta tags. Nothing else changed. Documents that
-declare `<meta name="pdfdeck-profile" content="1">` keep rendering the same way: every reader still
-accepts them, and the WASM reader gives their `<title>` and meta tags no meaning, as version 1 did, so
-their PDFs have no document properties. Puppeteer prints any HTML, so Chromium keeps writing a version 1
-document's `<title>` as the PDF Title, as before. Version 2 is not released yet (no `@pdflapas/*` package has
-been published), so its description was corrected in place rather than as a version 3: the elements are
-the same, but `toHtml()` writes only the properties the deck sets (PptxGenJS's defaults are not written)
+**Version 2** is the only version readers accept; a document that declares another one is an error. It is
+not released yet (no `@pdflapas/*` package has been published), so its description was corrected in place
+rather than as a version 3: the [document properties](#document-properties) (#102), `<title>` and the
+`author`, `description`, `pdflapas-company` and `pdflapas-revision` meta tags, are written only when the
+deck sets them (PptxGenJS's defaults are not written)
 and both renderers put `company` and `revision` in the PDF. For the same reason, hidden slides were also
 corrected in place: `toHtml()` leaves a hidden slide out instead of marking it `data-hidden`, so a slide
 container's `#slide-N` is the slide's number in the deck and can skip one, and a slide link jumps to the
 container with that number ([Slide](#slide)). Readers accept `data-hidden` and give it no meaning.
 Likewise, a `data-text-fit="shrink"` box now states its shrink rule in `data-text-fit-step`,
 `data-text-fit-max-steps` and `data-text-fit-tolerance` ([Text](#text)) instead of each renderer
-keeping its own copy (#154); the WASM reader requires them in both versions, and
-[completion](#completion) fills them in a hand-written or older document. The PowerPoint target's
+keeping its own copy (#154); the WASM reader requires them, and
+[completion](#completion) fills them in a hand-written document. The PowerPoint target's
 rounding of glyph advances to the 0.125pt grid moved in place from one `letter-spacing` per run to one per
 word: a run's words are each in a [word span](#text) of their own `letter-spacing`, so a line breaks where
 PowerPoint's does. On the PowerPoint target an underlined run gained, in place,
 `text-decoration-thickness: from-font`, `text-underline-position: from-font` and
 `text-decoration-skip-ink: none` ([Text](#text)), and a `heavy` one `data-underline-heavy`.
-
-**Meta names.** The project was called pdfdeck when version 1 was frozen, so a version 1 document spells its
-meta names `pdfdeck-profile` and `pdfdeck-page-size`, and readers keep accepting exactly that. Version 2 was
-renamed in place, still unreleased, to `pdflapas-profile`, `pdflapas-page-size`, `pdflapas-company` and
-`pdflapas-revision`. Each version has one spelling: `<meta name="pdfdeck-profile" content="2">` and
-`<meta name="pdflapas-profile" content="1">` are errors that name both accepted forms.
 
 ## Pipeline
 
@@ -80,7 +71,7 @@ From the maintainer's decisions on #69:
   `packages/pptxgenjs/src/defaults.ts` before either backend renders; Rust gets no PptxGenJS rules.
 - **The WASM parser is small and strict.** Malformed or out-of-profile input is an error, never a guess.
 - **CSS or `data-*`** (still open, question 2): the default is a CSS property where one states the value
-  exactly, a `data-*` attribute otherwise. A value has one spelling, never both. Version 1 does not yet
+  exactly, a `data-*` attribute otherwise. A value has one spelling, never both. The profile does not yet
   follow this everywhere; the [field mapping](#field-mapping) says what each value uses today.
 
 ## Conventions
@@ -130,7 +121,7 @@ From the maintainer's decisions on #69:
   insets, from `defaults.ts`), the line-box strut and the print rules. It is generated from the page size
   only, so it is the same for every deck of one size.
 - `<meta name="pdflapas-profile" content="2">` names the profile version this document follows
-  (`HTML_PROFILE_VERSION`, `@pdflapas/model`; `READABLE_HTML_PROFILE_VERSIONS` lists what readers accept).
+  (`HTML_PROFILE_VERSION`, `@pdflapas/model`), the only version readers accept.
 - `<meta name="pdflapas-page-size">` holds the page size's name (`PageSize.name`, `Custom` when it is
   missing); the size itself is in the stylesheet.
 - The [document properties](#document-properties) follow the page size. There is no `<script>` or
@@ -570,7 +561,7 @@ second spelling.
 maps the elements onto the `model.rs` structs the drawing code reads). It is the only input of the WASM
 backend.
 
-- **Version.** `<meta name="pdflapas-profile" content="2">` (or `<meta name="pdfdeck-profile" content="1">`) is required; a missing tag or another version
+- **Version.** `<meta name="pdflapas-profile" content="2">` is required; a missing tag or another version
   is an error.
 - **Markup is what the serializer writes.** Every element is closed by its own end tag, `/>` only ends void
   and SVG elements, attributes are not repeated, character references are `&amp; &lt; &gt; &quot; &apos;
@@ -644,7 +635,7 @@ backend.
 
     ```text
     invalid PdfLapas HTML: slide 1: object 'Title': CSS property 'filter' on <div> is not in profile v2
-    invalid PdfLapas HTML: profile version '3' in <meta name="pdflapas-profile"> is not supported (this renderer reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)
+    invalid PdfLapas HTML: profile version '3' in <meta name="pdflapas-profile"> is not supported (this renderer reads <meta name="pdflapas-profile" content="2">)
     invalid PdfLapas HTML: slide 2: object 'Table 0': row 1: cell 1: attribute 'rowspan' is missing
     invalid PdfLapas HTML: malformed HTML at byte 6488: </body> closes <p>
     ```
@@ -662,12 +653,11 @@ browser-safe (parse5, no DOM): it splices each missing value into the original s
 states everything, such as any `toHtml()` result, comes back byte for byte (`tests/htmlBytes.test.ts`
 checks every pinned deck), and completing twice changes nothing. Values already in the document are kept;
 `.slide-chart` and `.slide-component` subtrees are not touched. When it adds the stylesheet for the default
-size, it also adds `<meta name="pdflapas-page-size" content="Screen 16:9 Landscape">` (`pdfdeck-page-size` in
-version 1), so the completed
+size, it also adds `<meta name="pdflapas-page-size" content="Screen 16:9 Landscape">`, so the completed
 document states its whole page size.
 
 It throws when the input is not a profile document: a non-string or empty input, no
-`<meta name="pdflapas-profile">` (or version 1's `pdfdeck-profile`), another version, an unknown page-size name without an `@page` rule,
+`<meta name="pdflapas-profile">`, another version, an unknown page-size name without an `@page` rule,
 or a `font-size` or `line-height` it needs for a line box that is not in px.
 
 | Element                   | Value                                                | Default                                                                                               | From `PPTX_DEFAULTS`                                  |
@@ -698,7 +688,7 @@ or a `font-size` or `line-height` it needs for a line box that is not in px.
 |                           | `border-top`, `-right`, `-bottom`, `-left`           | `0px none transparent`                                                                                | `table.border.type` (`none`)                          |
 
 **Required**: everything else the reader requires stays required, because it is the deck's content
-rather than a default: `<meta name="pdflapas-profile" content="2">` (or `<meta name="pdfdeck-profile" content="1">`); the element structure (`.text-content`,
+rather than a default: `<meta name="pdflapas-profile" content="2">`; the element structure (`.text-content`,
 `.slide-image-frame`, `<colgroup>`, `svg.shape-svg` with `<defs>` and `.shape-geometry`); each object's
 `left` and `top`; a shape's `data-shape`, `viewBox` and geometry attributes (`fill`, `stroke`,
 `stroke-width`, `rx`, `d`, …); an image's `src` as a `data:` URI and its box for `contain`, `cover` and

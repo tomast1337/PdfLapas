@@ -31,10 +31,10 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const prefix = profileMetaPrefix(name => (head ? children(head).find(element => element.tagName === "meta" && attribute(element, "name") === name) : undefined)?.attrs.find(attr => attr.name === "content")?.value);
     const slides = body ? children(body).filter(element => hasClass(element, "slide-container")) : [];
     const size = [inchesToPoints(pageSize.width), inchesToPoints(pageSize.height)];
-    // The document properties of a version 2 document (docs/HTML_PROFILE.md "Document properties").
+    // The document properties (docs/HTML_PROFILE.md "Document properties").
     let properties: PDFKit.DocumentInfo = {};
 
-    if (prefix === "pdflapas-" && head) {
+    if (head) {
         const meta = (name: string) => {
             const element = children(head).find(child => child.tagName === "meta" && attribute(child, "name") === name);
 

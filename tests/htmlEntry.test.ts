@@ -12,23 +12,17 @@ afterAll(() => closeBrowser());
 const ascii = (bytes: Uint8Array) => new TextDecoder("latin1").decode(bytes);
 
 describe("htmlDocument() from @pdflapas/model", () => {
-    const head = (extra: string) => `<!DOCTYPE html><html><head><meta name="pdfdeck-profile" content="1">${extra}</head><body></body></html>`;
+    const head = (extra: string) => `<!DOCTYPE html><html><head><meta name="pdflapas-profile" content="2">${extra}</head><body></body></html>`;
 
-    test("returns the document unchanged with the page size of its @page rule and its pdfdeck-page-size name (version 1)", () => {
-        const named = head(`<meta content='Wide' name=pdfdeck-page-size><style>@page { size: 13.333in 7.5in; margin: 0 }</style>`);
+    test("returns the document unchanged with the page size of its @page rule and its pdflapas-page-size name", () => {
+        const named = head(`<meta content='Wide' name=pdflapas-page-size><style>@page { size: 13.333in 7.5in; margin: 0 }</style>`);
 
         expect(htmlDocument(named)).toEqual({ html: named, pageSize: pageSize(13.333, 7.5, "Wide") });
         expect(htmlDocument(head(`<style>@page{size:4in 3in}</style>`)).pageSize).toEqual(pageSize(4, 3, "Custom"));
-        const v2 = `<meta name="pdflapas-profile" content="2"><meta name="pdflapas-page-size" content="Wide"><meta name="pdfdeck-page-size" content="Old"><style>@page { size: 4in 3in }</style>`;
-
-        expect(htmlDocument(v2).pageSize).toEqual(pageSize(4, 3, "Wide"));
     });
 
-    test("reads each version under its own meta name: pdfdeck- in version 1, pdflapas- in version 2", () => {
-        const reads = `(this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`;
-
-        expect(() => htmlDocument(`<meta name="pdfdeck-profile" content="2">`)).toThrow(`profile version '2' in <meta name="pdfdeck-profile"> is not supported ${reads}`);
-        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="1">`)).toThrow(`profile version '1' in <meta name="pdflapas-profile"> is not supported ${reads}`);
+    test("reads only version 2", () => {
+        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="1">`)).toThrow(`profile version '1' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdflapas-profile" content="2">)`);
     });
 
     test("fills nothing: a missing page size is an error, as is anything that is not a profile document", () => {
@@ -36,9 +30,7 @@ describe("htmlDocument() from @pdflapas/model", () => {
         expect(() => htmlDocument(head(`<style>@page { size: A4 }</style>`))).toThrow("write the page size in inches");
         expect(() => htmlDocument("  ")).toThrow("expected a non-empty HTML string, got an empty string");
         expect(() => htmlDocument("<p>Hi</p>")).toThrow('not a PdfLapas profile document: add <meta name="pdflapas-profile" content="2"> to <head>');
-        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="3">`)).toThrow(
-            `profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`,
-        );
+        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="3">`)).toThrow(`profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdflapas-profile" content="2">)`);
     });
 
     test("reads only real tags and stylesheets: not inside comments, raw text, CDATA or CSS comments", () => {
@@ -81,14 +73,14 @@ describe("pptxHtmlDocument()", () => {
     });
 
     test("reads the page size of a hand-written document from its name, its @page rule or PptxGenJS's default", () => {
-        const named = pptxHtmlDocument(handWrittenDocument("", `<meta name="pdfdeck-profile" content="1"><meta name="pdfdeck-page-size" content="A4 Landscape">`));
+        const named = pptxHtmlDocument(handWrittenDocument("", `<meta name="pdflapas-profile" content="2"><meta name="pdflapas-page-size" content="A4 Landscape">`));
 
         expect(named.pageSize).toEqual({ ...PAGE_SIZES.A4.landscape });
         expect(pptxHtmlDocument(handWrittenDocument("")).pageSize).toEqual({ ...PAGE_SIZES.SCREEN_16X9.landscape });
-        const own = pptxHtmlDocument(handWrittenDocument("", `<meta name="pdfdeck-profile" content="1"><style>@page { size: 4in 3in; margin: 0; }</style>`));
+        const own = pptxHtmlDocument(handWrittenDocument("", `<meta name="pdflapas-profile" content="2"><style>@page { size: 4in 3in; margin: 0; }</style>`));
 
         expect(own.pageSize).toEqual(pageSize(4, 3, "Custom"));
-        expect(() => pptxHtmlDocument(handWrittenDocument("", `<meta name="pdfdeck-profile" content="1"><style>@page { size: A4; }</style>`))).toThrow("the stylesheet's @page rule has no 'size: <width>in <height>in'");
+        expect(() => pptxHtmlDocument(handWrittenDocument("", `<meta name="pdflapas-profile" content="2"><style>@page { size: A4; }</style>`))).toThrow("the stylesheet's @page rule has no 'size: <width>in <height>in'");
     });
 });
 

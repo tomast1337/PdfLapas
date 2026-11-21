@@ -31,7 +31,7 @@ export const HAND_WRITTEN_OBJECTS = {
 } as const;
 
 /** One slide holding `objects`; `head` replaces the default head content. */
-export function handWrittenDocument(objects: string, head = `<meta name="pdfdeck-profile" content="1">`): string {
+export function handWrittenDocument(objects: string, head = `<meta name="pdflapas-profile" content="2">`): string {
     return `<html>
 <head>
   ${head}

@@ -2228,6 +2228,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartScatterFixture(presentation);
     populateChartBarColorFixture(presentation);
     populateChartPieFixture(presentation);
+    populateChartBarOrderFixture(presentation);
 }
 
 /**
@@ -2901,4 +2902,24 @@ export function populateChartPieFixture(presentation: Presentation): void {
 
     slide.addChart("pie", data, { ...shared, x: 0.4 });
     slide.addChart("doughnut", data, { ...shared, x: 5.2 });
+}
+
+/**
+ * Horizontal bar series order (#472): a clustered chart runs its series bottom-up in each band and lists the legend from
+ * the last series. A parity slide after the others (no page number moves) and the WASM chartBarOrder deck, which crops
+ * the chart. No stacked chart: LibreOffice draws a stacked bar as wide as the clustered group (#503), which alone
+ * puts the page over the limit; tests/chart.test.ts checks its legend order.
+ */
+export function populateChartBarOrderFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Horizontal bar series order", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+        { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 3, 1, 5] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, barDir: "bar", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4 });
 }

@@ -521,5 +521,8 @@
   "chartPie": {
     "p1-Chart0": 0.0634,
     "p1-Chart1": 0.0665
+  },
+  "chartBarOrder": {
+    "p1-Chart0": 0.1699
   }
 }

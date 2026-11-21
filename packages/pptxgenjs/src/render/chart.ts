@@ -240,6 +240,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             break;
     }
 
+    const horizontal = chart.type === "bar" && chart.barDirection === "bar";
+    const stacked = chart.grouping === "stacked" || chart.grouping === "percentStacked";
+    // A clustered horizontal bar chart runs its series bottom-up in each category band, as its categories run, and lists
+    // them in the legend from the last; a stacked one keeps the series order in both (LibreOffice and PowerPoint, #472).
+    const reversedSeries = horizontal && !stacked;
     // Office keys a bar, area or pie entry with a filled square and a line entry with its line and marker.
     let legendData: { name: string; icon?: string }[] | undefined;
 
@@ -249,6 +254,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         legendData = (chart.series[0]?.values ?? []).map((_, index) => ({ name: labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON }));
     } else if (chart.type !== "radar" && chart.type !== "scatter" && chart.type !== "bubble") {
         legendData = chart.series.map(series => (series.type === "line" ? { name: series.name } : { name: series.name, icon: LEGEND_SQUARE_ICON }));
+
+        if (reversedSeries) {
+            legendData.reverse();
+        }
     }
 
     const legend = {
@@ -309,7 +318,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // a gap, the legend line and a gap below it, then the ticks, the label margin and one label line; above it a gap
     // and half a value label, which is centered on the top gridline.
     const gap = height * PPTX_DEFAULTS.chart.plotAreaGapRatio;
-    const horizontal = chart.type === "bar" && chart.barDirection === "bar";
     const valueLabelPx = pointsToPixels(chart.valueAxes[0]?.labelFontSize ?? chart.fontSize);
     const categoryAxisModel = chart.categoryAxis;
     const categoryLabelPx = pointsToPixels(categoryAxisModel.labelFontSize);
@@ -626,7 +634,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         }
 
         // The bar, line and area series on the category axis.
-        const stacked = chart.grouping === "stacked" || chart.grouping === "percentStacked";
         let barCount = 0;
 
         for (const series of chart.series) {
@@ -691,6 +698,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : {}) },
                 yAxisIndex: series.valueAxisIndex,
             });
+        }
+
+        // ECharts places a band's bars from the top down in series order.
+        if (reversedSeries) {
+            cartesian.reverse();
         }
 
         option = {

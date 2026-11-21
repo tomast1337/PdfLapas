@@ -149,6 +149,11 @@ export type RenderingTargetProfile = {
      * renderer's own underline.
      */
     readonly underlineFromFont: boolean;
+    /**
+     * Whether a doughnut's hole is `holeSize` percent of its outer diameter (`<c:holeSize>`, which PptxGenJS writes
+     * from `holeSize`), or always PPTX_DEFAULTS.chart.doughnutHoleSizePct whatever it says.
+     */
+    readonly readsDoughnutHoleSize: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

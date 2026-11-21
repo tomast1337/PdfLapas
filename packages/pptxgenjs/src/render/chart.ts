@@ -1,6 +1,6 @@
 import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts/charts";
 import { GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
-import { type EChartsCoreOption, init, use } from "echarts/core";
+import { type EChartsCoreOption, format, init, use } from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { formatChartNumber } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -83,6 +83,9 @@ function dataLabelOption(labels: NormalizedChart["dataLabels"], position: string
         textBorderWidth: 0,
     };
 }
+
+/** ECharts' px between a legend key and its text (LegendView: `textX = itemWidth + 5`). */
+const LEGEND_TEXT_GAP = 5;
 
 /** A filled square; the legend's symbolKeepAspect keeps it square when a line key makes the items wider. */
 const LEGEND_SQUARE_ICON = "path://M0 0H1V1H0Z";
@@ -397,13 +400,54 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             return fields.join(PPTX_DEFAULTS.chart.dataLabelSeparator);
         };
 
+        // The ring's box: the plot area the title and legend leave, less the inset (PPTX_DEFAULTS.chart.pieLayout).
+        const pieLayout = PPTX_DEFAULTS.chart.pieLayout;
+        const inset = pointsToPixels(pieLayout.insetPt);
+        let top: number = chart.showTitle ? gap + pointsToPixels(chart.titleFontSize) * pieLayout.titleBandEm + pointsToPixels(pieLayout.titleBandPt) : inset;
+        let bottom: number = inset;
+        let left: number = inset;
+        let right: number = inset;
+
+        if (chart.showLegend) {
+            const legendPx = pointsToPixels(chart.legendFontSize);
+
+            if (chart.legendPosition === "b") {
+                bottom = 2 * inset + legendPx * pieLayout.legendBandEm;
+            } else if (chart.legendPosition === "t") {
+                top += inset + legendPx * pieLayout.legendBandEm;
+            } else {
+                // shortcut: zrender measures the entries with its Arial-like width table, so a narrower legend face
+                // (LibreOffice draws the theme's Calibri as Carlito) leaves the ring a few px smaller; measure the face's
+                // advances when charts get them.
+                let widest = 0;
+
+                for (const entry of legendData ?? []) {
+                    widest = Math.max(widest, format.getTextRect(entry.name, `${legendPx}px ${chart.legendFontFace}`).width);
+                }
+
+                const band = 2 * inset + keySize + LEGEND_TEXT_GAP + widest;
+
+                if (chart.legendPosition === "l") {
+                    left = band;
+                } else {
+                    right = band;
+                }
+            }
+        }
+
+        const boxWidth = width - left - right;
+        const boxHeight = height - top - bottom;
+        const radius = Math.max(0, Math.min(boxWidth, boxHeight) / 2);
+
         option = {
             ...common,
             series: [
                 {
                     name: series.name,
                     type: "pie",
-                    radius: chart.type === "doughnut" ? [`${chart.doughnutHoleSize}%`, "70%"] : "70%",
+                    center: [left + boxWidth / 2, top + boxHeight / 2],
+                    // OOXML's c:holeSize is a percentage of the outer diameter.
+                    radius: chart.type === "doughnut" ? [(radius * chart.doughnutHoleSize) / 100, radius] : radius,
                     startAngle: 90 - chart.firstSliceAngle,
                     itemStyle: { opacity: chart.colorOpacity },
                     // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent

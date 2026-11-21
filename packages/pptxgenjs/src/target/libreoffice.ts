@@ -29,6 +29,8 @@ import type { RenderingTargetProfile } from "./index";
  * Its underline is not the face's `post` table band (`underlineFromFont`): on the visual fixture's "Underline
  * styles" slide (Arial 20pt) its PDF export draws it thinner and lower, closer to Chromium's own underline than to
  * the band (text-underline-sng 0.0867 with the band, over the 0.08 crop target that Chromium's underline meets).
+ * It draws every doughnut's hole half its outer diameter (`readsDoughnutHoleSize` off): in LibreOffice 26.2's PDF
+ * export of PptxGenJS doughnuts with `<c:holeSize>` 30, 50 and 75 the hole is 0.496, 0.500 and 0.501 of it.
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -59,4 +61,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     drawsPictureInnerShadow: false,
     drawsChartMarkerOutline: false,
     underlineFromFont: false,
+    readsDoughnutHoleSize: false,
 });

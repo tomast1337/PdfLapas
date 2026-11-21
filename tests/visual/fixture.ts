@@ -2227,6 +2227,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartMarkerFixture(presentation);
     populateChartScatterFixture(presentation);
     populateChartBarColorFixture(presentation);
+    populateChartPieFixture(presentation);
 }
 
 /**
@@ -2655,8 +2656,8 @@ export function populateChartAxisLabelFixture(presentation: Presentation): void 
 /**
  * Data labels (#445): a clustered column chart's values at their default place (outside the bar end) in a currency
  * format, a line chart's above each point in bold. A parity slide after the others (no page number moves) and the WASM
- * chartLabels deck, which crops each chart. No pie: ECharts draws the pie smaller than LibreOffice (#468), which alone
- * puts the page over the limit; tests/chart.test.ts checks the slice labels.
+ * chartLabels deck, which crops each chart. No pie: the pie slide (populateChartPieFixture) draws the default, no
+ * slice labels; tests/chart.test.ts checks the slice labels.
  */
 export function populateChartDataLabelFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -2884,4 +2885,20 @@ export function populateChartBarColorFixture(presentation: Presentation): void {
 
     slide.addChart("bar", data, { ...shared, x: 0.4, chartColors: ["4472C4", "ED7D31"] });
     slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "bar", chartColors: ["4472C4", "ED7D31", "A5A5A5"], chartColorsOpacity: 50 });
+}
+
+/**
+ * Pie and doughnut size (#468): the ring fills the plot area the legend leaves, the doughnut's hole is half of it, and
+ * neither draws slice labels by default (#469). A parity slide after the others (no page number moves) and the WASM
+ * chartPie deck, which crops each chart.
+ */
+export function populateChartPieFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Pie and doughnut", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [{ name: "Share", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, showLegend: true, legendPos: "b" };
+
+    slide.addChart("pie", data, { ...shared, x: 0.4 });
+    slide.addChart("doughnut", data, { ...shared, x: 5.2 });
 }

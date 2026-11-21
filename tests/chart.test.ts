@@ -9,7 +9,7 @@ import { formatChartNumber } from "../packages/pptxgenjs/src/chart/format";
 import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { normalizeChart } from "../packages/pptxgenjs/src/normalize/chart";
 import { normalizeColor } from "../packages/pptxgenjs/src/normalize/style";
-import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { unresolvedModelHtml } from "../packages/pptxgenjs/src/render/document";
 
 const categoricalData: PptxGenJS.OptsChartData[] = [
@@ -161,6 +161,46 @@ describe("chart normalization and rendering", () => {
 
         expect(renderedPage(presentation).querySelectorAll(".slide-chart")).toHaveLength(7);
         expect(renderedPage(presentation).querySelectorAll(".slide-chart svg")).toHaveLength(7);
+    });
+
+    test("sizes the pie in the plot area the title and legend leave and the hole as the target reads c:holeSize (#468)", () => {
+        // The first slice's outer arc starts at 12 o'clock: its top is the ring's top, its x the ring's center.
+        const ring = (presentation: PuppeteerGen, type: "pie" | "doughnut", options: PptxGenJS.IChartOpts) => {
+            presentation.addSlide().addChart(type, [categoricalData[0]!], { x: 0, y: 0, w: 4.4, h: 4.1, ...options });
+            const path = renderedPage(presentation).querySelector('.slide-chart path[ecmeta_ssr_type="chart"]');
+            const numbers = (path?.getAttribute("d") ?? "").match(/-?[\d.]+/g)?.map(Number) ?? [];
+
+            return { numbers, model: presentation.getModel().slides[0]?.objects[0] };
+        };
+        const width = inchesToPixels(4.4);
+        const height = inchesToPixels(4.1);
+        const layout = PPTX_DEFAULTS.chart.pieLayout;
+        const inset = pointsToPixels(layout.insetPt);
+        // A bottom legend: two insets and 1.05 legend font sizes below the ring, an inset above it.
+        const radius = (height - inset - (2 * inset + pointsToPixels(10) * layout.legendBandEm)) / 2;
+        const pie = ring(new PuppeteerGen(), "pie", { showLegend: true, legendPos: "b" }).numbers;
+
+        // ECharts starts the slice at the arc's top (M cx top), then its radius (A r r).
+        expect(pie[0]).toBeCloseTo(width / 2, 1);
+        expect(pie[1]).toBeCloseTo(inset, 1);
+        expect(pie[2]).toBeCloseTo(radius, 1);
+
+        // A title band: 2% of the height, 1.7 title font sizes and 14pt.
+        const titled = ring(new PuppeteerGen(), "pie", { showTitle: true, title: "T" }).numbers;
+        const titleBand = height * PPTX_DEFAULTS.chart.plotAreaGapRatio + pointsToPixels(18) * layout.titleBandEm + pointsToPixels(layout.titleBandPt);
+
+        expect(titled[1]).toBeCloseTo(titleBand, 1);
+        expect(titled[2]).toBeCloseTo((height - titleBand - inset) / 2, 1);
+
+        // LibreOffice draws every hole at half the ring; PowerPoint reads holeSize.
+        const holeSize = (presentation: PuppeteerGen) => {
+            const object = ring(presentation, "doughnut", { holeSize: 75 }).model;
+
+            return object?.kind === "chart" ? object.chart.doughnutHoleSize : undefined;
+        };
+
+        expect(holeSize(new PuppeteerGen())).toBe(PPTX_DEFAULTS.chart.doughnutHoleSizePct);
+        expect(holeSize(new PuppeteerGenPowerPoint())).toBe(75);
     });
 
     test("draws no slice labels on pie and doughnut charts, as PptxGenJS's per-point c:dLbl turn them off", () => {

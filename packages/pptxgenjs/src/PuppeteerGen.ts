@@ -2,7 +2,7 @@ import type PptxGenJS from "pptxgenjs";
 import type { NormalizedPresentation, PresentationMetadata } from "@pdflapas/model";
 import { ComponentRegistry } from "./components/registry";
 import type { ComponentDefinition, ComponentProps } from "./components/types";
-import { type FontMetricsLookup, type FontMetricsResult, type FontWinMetrics, type GlyphAdvanceLookup, PPTX_DEFAULTS, PPTXGENJS_VERSION } from "./defaults";
+import { type FontMetricsLookup, type FontMetricsResult, type FontWinMetrics, type GlyphAdvancesResult, PPTX_DEFAULTS, PPTXGENJS_VERSION, type UnreadableFont } from "./defaults";
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "./target";
 import { ALIGN_H, ALIGN_V, CHART_TYPE, DEPRECATED_CHART_TYPE, DEPRECATED_SCHEME_COLOR, DEPRECATED_SHAPE_TYPE, OUTPUT_TYPE, SCHEME_COLOR, SHAPE_TYPE } from "./enums";
 import { type ImageSourceOptions, imageResolver, resolveRemoteImageSource } from "./normalize/image";
@@ -79,21 +79,22 @@ export type PuppeteerGenOptions = {
     fontMetrics?: Readonly<Record<string, FontWinMetrics>>;
     /**
      * Looks a face's metrics up for the PowerPoint target when `fontMetrics` does not list it: `{ kind: "metrics",
-     * metrics }` of the font the face resolves to, or `{ kind: "unknown" }` to use FONT_WIN_METRICS. Called at most once
-     * per face per presentation, and never for the LibreOffice target; its result is checked. The Node entry reads the
-     * installed font by default (fontconfig); `null` turns the lookup off, so the HTML does not depend on the machine's
-     * fonts.
+     * metrics }` of the font the face resolves to, `{ kind: "unknown" }` to use FONT_WIN_METRICS, or `{ kind:
+     * "unreadable", face, path, reason }` for a font file it found but could not read, which is laid out as unknown and
+     * listed in `warnings()`. Called at most once per face per presentation, and never for the LibreOffice target; its
+     * result is checked. The Node entry reads the installed font by default (fontconfig); `null` turns the lookup off, so
+     * the HTML does not depend on the machine's fonts.
      */
-    resolveFontMetrics?: ((fontFace: string) => FontMetricsResult) | null;
+    resolveFontMetrics?: ((fontFace: string) => FontMetricsResult | UnreadableFont) | null;
     /**
      * Looks up the advance widths of a face in a weight and style for the PowerPoint target, which lays text out with
      * each advance rounded to 0.125pt (RENDERING_TARGETS.powerpoint.advanceGridPt): `{ kind: "advances", advances:
-     * readGlyphAdvances(bytes) }` of the font, or `{ kind: "unknown" }` to keep the natural advances. Called at most
-     * once per face, weight and style per presentation, never for the LibreOffice target; its result is checked. The
-     * Node entry reads the installed font by default (fontconfig); `null`, or no resolver in the browser build, keeps
-     * every face's natural advances.
+     * readGlyphAdvances(bytes) }` of the font, `{ kind: "unknown" }` to keep the natural advances, or `{ kind:
+     * "unreadable", face, path, reason }` as for `resolveFontMetrics`. Called at most once per face, weight and style per
+     * presentation, never for the LibreOffice target; its result is checked. The Node entry reads the installed font by
+     * default (fontconfig); `null`, or no resolver in the browser build, keeps every face's natural advances.
      */
-    resolveGlyphAdvances?: GlyphAdvanceLookup | null;
+    resolveGlyphAdvances?: ((fontFace: string, bold: boolean, italic: boolean) => GlyphAdvancesResult | UnreadableFont) | null;
     /**
      * PDF document properties PptxGenJS has no field for: `creator`, `producer`, `keywords`, `creationDate` and
      * `modificationDate`. Unset, Creator and Producer are "PdfLapas" and the PDF has no dates, so the same deck gives
@@ -129,6 +130,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly createDocument: () => Document;
     private readonly target: RenderingTarget;
     private readonly fontMetrics: FontMetricsLookup;
+    /** What warnings() lists, each line once, in the order found. */
+    private readonly warningLines = new Set<string>();
     /** The `context.document` of components checked in addComponent(), created the first time one reads it. */
     private readonly componentDocument: () => Document;
 
@@ -153,7 +156,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
         }
 
         this.pdfMetadata = normalizePdfMetadata(options.pdfMetadata);
-        this.fontMetrics = fontMetricsLookup(options.fontMetrics, options.resolveFontMetrics, options.resolveGlyphAdvances);
+        this.fontMetrics = fontMetricsLookup(options.fontMetrics, options.resolveFontMetrics, options.resolveGlyphAdvances, message => this.warningLines.add(message));
         this.componentDocument = lazyDocument(this.createDocument);
     }
 
@@ -351,6 +354,15 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
      */
     getModel(): NormalizedPresentation {
         return structuredClone({ pageSize: this.pageSize, metadata: { ...this.metadata, ...this.pdfMetadata }, slides: this.slides.map(slide => slide.toModel(this.pageSize, this.masterSlideNumber)) });
+    }
+
+    /**
+     * What this presentation laid out differently than asked without failing, one line each: today a font file a font
+     * resolver found but could not read, whose face falls back to the built-in metrics and natural advances (and can wrap
+     * differently from PowerPoint). Filled as objects are laid out, so read it after toHtml(), toPdf() or getModel().
+     */
+    warnings(): string[] {
+        return [...this.warningLines];
     }
 
     /** PptxGenJS `stream()`: the PDF as a Node Buffer. `compression` is ignored (zip-only). */

@@ -428,6 +428,11 @@ export type FontWinMetrics = {
 export type FontMetricsTable = Readonly<Record<string, FontWinMetrics>>;
 /** What a lookup found for a face: its `metrics`, or `unknown` when they are not known. */
 export type FontMetricsResult = { readonly kind: "metrics"; readonly metrics: FontWinMetrics } | { readonly kind: "unknown" };
+/**
+ * What a font resolver returns for a face whose font file it found but could not read (truncated, WOFF): the face is
+ * laid out as an `unknown` one, and the presentation's `warnings()` names the face, the file and the reason.
+ */
+export type UnreadableFont = { readonly kind: "unreadable"; readonly face: string; readonly path: string; readonly reason: string };
 /** A face's metrics by face name. */
 export type FontMetricsLookup = {
     (fontFace: string): FontMetricsResult;

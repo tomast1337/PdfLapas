@@ -435,6 +435,10 @@ contract includes:
   10pt), as Office and LibreOffice draw it; a line entry shows its line and marker.
 - Line cap/dash/width, marker shape/size/border, and smoothing.
 - Outside major tick marks on the category axis, which PptxGenJS writes on every chart but scatter.
+- Category axis: 12pt black Arial labels, no gridlines (`catGridLine` unset writes `style: none`; a
+  set one is 1pt solid 888888 with flat caps unless given), and a hidden title "Axis Title" at
+  Office's 10pt. A bottom title lowers the plot by two plot-area gaps and 1.71 title font sizes, as
+  LibreOffice lays it out.
 - Pie angle, doughnut hole size, radar style, and blank-value behavior.
 - bar3D view: `rotX` 30, `rotY` 30 and perspective 30 (a 15° field of view) project the box, with one
   slot per category and per series, centered with 12.5% of the chart width on each side.

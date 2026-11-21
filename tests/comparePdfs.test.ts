@@ -4,19 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
-import { comparePdfs, MOVE_TOLERANCE_PT, PIXEL_THRESHOLD, readBoxes, SHAPE_TOLERANCE_PT } from "../scripts/compare-pdfs";
+import { comparePdfs, MOVE_TOLERANCE_PT, PIXEL_THRESHOLD, readBoxes, readPages, SHAPE_TOLERANCE_PT } from "../scripts/compare-pdfs";
 
 const OPTIONS = { moveTolerance: MOVE_TOLERANCE_PT, shapeTolerance: SHAPE_TOLERANCE_PT, pixelThreshold: PIXEL_THRESHOLD };
 const TEXT = "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod";
 const ready = ["pdftotext", "pdftocairo", "pdftoppm", "magick"].every(tool => Bun.which(tool) !== null);
 
 /** A slide with a wrapped Arial paragraph and a filled rectangle; each variant changes one thing. */
-async function deck(directory: string, name: string, change: { text?: string; textWidth?: number; shapeX?: number }): Promise<string> {
+async function deck(directory: string, name: string, change: { text?: string; textWidth?: number; shapeX?: number; noteY?: number }): Promise<string> {
     const pres = new PuppeteerGen();
     const slide = pres.addSlide();
 
     slide.addText(change.text ?? TEXT, { x: 0.5, y: 0.5, w: change.textWidth ?? 3, h: 1.5, fontFace: "Arial", fontSize: 14 });
     slide.addShape("rect", { x: change.shapeX ?? 5, y: 1, w: 2, h: 1, fill: { color: "FF0000" } });
+    slide.addText("Placeholder note", { x: 0.5, y: change.noteY ?? 4.5, w: 3, h: 0.4, fontFace: "Arial", fontSize: 12 });
     const file = join(directory, `${name}.pdf`);
 
     await writeFile(file, await pres.toPdf());
@@ -60,6 +61,16 @@ describe.skipIf(!ready)("compare-pdfs", () => {
         expect(page?.movedWords.length).toBeGreaterThan(0);
     }, 30_000);
 
+    test("matches words that another reading order puts elsewhere and reports them as moved", async () => {
+        // The note moves above the paragraph, so pdftotext reads it first in one PDF and last in the other.
+        const report = await comparePdfs(await deck(directory, "base", {}), await deck(directory, "note", { noteY: 0.05 }), OPTIONS);
+        const page = report.pageReports[0];
+
+        expect(page?.removedWords).toEqual([]);
+        expect(page?.addedWords).toEqual([]);
+        expect(page?.movedWords.map(word => word.word)).toEqual(["Placeholder", "note"]);
+    }, 30_000);
+
     test("reports a moved shape with its offset", async () => {
         const report = await comparePdfs(await deck(directory, "base", {}), await deck(directory, "shape", { shapeX: 5.2 }), OPTIONS);
         const page = report.pageReports[0];
@@ -74,7 +85,40 @@ describe.skipIf(!ready)("compare-pdfs", () => {
     }, 30_000);
 });
 
+describe("readPages", () => {
+    test("joins the fragments of a letter-spaced word and keeps the word breaks", () => {
+        // pdftotext's words for PowerPoint's export of "ANNUAL REPORT" with charSpacing: each glyph drawn apart.
+        const fragments: [number, number, string][] = [
+            [36, 49.806, "AN"],
+            [50.742, 57.24, "N"],
+            [58.176, 64.674, "U"],
+            [65.61, 78.417, "AL"],
+            [83.457, 89.955, "R"],
+            [90.891, 96.894, "E"],
+            [97.839, 103.842, "P"],
+            [104.787, 111.789, "O"],
+            [112.698, 119.196, "R"],
+            [120.132, 125.631, "T"],
+        ];
+        const words = fragments.map(([x0, x1, text]) => `<word xMin="${x0}" yMin="22.215" xMax="${x1}" yMax="32.25">${text}</word>`).join("");
+        const pages = readPages(`<page width="720.000000" height="405.000000"><flow><block><line xMin="36">${words}</line></block></flow></page>`);
+
+        expect(pages[0]?.words).toEqual([
+            { text: "ANNUAL", x: 36, y: 32.25, endsLine: false },
+            { text: "REPORT", x: 83.457, y: 32.25, endsLine: true },
+        ]);
+    });
+});
+
 describe("readBoxes", () => {
+    test("boxes each subpath, so one path of many lines matches one path per line", () => {
+        const joined = '<svg><defs></defs><path d="M 10 10 L 90 10 M 10 20 L 90 20 Z M 0 0"/></svg>';
+        const separate = '<svg><defs></defs><path d="M 10 10 L 90 10"/><path d="M 10 20 L 90 20"/></svg>';
+
+        expect(readBoxes(joined, 100, 50)).toEqual(readBoxes(separate, 100, 50));
+        expect(readBoxes(separate, 100, 50)).toHaveLength(2);
+    });
+
     test("applies group and element matrices, reads image sizes and skips glyphs and the page background", () => {
         const svg = [
             '<svg><defs><g id="glyph-0-0"><path d="M 0 0 L 5 5"/></g><image id="source-1" width="2" height="1"/></defs>',

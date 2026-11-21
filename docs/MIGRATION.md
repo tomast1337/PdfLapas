@@ -61,8 +61,11 @@ returns a `.pptx`:
   that works.
 - **Shown nowhere, as in PowerPoint's slide show:** `addNotes()`, `addSection()` and `pres.rtlMode`
   (which orients PowerPoint's editing views) are accepted and change nothing on the page.
-- **Ignored, as PptxGenJS ignores them:** text `bullet.numberType` (see above), `textDirection` (a table cell
-  option), `isTextBox`, `data` and `path`, shape `align` and table `verbose` are accepted and draw
+- **Bullet indent:** set it with `bullet.indent`. PptxGenJS 4.0.1 declares the deprecated
+  `bullet.marginPt` but never reads it, so `{ marginPt: 10 }` keeps the 27pt default indent, in
+  PowerPoint and in PdfLapas.
+- **Ignored, as PptxGenJS ignores them:** text `bullet.numberType` and `bullet.marginPt` (see above),
+  `textDirection` (a table cell option), `isTextBox`, `data` and `path`, shape `align` and table `verbose` are accepted and draw
   nothing different. A string `line` and `lineSize`, `lineDash`, `lineHead`, `lineTail` apply to
   `addText` only with `shape: "line"`, as in PptxGenJS. Inside a `line` object, the deprecated `pt`,
   `size`, `lineDash`, `lineHead` and `lineTail` are ignored: use `width`, `dashType`, `beginArrowType`

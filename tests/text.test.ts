@@ -315,6 +315,30 @@ describe("text normalization", () => {
         expect(bullet({ indent: 0 })?.indent).toBe(pointsToPixels(PPTX_DEFAULTS.bullet.indentPt));
     });
 
+    // PptxGenJS 4.0.1 writes `<a:buAutoNum>` when `bullet.type.toString().toLowerCase() === 'number'` (#501) and never
+    // reads the deprecated `bullet.marginPt` (#498), so the indent keeps its 27pt default (marL="342900").
+    test("matches bullet.type case-insensitively and ignores bullet.marginPt, as PptxGenJS does", async () => {
+        const cases = [
+            { config: { type: "NUMBER" }, kind: "number", ooxml: '<a:buFont typeface="+mj-lt"/><a:buAutoNum' },
+            { config: { type: "Number" }, kind: "number", ooxml: '<a:buFont typeface="+mj-lt"/><a:buAutoNum' },
+            { config: { marginPt: 10 }, kind: "bullet", ooxml: "<a:buChar" },
+        ] as const;
+
+        for (const { config, kind, ooxml } of cases) {
+            const pptx = new PptxGenJSRuntime();
+
+            // `as`: the PptxGenJS types allow only lowercase `type`, which the runtime does not require.
+            pptx.addSlide().addText("item", { x: 1, y: 1, w: 2, h: 1, bullet: config as PptxGenJS.TextPropsOptions["bullet"] });
+            // `as`: write() returns a Buffer for the nodebuffer output type.
+            const zip = await JSZip.loadAsync((await pptx.write({ outputType: "nodebuffer" })) as Buffer);
+            const xml = (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+            const bullet = normalizeText("item", { bullet: config as PptxGenJS.TextPropsOptions["bullet"] }).paragraphs[0]?.bullet;
+
+            expect(xml).toContain(`<a:pPr marL="342900" indent="-342900"><a:buSzPct val="100000"/>${ooxml}`);
+            expect(bullet).toMatchObject({ kind, indent: pointsToPixels(PPTX_DEFAULTS.bullet.indentPt) });
+        }
+    });
+
     // PowerPoint starts a new list at its own startAt when <a:buAutoNum>'s type or startAt changes (sequenceIndex).
     describe("restarts the numbering when the scheme changes", () => {
         const item = (text: string, style: "arabicPeriod" | "alphaUcPeriod" | "alphaLcPeriod" | "romanUcPeriod", numberStartAt: number) => ({ text, options: { bullet: { type: "number" as const, style, numberStartAt }, breakLine: true } });

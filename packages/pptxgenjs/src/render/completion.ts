@@ -12,7 +12,7 @@ import { PPTX_DEFAULTS } from "#src/defaults";
 import { normalizeColor } from "#src/normalize/style";
 import { lineBoxOf } from "#src/normalize/text";
 import { DEFAULT_PAGE_SIZE, PAGE_SIZES, type PageSize } from "#src/pageLayouts";
-import { attributeName, getAttribute } from "./fragment";
+import { type AttributeValue, attributeName, getAttribute } from "./fragment";
 import { escapeAttribute } from "./markup";
 import { presentationCSS } from "./slide";
 import { HIDDEN_BORDER_CSS } from "./table";
@@ -102,12 +102,15 @@ function isElement(node: Node): node is Element {
 }
 
 function hasClass(element: Element, name: string): boolean {
-    return (getAttribute(element, "class") ?? "").split(/\s+/).includes(name);
+    const value = getAttribute(element, "class");
+
+    return value.kind === "value" && value.value.split(/\s+/).includes(name);
 }
 
 /** The element's inline CSS declarations by property, split on `;` outside quotes and parentheses. */
 function styleOf(element: Element): Map<string, string> {
-    const style = getAttribute(element, "style") ?? "";
+    const attribute = getAttribute(element, "style");
+    const style = attribute.kind === "value" ? attribute.value : "";
     const out = new Map<string, string>();
     let quote = "";
     let depth = 0;
@@ -173,7 +176,8 @@ function addToElement(element: Element, css: Pairs, attributes: Pairs): Completi
     const newAttributes = attributes.map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join("");
 
     if (styleAt && css.length) {
-        const style = (getAttribute(element, "style") ?? "").trim();
+        const attribute = getAttribute(element, "style");
+        const style = attribute.kind === "value" ? attribute.value.trim() : "";
         const joined = style ? `${style}${style.endsWith(";") ? "" : ";"} ${added}` : added;
 
         return { kind: "edit", edit: { start: styleAt.startOffset, end: styleAt.endOffset, text: `style="${escapeAttribute(joined)}"${newAttributes}` } };
@@ -199,7 +203,9 @@ function missing(element: Element, defaults: Defaults): Completion {
 
 /** A shrink box also needs the shrink rule (`shrinkAttributes`). */
 function withShrink(element: Element, defaults: Defaults): Defaults {
-    if (getAttribute(element, "data-text-fit") !== "shrink") {
+    const fit = getAttribute(element, "data-text-fit");
+
+    if (fit.kind === "absent" || fit.value !== "shrink") {
         return defaults;
     }
 
@@ -217,7 +223,7 @@ function where(slide: number, element: Element): string {
 
     const name = getAttribute(object, "data-object-name");
 
-    return `slide ${slide}${name !== undefined ? `: object '${name}'` : ""}`;
+    return `slide ${slide}${name.kind === "value" ? `: object '${name.value}'` : ""}`;
 }
 
 /** Where text sits, which picks its defaults: a slide's text box or a table cell. */
@@ -278,7 +284,7 @@ function completeElement(element: Element, context: TextContext, slide: number):
         const fontSize = Math.max(...sizes, 0) || defaultSize;
         const lineHeight = style.get("line-height");
         const lineBox = lineBoxOf(fontSize, lineHeight === undefined ? undefined : pxValue(lineHeight, "line-height", where(slide, element)));
-        const has = getAttribute(element, "data-line-baseline") !== undefined;
+        const has = getAttribute(element, "data-line-baseline").kind === "value";
 
         return addToElement(
             element,
@@ -325,10 +331,18 @@ function findElement(node: Parent, test: (element: Element) => boolean): { kind:
 
 /** The content of the `<meta>` named `name` in `head`; "none" without one or without a content. */
 function metaContent(head: Element, name: string): { kind: "content"; content: string } | { kind: "none" } {
-    const meta = head.childNodes.find(node => isElement(node) && node.tagName === "meta" && getAttribute(node, "name") === name);
-    const content = meta && isElement(meta) ? getAttribute(meta, "content") : undefined;
+    const meta = head.childNodes.find(node => {
+        if (!isElement(node) || node.tagName !== "meta") {
+            return false;
+        }
 
-    return content === undefined ? { kind: "none" } : { kind: "content", content };
+        const metaName = getAttribute(node, "name");
+
+        return metaName.kind === "value" && metaName.value === name;
+    });
+    const content: AttributeValue = meta && isElement(meta) ? getAttribute(meta, "content") : { kind: "absent" };
+
+    return content.kind === "absent" ? { kind: "none" } : { kind: "content", content: content.value };
 }
 
 /**

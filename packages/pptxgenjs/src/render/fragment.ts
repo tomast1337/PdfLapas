@@ -29,9 +29,11 @@ function isElement(node: DefaultTreeAdapterTypes.ChildNode): node is FragmentEle
     return "tagName" in node;
 }
 
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function firstElementChild(parent: FragmentParent): FragmentElement | undefined {
-    return parent.childNodes.find(isElement);
+/** The first element child of `parent` (`firstElementChild`); `none` when it has only text, comments or nothing. */
+export function firstElementChild(parent: FragmentParent): { kind: "element"; element: FragmentElement } | { kind: "none" } {
+    const element = parent.childNodes.find(isElement);
+
+    return element === undefined ? { kind: "none" } : { kind: "element", element };
 }
 
 /** Every element below `parent`, in tree order (`querySelectorAll("*")`). */
@@ -51,9 +53,13 @@ export function attributeName(attribute: FragmentElement["attrs"][number]): stri
     return attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name;
 }
 
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function getAttribute(element: FragmentElement, name: string): string | undefined {
-    return element.attrs.find(attribute => attributeName(attribute) === name)?.value;
+/** An attribute's value as `Element.getAttribute` reads it; `absent` where the DOM gives null. */
+export type AttributeValue = { kind: "value"; value: string } | { kind: "absent" };
+
+export function getAttribute(element: FragmentElement, name: string): AttributeValue {
+    const attribute = element.attrs.find(candidate => attributeName(candidate) === name);
+
+    return attribute === undefined ? { kind: "absent" } : { kind: "value", value: attribute.value };
 }
 
 /** As `Element.setAttribute`: an existing attribute keeps its place, a new one goes last. */

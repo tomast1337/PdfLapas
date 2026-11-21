@@ -62,11 +62,12 @@ export function renderComponent(component: ReturnType<typeof normalizeComponent>
     const content = parseMarkup(markup, "div");
 
     for (const image of images(content)) {
-        if (getAttribute(image, "srcset") !== undefined) {
+        if (getAttribute(image, "srcset").kind === "value") {
             throw new Error("Component images do not support srcset; use a single src");
         }
 
-        const source = getAttribute(image, "src");
+        const src = getAttribute(image, "src");
+        const source = src.kind === "value" ? src.value : "";
 
         if (source && !source.startsWith("data:")) {
             setAttribute(image, REMOTE_URL.test(source) ? "data-source-url" : "data-source-path", source);
@@ -79,9 +80,11 @@ export function renderComponent(component: ReturnType<typeof normalizeComponent>
 
 /** The image source a component still has to resolve: `data-source-path`, then `data-source-url`; "none" when empty. */
 function pendingSource(image: FragmentElement): { kind: "pending"; source: string } | { kind: "none" } {
-    const source = getAttribute(image, "data-source-path") ?? getAttribute(image, "data-source-url");
+    const path = getAttribute(image, "data-source-path");
+    // A path, even an empty one, wins over a URL.
+    const source = path.kind === "value" ? path : getAttribute(image, "data-source-url");
 
-    return source ? { kind: "pending", source } : { kind: "none" };
+    return source.kind === "value" && source.value ? { kind: "pending", source: source.value } : { kind: "none" };
 }
 
 export function componentImageSources(component: RenderedComponent): string[] {

@@ -111,11 +111,13 @@ function chartContainer(svgSource: string, style: NormalizedObjectStyle, altText
     // The chart's SVG root as markup: parsed as `template.innerHTML` parses it, checked for external references,
     // its ids prefixed with `idScope` and its size set to the object box. Only the root's descendants are
     // checked and renamed (it was `svg.querySelectorAll()`), so the bytes match the DOM-built HTML.
-    const svg = firstElementChild(parseMarkup(svgSource.trim()));
+    const root = firstElementChild(parseMarkup(svgSource.trim()));
 
-    if (svg?.namespaceURI !== SVG_NAMESPACE || svg.tagName !== "svg") {
+    if (root.kind === "none" || root.element.namespaceURI !== SVG_NAMESPACE || root.element.tagName !== "svg") {
         throw new TypeError("Chart renderer did not return an SVG root element");
     }
+
+    const svg = root.element;
 
     const elements = Array.from(descendants(svg));
 
@@ -130,11 +132,13 @@ function chartContainer(svgSource: string, style: NormalizedObjectStyle, altText
     const ids = new Map<string, string>();
 
     for (const element of elements) {
-        const oldId = getAttribute(element, "id");
+        const id = getAttribute(element, "id");
 
-        if (oldId === undefined) {
+        if (id.kind === "absent") {
             continue;
         }
+
+        const oldId = id.value;
 
         const newId = `${idScope}-${oldId.replace(ZRENDER_ID_PREFIX, "")}`;
 

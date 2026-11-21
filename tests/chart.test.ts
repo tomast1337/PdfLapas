@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { format } from "echarts/core";
+import { inchesToPixels } from "@pdflapas/model";
 import { JSDOM } from "jsdom";
 import { renderedPage } from "./renderedPage";
 import type PptxGenJS from "pptxgenjs";
 import { UnsupportedChartError } from "../packages/pptxgenjs/src/chart/errors";
 import { formatChartNumber } from "../packages/pptxgenjs/src/chart/format";
+import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { normalizeChart } from "../packages/pptxgenjs/src/normalize/chart";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { unresolvedModelHtml } from "../packages/pptxgenjs/src/render/document";
@@ -99,6 +102,43 @@ describe("chart normalization and rendering", () => {
         expect(svg?.getAttribute("width")).toBe("100%");
         expect(svg?.querySelectorAll("path").length).toBeGreaterThan(0);
         expect(svg?.textContent).toContain("First");
+    });
+
+    test("keeps every axis label inside the chart frame, less the plot-area gap, as PowerPoint sizes the plot area", () => {
+        // #443: "$120,000" on a column chart's value axis, long names on a horizontal bar chart's category axis and its last
+        // value label, centered on the plot's right edge, overflowed the fixed 6% and 2% gutters and were clipped.
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const names = ["Lorem ipsum dolor", "Sit amet", "Consectetur elit"];
+        const options = { y: 0.5, w: 4.4, h: 4.1, fontSize: 11, valAxisMinVal: 0, valAxisLabelFormatCode: "$#,##0" } as const;
+
+        slide.addChart("bar", [{ name: "S", labels: names, values: [82400, 115200, 91200] }], { ...options, x: 0.4, barDir: "col", valAxisMaxVal: 120000, valAxisMajorUnit: 20000 });
+        slide.addChart("bar", [{ name: "S", labels: names, values: [123600, 66100, 77400] }], { ...options, x: 5.2, barDir: "bar", valAxisMaxVal: 150000, valAxisMajorUnit: 50000 });
+        const width = inchesToPixels(4.4);
+        const gap = inchesToPixels(4.1) * PPTX_DEFAULTS.chart.plotAreaGapRatio;
+        const extents: Record<string, { left: number; right: number }> = {};
+
+        for (const svg of renderedPage(presentation).querySelectorAll(".slide-chart svg")) {
+            for (const text of svg.querySelectorAll("text")) {
+                const x = Number(/translate\(([-\d.]+)/.exec(text.getAttribute("transform") ?? "")?.[1]);
+                // The width ECharts lays the label out with: zrender's text measure at the label's font size.
+                const labelWidth = format.getTextRect(text.textContent ?? "", `${text.style.fontSize} ${text.style.fontFamily}`).width;
+                const anchor = text.getAttribute("text-anchor");
+                const left = anchor === "end" ? x - labelWidth : anchor === "middle" ? x - labelWidth / 2 : x;
+
+                extents[text.textContent ?? ""] = { left, right: left + labelWidth };
+            }
+        }
+
+        for (const label of ["$120,000", "Lorem ipsum dolor", "$150,000"]) {
+            expect(extents[label]?.left).toBeGreaterThanOrEqual(gap - 1);
+            expect(extents[label]?.right).toBeLessThanOrEqual(width - gap + 1);
+        }
+
+        // The widest label starts at the gap: the plot gives up no more room than the labels need.
+        expect(extents["$120,000"]?.left).toBeLessThan(gap + 1);
+        expect(extents["Lorem ipsum dolor"]?.left).toBeLessThan(gap + 1);
+        expect(extents["$150,000"]?.right).toBeGreaterThan(width - gap - 1);
     });
 
     test("renders every initial 2D chart family", () => {

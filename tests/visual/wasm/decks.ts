@@ -2,7 +2,7 @@
 // PDF's bytes (pdf-sha256.json); tests/htmlBytes.test.ts pins their toHtml() bytes.
 import type pptxgen from "pptxgenjs";
 import type { PuppeteerGen } from "../../../packages/pptxgenjs/src/node";
-import { populateChartFixture, populateComponentFixture, populateImageFixture, populateSlidePropertiesFixture, populateTableOptionsFixture, populateTextOptionsFixture, TEXT_OPTION_PAGES } from "../fixture";
+import { populateChartAxisLabelFixture, populateChartFixture, populateComponentFixture, populateImageFixture, populateSlidePropertiesFixture, populateTableOptionsFixture, populateTextOptionsFixture, TEXT_OPTION_PAGES } from "../fixture";
 import { populateShapeDeck, populateTableDeck, populateTextDeck, SHAPE_PAGES, TABLE_PAGES, TEXT_PAGES } from "./deck";
 import { EFFECT_PAGES, populateEffectDeck } from "./effect-deck";
 import { EMOJI_PAGES, populateEmojiDeck } from "./emoji-deck";
@@ -42,15 +42,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     webp: { populate: populateWebpDeck, pages: FORMAT_PAGES, crop: object => object.kind === "image" },
     // effects: every shadowed or glowing object; the slide titles sit above y = 0.5in (48px).
     effects: { populate: populateEffectDeck, pages: EFFECT_PAGES, crop: object => object.style.geometry.y > 48 },
-    // charts: the shared fixture's chart slides. Pie, doughnut, radar and scatter are left to tests/wasm.test.ts:
+    // charts: the shared fixture's chart slides and its axis-label slide. Pie, doughnut, radar and scatter are left to tests/wasm.test.ts:
     // LibreOffice draws them too far from ECharts for the page limit (0.1455 Puppeteer, 0.1485 WASM on one slide).
     charts: {
         populate: presentation => {
             populateChartFixture(presentation);
+            populateChartAxisLabelFixture(presentation);
 
             return presentation;
         },
-        pages: 5,
+        pages: 6,
         crop: object => object.kind === "chart",
     },
     // components: the shared fixture's component slide (an HTML and a React progress bar, sized boxes;

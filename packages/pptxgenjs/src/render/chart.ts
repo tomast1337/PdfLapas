@@ -62,6 +62,19 @@ function tickOption(mark: NormalizedChart["valueAxes"][number]["majorTickMark"],
     };
 }
 
+/** An axis's gridlines (c:majorGridlines) as an ECharts splitLine. */
+function gridLineOption(axis: Pick<NormalizedChart["categoryAxis"], "gridLineCap" | "gridLineColor" | "gridLineStyle" | "gridLineWidth">) {
+    return {
+        show: axis.gridLineStyle !== "none",
+        lineStyle: {
+            color: axis.gridLineColor,
+            width: pointsToPixels(axis.gridLineWidth),
+            type: axis.gridLineStyle === "none" ? "solid" : lineType(axis.gridLineStyle),
+            cap: axis.gridLineCap === "flat" ? "butt" : axis.gridLineCap,
+        },
+    } as const;
+}
+
 /** ECharts label positions for each OOXML `c:dLblPos`: a column's (vertical), a horizontal bar's, a line point's and a slice's. */
 type LabelPositions = Readonly<Partial<Record<NormalizedChart["dataLabels"]["position"], string>>>;
 const COLUMN_LABEL_POSITIONS: LabelPositions = { outEnd: "top", inEnd: "insideTop", ctr: "inside", inBase: "insideBottom" };
@@ -314,9 +327,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             show: chart.axisLineVisible,
             lineStyle: { color: chart.gridLineColor, width: pointsToPixels(chart.gridLineWidth) },
         },
-        splitLine: {
-            lineStyle: { color: chart.gridLineColor, width: pointsToPixels(chart.gridLineWidth) },
-        },
     };
     // The automatic plot area (PptxGenJS writes `<c:layout/>`) in text-sized bands, not fractions of the chart height:
     // a gap, the legend line and a gap below it, then the ticks, the label margin and one label line; above it a gap
@@ -533,8 +543,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         option = {
             ...common,
             grid,
-            xAxis: { type: "value", ...axisStyle },
-            yAxis: { type: "value", ...axisStyle },
+            // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine.
+            xAxis: { type: "value", ...axisStyle, splitLine: gridLineOption(categoryAxisModel) },
+            yAxis: { type: "value", ...axisStyle, splitLine: firstAxis ? gridLineOption(firstAxis) : { show: false } },
             series: scatter,
         };
     } else {
@@ -561,15 +572,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 fontSize: pointsToPixels(categoryAxisModel.titleFontSize),
             },
             // Category gridlines run through the ticks, between the categories, as Office draws them.
-            splitLine: {
-                show: categoryAxisModel.gridLineStyle !== "none",
-                lineStyle: {
-                    color: categoryAxisModel.gridLineColor,
-                    width: pointsToPixels(categoryAxisModel.gridLineWidth),
-                    type: categoryAxisModel.gridLineStyle === "none" ? "solid" : lineType(categoryAxisModel.gridLineStyle),
-                    cap: categoryAxisModel.gridLineCap === "flat" ? "butt" : categoryAxisModel.gridLineCap,
-                },
-            },
+            splitLine: gridLineOption(categoryAxisModel),
         } as const;
         const valueAxes = [];
 
@@ -616,18 +619,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     ...tickOption(axis.minorTickMark, axis.lineColor, axis.lineWidth),
                     splitNumber: 5,
                 },
-                splitLine:
-                    index === 0
-                        ? {
-                              show: axis.gridLineStyle !== "none",
-                              lineStyle: {
-                                  color: axis.gridLineColor,
-                                  width: pointsToPixels(axis.gridLineWidth),
-                                  type: axis.gridLineStyle === "none" ? "solid" : lineType(axis.gridLineStyle),
-                                  cap: axis.gridLineCap === "flat" ? "butt" : axis.gridLineCap,
-                              },
-                          }
-                        : { show: false },
+                splitLine: index === 0 ? gridLineOption(axis) : { show: false },
             });
         }
 

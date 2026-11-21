@@ -698,6 +698,57 @@ describe("chart normalization and rendering", () => {
         }
     });
 
+    test("draws a scatter chart's gridlines D9D9D9 on both axes unless valGridLine is set, as PptxGenJS defaults them", () => {
+        const xyData: PptxGenJS.OptsChartData[] = [
+            { name: "X", values: [1, 2, 3, 4] },
+            { name: "Lorem", values: [2, 4, 3, 5] },
+        ];
+
+        // PptxGenJS 4.0.1: `catGridLine || (scatter ? { color: 'D9D9D9', size: 1 } : { style: 'none' })`, and valGridLine
+        // `|| (scatter ? { color: 'D9D9D9', size: 1 } : {})`, so a bubble chart keeps no x gridlines and 888888 y ones.
+        const scatter = normalizeChart("scatter", xyData);
+
+        expect<unknown[]>([scatter.categoryAxis.gridLineColor, scatter.categoryAxis.gridLineStyle, scatter.valueAxes[0]?.gridLineColor, scatter.valueAxes[0]?.gridLineStyle]).toEqual(["#D9D9D9", "solid", "#D9D9D9", "solid"]);
+        // A set valGridLine replaces the default whole: a missing color is DEF_CHART_GRIDLINE's 888888.
+        expect(normalizeChart("scatter", xyData, { valGridLine: { size: 2 } }).valueAxes[0]).toMatchObject({ gridLineColor: "#888888", gridLineWidth: 2 });
+        expect(normalizeChart("scatter", xyData, { valGridLine: { style: "none" } }).valueAxes[0]?.gridLineStyle).toBe("none");
+
+        const bubble = normalizeChart("bubble", [xyData[0]!, { ...xyData[1]!, sizes: [1, 2, 3, 4] }]);
+
+        expect<unknown[]>([bubble.categoryAxis.gridLineStyle, bubble.valueAxes[0]?.gridLineColor]).toEqual(["none", "#888888"]);
+
+        // The vertical (x) and horizontal (y) split lines, by their stroke.
+        const gridStrokes = (type: "bubble" | "scatter", options: PptxGenJS.IChartOpts = {}) => {
+            const presentation = new PuppeteerGen();
+            const data = type === "bubble" ? [xyData[0]!, { ...xyData[1]!, sizes: [1, 2, 3, 4] }] : xyData;
+
+            presentation.addSlide().addChart(type, data, { x: 0, y: 0, w: 5, h: 3, ...options });
+            const strokes = { x: new Set<string>(), y: new Set<string>() };
+
+            for (const path of renderedPage(presentation).querySelectorAll('.slide-chart path[fill="none"]')) {
+                const segment = path.getAttribute("d")?.match(/^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/);
+                const stroke = path.getAttribute("stroke");
+
+                if (!segment || !stroke) {
+                    continue;
+                }
+
+                if (segment[1] === segment[3]) {
+                    strokes.x.add(stroke);
+                } else if (segment[2] === segment[4]) {
+                    strokes.y.add(stroke);
+                }
+            }
+
+            return { x: [...strokes.x].sort(), y: [...strokes.y].sort() };
+        };
+
+        // The 888888 lines are the axis lines.
+        expect(gridStrokes("scatter")).toEqual({ x: ["#888888", "#D9D9D9"], y: ["#888888", "#D9D9D9"] });
+        expect(gridStrokes("scatter", { valGridLine: { color: "A5A5A5" } })).toEqual({ x: ["#888888", "#D9D9D9"], y: ["#888888", "#A5A5A5"] });
+        expect(gridStrokes("bubble")).toEqual({ x: ["#888888"], y: ["#888888"] });
+    });
+
     test("keys bar entries with a square 0.6 of the legend font size and keeps line entries as a line", () => {
         const legendKeys = (type: "bar" | "line", options: PptxGenJS.IChartOpts = {}) => {
             const presentation = new PuppeteerGen();

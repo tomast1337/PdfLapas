@@ -302,7 +302,7 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
     return normalized;
 }
 
-function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefined, automatic: [number, number], path: string, chartTypes: PptxGenJS.CHART_NAME[]): NormalizedChart["valueAxes"][number] {
+function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefined, automatic: [number, number], path: string, chartTypes: PptxGenJS.CHART_NAME[], defaultGridLine: PptxGenJS.OptsChartGridLine): NormalizedChart["valueAxes"][number] {
     const defaults = PPTX_DEFAULTS.chart.valueAxis;
     // Check the axis's bounds, scale, unit, tick marks and label format.
     const minimum = axisOptions?.valAxisMinVal ?? automatic[0];
@@ -340,7 +340,8 @@ function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefine
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["valAxisLabelFormatCode[format]"] });
     }
 
-    const gridLine = axisOptions?.valGridLine;
+    // PptxGenJS replaces a missing valGridLine whole (`valGridLine || default`), so a set one keeps no default field.
+    const gridLine = axisOptions?.valGridLine ?? defaultGridLine;
 
     return {
         minimum,
@@ -368,10 +369,10 @@ function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefine
         lineVisible: axisOptions?.valAxisLineShow ?? defaults.lineVisible,
         majorTickMark: axisOptions?.valAxisMajorTickMark ?? defaults.majorTickMark,
         minorTickMark: axisOptions?.valAxisMinorTickMark ?? defaults.minorTickMark,
-        gridLineColor: normalizeColor(gridLine?.color ?? PPTX_DEFAULTS.chart.gridLine.color),
-        gridLineWidth: positiveNumber(gridLine?.size, "valGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
-        gridLineStyle: gridLine?.style ?? PPTX_DEFAULTS.chart.gridLine.style,
-        gridLineCap: gridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
+        gridLineColor: normalizeColor(gridLine.color ?? PPTX_DEFAULTS.chart.gridLine.color),
+        gridLineWidth: positiveNumber(gridLine.size, "valGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
+        gridLineStyle: gridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style,
+        gridLineCap: gridLine.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
 }
 
@@ -618,7 +619,10 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0), normalizedGrouping);
     const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1), normalizedGrouping) : undefined;
     const catDefaults = PPTX_DEFAULTS.chart.categoryAxis;
-    const catGridLine = options.catGridLine;
+    // PptxGenJS 4.0.1 gives a scatter chart (not a bubble chart) `{ color: 'D9D9D9', size: 1 }` gridlines on both axes
+    // when catGridLine or valGridLine is unset.
+    const scatterGridLine: PptxGenJS.OptsChartGridLine = { color: PPTX_DEFAULTS.chart.scatterGridLine.color, size: PPTX_DEFAULTS.chart.scatterGridLine.widthPt };
+    const catGridLine = options.catGridLine ?? (normalizedType === "scatter" ? scatterGridLine : undefined);
     const categoryAxis: NormalizedChart["categoryAxis"] = {
         showTitle: options.showCatAxisTitle ?? false,
         title: options.catAxisTitle || catDefaults.title,
@@ -636,11 +640,11 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
-    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, automaticPrimary, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes);
+    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, automaticPrimary, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
     const valueAxes = [primaryAxis];
 
     if (automaticSecondary) {
-        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], automaticSecondary, "valAxes[1].", chartTypes));
+        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], automaticSecondary, "valAxes[1].", chartTypes, {}));
     }
 
     // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing

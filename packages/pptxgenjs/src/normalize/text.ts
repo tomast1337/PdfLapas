@@ -770,11 +770,13 @@ export function normalizeText(
 
         if (first.bullet) {
             const config = typeof first.bullet === "object" ? first.bullet : {};
-            const indentPt = config.indent ?? config.marginPt ?? PPTX_DEFAULTS.bullet.indentPt;
+            // PptxGenJS 4.0.1 (genXmlTextBody) reads these with `||`: a falsy indent, numberStartAt, startAt, style or
+            // characterCode falls through to the next one or the default (numberStartAt 0 writes startAt="1", #491).
+            const indentPt = config.indent || (config.marginPt ?? PPTX_DEFAULTS.bullet.indentPt);
             const kind = config.type === "number" ? "number" : "bullet";
-            const start = config.numberStartAt ?? config.startAt ?? PPTX_DEFAULTS.bullet.numberStartAt;
-            const numberType = config.style ?? PPTX_DEFAULTS.bullet.numberType;
-            const code = config.characterCode ?? config.code;
+            const start = config.numberStartAt || config.startAt || PPTX_DEFAULTS.bullet.numberStartAt;
+            const numberType = config.style || PPTX_DEFAULTS.bullet.numberType;
+            const code = config.characterCode || config.code;
 
             let marker: string = PPTX_DEFAULTS.bullet.character;
 

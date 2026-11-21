@@ -79,3 +79,43 @@ export function opacityGroup(doc: PDFKit.PDFDocument, opacity: number, draw: () 
     pdf.addContent(`/${name} Do`);
     doc.restore();
 }
+
+/** The part of a PDFKit image the ordering below wraps: a PNG keeps its png-js decoder in `image`, a JPEG has none. */
+type OpenedImage = { image?: { decodePixels?: (use: (pixels: Uint8Array) => void) => void } };
+
+/**
+ * Makes `doc` write its pictures' objects in drawing order (#424). PDFKit embeds a PNG with an alpha channel, indexed
+ * transparency or interlacing in the callback of an asynchronous inflate, and creates the soft mask's object and
+ * writes the image there, so object numbers and offsets followed whichever inflate ended first. The inflates still run
+ * concurrently; only their callbacks wait for those of the pictures drawn before. A failing callback fails the render.
+ */
+export function embedImagesInOrder(doc: PDFKit.PDFDocument): void {
+    // `as`: openImage(src) is PDFKit 0.20's image loader (doc.image calls it), missing from @types/pdfkit 0.17.
+    const pdf = doc as unknown as { openImage(src: unknown): OpenedImage };
+    const open = pdf.openImage.bind(doc);
+    let previous = Promise.resolve();
+
+    pdf.openImage = src => {
+        const opened = open(src);
+        const png = opened.image;
+        const decode = png?.decodePixels?.bind(png);
+
+        if (png && decode) {
+            png.decodePixels = use => {
+                const pixels = new Promise<Uint8Array>(resolve => decode(resolve));
+                const before = previous;
+
+                previous = (async () => {
+                    await before;
+                    try {
+                        use(await pixels);
+                    } catch (error) {
+                        doc.emit("error", error);
+                    }
+                })();
+            };
+        }
+
+        return opened;
+    };
+}

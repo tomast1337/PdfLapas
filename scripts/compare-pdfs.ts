@@ -21,6 +21,17 @@ export const SHAPE_TOLERANCE_PT = 2;
 /** Pixel score limit per page: the visual parity page limit (normalized RMSE at 96 dpi). */
 export const PIXEL_THRESHOLD = PAGE_THRESHOLD;
 
+/**
+ * Two pdftotext words on one line with a gap below this fraction of their height are one word. pdftotext splits a
+ * letter-spaced word (charSpacing) into fragments where PowerPoint draws each glyph apart, and keeps it whole where
+ * Chromium draws one run; a space in Arial is about 0.24 of the word height, so real word breaks stay.
+ * shortcut: spacing wider than this still splits a word; cluster the gaps of a line if a deck needs that.
+ */
+const FRAGMENT_GAP_RATIO = 0.15;
+
+/** The text report lists this many items of one kind per page, then a count; the JSON lists all of them. */
+const LISTED_ITEMS = 8;
+
 /** Resolution of the rasterized pages for the pixel score, as tests/visual/compare.ts renders them. */
 const RASTER_DPI = 96;
 
@@ -52,9 +63,9 @@ export type CompareReport = {
     passed: boolean;
 };
 
-type Word = { text: string; x: number; y: number; endsLine: boolean };
+export type Word = { text: string; x: number; y: number; endsLine: boolean };
 
-type Page = { width: number; height: number; words: Word[] };
+export type Page = { width: number; height: number; words: Word[] };
 
 type Matrix = [number, number, number, number, number, number];
 
@@ -62,7 +73,8 @@ const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
 const PAGE_PATTERN = /<page width="([\d.]+)" height="([\d.]+)">([\s\S]*?)<\/page>/g;
 const LINE_PATTERN = /<line [^>]*>([\s\S]*?)<\/line>/g;
-const WORD_PATTERN = /<word xMin="([\d.-]+)" yMin="[\d.-]+" xMax="[\d.-]+" yMax="([\d.-]+)">([^<]*)<\/word>/g;
+const WORD_PATTERN = /<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">([^<]*)<\/word>/g;
+const SUBPATH_PATTERN = /(?=M)/;
 const ENTITY_PATTERN = /&(amp|lt|gt|quot|apos);/g;
 const ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 const TAG_PATTERN = /<(\/?)(g|path|use|image)\b([^>]*?)(\/?)>/g;
@@ -87,9 +99,8 @@ async function run(command: string[], acceptedExitCodes = [0]): Promise<string> 
     return `${stdout}\n${stderr}`.trim();
 }
 
-/** The pages of a PDF with their words in reading order, as pdftotext lays them out. */
-async function readPages(file: string): Promise<Page[]> {
-    const xhtml = await run(["pdftotext", "-bbox-layout", "-enc", "UTF-8", file, "-"]);
+/** The pages of a PDF with their words in reading order, from `pdftotext -bbox-layout` output. */
+export function readPages(xhtml: string): Page[] {
     const pages: Page[] = [];
 
     for (const [, width, height, body] of xhtml.matchAll(PAGE_PATTERN)) {
@@ -97,11 +108,21 @@ async function readPages(file: string): Promise<Page[]> {
 
         for (const [, line] of (body ?? "").matchAll(LINE_PATTERN)) {
             const start = words.length;
+            let previousEnd = -Infinity;
 
             // shortcut: yMax is the baseline plus the font's descent, so two fonts with different descents read as
             // moved vertically; read glyph origins from the content stream if a migration hits that.
-            for (const [, x, y, text] of (line ?? "").matchAll(WORD_PATTERN)) {
-                words.push({ text: (text ?? "").replace(ENTITY_PATTERN, (_, name: string) => ENTITIES[name] ?? name), x: Number(x), y: Number(y), endsLine: false });
+            for (const [, x0, y0, x1, y1, raw] of (line ?? "").matchAll(WORD_PATTERN)) {
+                const text = (raw ?? "").replace(ENTITY_PATTERN, (_, name: string) => ENTITIES[name] ?? name);
+                const previous = words[words.length - 1];
+
+                if (previous && words.length > start && Number(x0) - previousEnd < FRAGMENT_GAP_RATIO * (Number(y1) - Number(y0))) {
+                    previous.text += text;
+                } else {
+                    words.push({ text, x: Number(x0), y: Number(y1), endsLine: false });
+                }
+
+                previousEnd = Number(x1);
             }
 
             const last = words[words.length - 1];
@@ -149,12 +170,19 @@ export function readBoxes(svg: string, width: number, height: number): Box[] {
         }
 
         const matrix = multiply(parent, attributes);
-        const points: number[] = [];
+        const subpaths: number[][] = [];
         let kind: Box["kind"] = "shape";
 
         if (tag === "path") {
-            for (const [value] of (attributes.match(PATH_DATA_ATTRIBUTE)?.[1] ?? "").matchAll(NUMBER_PATTERN)) {
-                points.push(Number(value));
+            // Each subpath is its own box: one pipeline draws a chart's gridlines as one path, another as one path each.
+            for (const subpath of (attributes.match(PATH_DATA_ATTRIBUTE)?.[1] ?? "").split(SUBPATH_PATTERN)) {
+                const points: number[] = [];
+
+                for (const [value] of subpath.matchAll(NUMBER_PATTERN)) {
+                    points.push(Number(value));
+                }
+
+                subpaths.push(points);
             }
         } else {
             // A <use> of a glyph is text, which the word comparison covers; a <use> of an image source is an image.
@@ -165,28 +193,35 @@ export function readBoxes(svg: string, width: number, height: number): Box[] {
             }
 
             kind = "image";
-            points.push(0, 0, size[0], size[1]);
+            subpaths.push([0, 0, size[0], size[1]]);
         }
 
-        let box: Box = { kind, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        for (const points of subpaths) {
+            // A lone moveto (cairo ends a closed path with one) draws nothing.
+            if (points.length < 4) {
+                continue;
+            }
 
-        // shortcut: Bézier control points count as points of the box, exact for the arcs PdfLapas and cairo draw,
-        // loose for a curve that bulges less than its control points; bound the curve if that misleads a report.
-        for (let index = 0; index + 1 < points.length; index += 2) {
-            const [a, b, c, d, e, f] = matrix;
-            const px = points[index] ?? 0;
-            const py = points[index + 1] ?? 0;
-            const x = a * px + c * py + e;
-            const y = b * px + d * py + f;
+            let box: Box = { kind, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
 
-            box = { kind, x0: Math.min(box.x0, x), y0: Math.min(box.y0, y), x1: Math.max(box.x1, x), y1: Math.max(box.y1, y) };
-        }
+            // shortcut: Bézier control points count as points of the box, exact for the arcs PdfLapas and cairo draw,
+            // loose for a curve that bulges less than its control points; bound the curve if that misleads a report.
+            for (let index = 0; index + 1 < points.length; index += 2) {
+                const [a, b, c, d, e, f] = matrix;
+                const px = points[index] ?? 0;
+                const py = points[index + 1] ?? 0;
+                const x = a * px + c * py + e;
+                const y = b * px + d * py + f;
 
-        // The page background, which one pipeline paints and another leaves blank, is the pixel score's business.
-        const coversPage = box.x0 <= 1 && box.y0 <= 1 && box.x1 >= width - 1 && box.y1 >= height - 1;
+                box = { kind, x0: Math.min(box.x0, x), y0: Math.min(box.y0, y), x1: Math.max(box.x1, x), y1: Math.max(box.y1, y) };
+            }
 
-        if (Number.isFinite(box.x0) && !coversPage) {
-            boxes.push(box);
+            // The page background, which one pipeline paints and another leaves blank, is the pixel score's business.
+            const coversPage = box.x0 <= 1 && box.y0 <= 1 && box.x1 >= width - 1 && box.y1 >= height - 1;
+
+            if (!coversPage) {
+                boxes.push(box);
+            }
         }
     }
 
@@ -237,7 +272,9 @@ export async function comparePdfs(reference: string, actual: string, options: Co
         }
     }
 
-    const [referencePages, actualPages] = await Promise.all([readPages(reference), readPages(actual)]);
+    const [referenceText, actualText] = await Promise.all([run(["pdftotext", "-bbox-layout", "-enc", "UTF-8", reference, "-"]), run(["pdftotext", "-bbox-layout", "-enc", "UTF-8", actual, "-"])]);
+    const referencePages = readPages(referenceText);
+    const actualPages = readPages(actualText);
     const shared = Math.min(referencePages.length, actualPages.length);
     // Normalized RMSE of each page pair, rasterized at RASTER_DPI.
     const directory = await mkdtemp(join(tmpdir(), "pdflapas-compare-"));
@@ -299,6 +336,9 @@ export async function comparePdfs(reference: string, actual: string, options: Co
             extraBoxes: [],
             pixelScore: scores[index] ?? 1,
         };
+        const pairs: [Word, Word][] = [];
+        const removed: Word[] = [];
+        const added: Word[] = [];
         let i = 0;
         let j = 0;
 
@@ -307,25 +347,55 @@ export async function comparePdfs(reference: string, actual: string, options: Co
             const actWord = act.words[j];
 
             if (refWord && actWord && refWord.text === actWord.text) {
-                if (refWord.endsLine !== actWord.endsLine) {
-                    report.lineBreaks.push({ word: refWord.text, endsLineIn: refWord.endsLine ? "reference" : "actual" });
-                }
-
-                const dx = actWord.x - refWord.x;
-                const dy = actWord.y - refWord.y;
-
-                if (Math.hypot(dx, dy) > options.moveTolerance) {
-                    report.movedWords.push({ word: refWord.text, dx: Number(dx.toFixed(2)), dy: Number(dy.toFixed(2)) });
-                }
-
+                pairs.push([refWord, actWord]);
                 i++;
                 j++;
             } else if (refWord && (!actWord || (lengths[(i + 1) * (m + 1) + j] ?? 0) >= (lengths[i * (m + 1) + j + 1] ?? 0))) {
-                report.removedWords.push(refWord.text);
+                removed.push(refWord);
                 i++;
             } else if (actWord) {
-                report.addedWords.push(actWord.text);
+                added.push(actWord);
                 j++;
+            }
+        }
+
+        // The LCS follows reading order, which two PDFs can disagree on (a chart's axis labels drawn before or after
+        // its title). A word left out on both sides is the same word drawn elsewhere: pair it with the nearest twin.
+        for (const refWord of removed) {
+            let nearest = -1;
+
+            for (const [index, actWord] of added.entries()) {
+                const best = added[nearest];
+
+                if (actWord.text === refWord.text && (!best || Math.hypot(actWord.x - refWord.x, actWord.y - refWord.y) < Math.hypot(best.x - refWord.x, best.y - refWord.y))) {
+                    nearest = index;
+                }
+            }
+
+            const twin = added[nearest];
+
+            if (twin) {
+                pairs.push([refWord, twin]);
+                added.splice(nearest, 1);
+            } else {
+                report.removedWords.push(refWord.text);
+            }
+        }
+
+        for (const actWord of added) {
+            report.addedWords.push(actWord.text);
+        }
+
+        for (const [refWord, actWord] of pairs) {
+            if (refWord.endsLine !== actWord.endsLine) {
+                report.lineBreaks.push({ word: refWord.text, endsLineIn: refWord.endsLine ? "reference" : "actual" });
+            }
+
+            const dx = actWord.x - refWord.x;
+            const dy = actWord.y - refWord.y;
+
+            if (Math.hypot(dx, dy) > options.moveTolerance) {
+                report.movedWords.push({ word: refWord.text, dx: Number(dx.toFixed(2)), dy: Number(dy.toFixed(2)) });
             }
         }
 
@@ -370,7 +440,7 @@ export async function comparePdfs(reference: string, actual: string, options: Co
 /** The report as a short text summary, one block per page that differs. */
 export function formatReport(report: CompareReport): string {
     const lines: string[] = [];
-    const sample = (items: string[]) => `${items.slice(0, 8).join(", ")}${items.length > 8 ? `, ... (${items.length})` : ""}`;
+    const sample = (items: string[]) => `${items.slice(0, LISTED_ITEMS).join(", ")}${items.length > LISTED_ITEMS ? `, ... (${items.length})` : ""}`;
     const box = (b: Box) => `${b.kind} [${b.x0.toFixed(1)}, ${b.y0.toFixed(1)}, ${b.x1.toFixed(1)}, ${b.y1.toFixed(1)}]`;
 
     lines.push(`Pages: reference ${report.pages.reference}, actual ${report.pages.actual}${report.pages.reference === report.pages.actual ? "" : "  DIFFERENT"}`);
@@ -390,24 +460,26 @@ export function formatReport(report: CompareReport): string {
             details.push(`  text only in actual: ${sample(page.addedWords)}`);
         }
 
-        for (const lineBreak of page.lineBreaks) {
-            details.push(`  line break after "${lineBreak.word}" only in ${lineBreak.endsLineIn}`);
-        }
-
         if (page.movedWords.length > 0) {
             details.push(`  ${page.movedWords.length} words moved more than ${report.options.moveTolerance}pt: ${sample(page.movedWords.map(word => `"${word.word}" (${word.dx}, ${word.dy})`))}`);
         }
 
-        for (const moved of page.movedBoxes) {
-            details.push(`  ${box(moved.box)} moved by (${moved.dx}, ${moved.dy})`);
-        }
+        // One line per item, the first LISTED_ITEMS of each kind, then how many more the JSON lists.
+        const listed: [string, string[]][] = [
+            ["line breaks", page.lineBreaks.map(lineBreak => `line break after "${lineBreak.word}" only in ${lineBreak.endsLineIn}`)],
+            ["moved boxes", page.movedBoxes.map(moved => `${box(moved.box)} moved by (${moved.dx}, ${moved.dy})`)],
+            ["missing boxes", page.missingBoxes.map(missing => `${box(missing)} in reference has no match in actual`)],
+            ["extra boxes", page.extraBoxes.map(extra => `${box(extra)} in actual has no match in reference`)],
+        ];
 
-        for (const missing of page.missingBoxes) {
-            details.push(`  ${box(missing)} in reference has no match in actual`);
-        }
+        for (const [name, items] of listed) {
+            for (const item of items.slice(0, LISTED_ITEMS)) {
+                details.push(`  ${item}`);
+            }
 
-        for (const extra of page.extraBoxes) {
-            details.push(`  ${box(extra)} in actual has no match in reference`);
+            if (items.length > LISTED_ITEMS) {
+                details.push(`  ... ${items.length - LISTED_ITEMS} more ${name} (${items.length} in all)`);
+            }
         }
 
         const pixel = `pixel RMSE ${page.pixelScore.toFixed(4)}${page.pixelScore > report.options.pixelThreshold ? ` > ${report.options.pixelThreshold}` : ""}`;

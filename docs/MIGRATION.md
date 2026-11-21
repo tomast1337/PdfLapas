@@ -161,4 +161,7 @@ FAIL
 
 Positions are in pt from the page's top left. A word's position is where its first glyph starts on
 the line's bottom edge as pdftotext measures it, so two fonts with different descents read as moved
-vertically; a shape's box is its outline without the stroke width.
+vertically. Fragments of a letter-spaced word are joined into the word, and a word that the two PDFs
+read in a different order is matched and reported as moved. A shape's box is the outline of each
+subpath without the stroke width, so gridlines drawn as one path or as one path each compare equal.
+The text summary lists up to 8 items of a kind per page; the JSON lists all.

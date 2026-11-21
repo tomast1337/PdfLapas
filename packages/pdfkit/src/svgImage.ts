@@ -157,10 +157,12 @@ function inherit(reader: Reader, element: Element, css: Style, parent: Inherited
     // A property from the `style` declarations, or else from the attribute of that name.
     const read = (name: string) => (css.has(name) || hasAttribute(element, name) ? take(css, name, attribute(element, name, "")) : undefined);
     const unit = (name: string, value: number) => {
-        const parsed = svgNumber(read(name), value);
+        // Read once: `read` takes the declaration, so a second read would give the attribute's value instead.
+        const given = read(name);
+        const parsed = svgNumber(given, value);
 
         if (parsed.kind === "invalid") {
-            reader.report(`${name} '${read(name) ?? ""}' in an SVG image is not a number; inherited instead`);
+            reader.report(`${name} '${given ?? ""}' in an SVG image is not a number; inherited instead`);
         }
 
         return Math.min(Math.max(parsed.kind === "number" ? parsed.value : value, 0), 1);

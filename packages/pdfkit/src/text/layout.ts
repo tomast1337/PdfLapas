@@ -151,10 +151,15 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
                         continue;
                     }
 
-                    const tabFace = segment.text === TAB ? shaper.chain(run.face).faces[0] : undefined;
+                    // A tab is measured where it lands, never shaped as a glyph; without a face (an empty chain) it is
+                    // dropped, as the text path drops a character no face draws.
+                    if (segment.text === TAB) {
+                        const tabFace = shaper.chain(run.face).faces[0];
 
-                    if (tabFace) {
-                        word.push({ run, face: tabFace, text: "", size, features: runFeatures, width: 0, inkWidth: 0, tab: true, spaces: 0 });
+                        if (tabFace) {
+                            word.push({ run, face: tabFace, text: "", size, features: runFeatures, width: 0, inkWidth: 0, tab: true, spaces: 0 });
+                        }
+
                         previous = undefined;
                         continue;
                     }

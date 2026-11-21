@@ -529,6 +529,11 @@ const MASTER_CASES = [
     { page: MASTER_PAGE, name: "master-footer-slide-number", x: 0.05, y: 4.9, w: 9.9, h: 0.65 },
     { page: MASTER_PAGE + 1, name: "master-own-background-content", x: 0.5, y: 1.2, w: 9, h: 3.2 },
     { page: MASTER_PAGE + 1, name: "master-footer-slide-number-2", x: 0.05, y: 4.9, w: 9.9, h: 0.65 },
+    // Text filling the master's placeholders (#465): the title's 44pt centered titleStyle, the body placeholder's own
+    // 20pt over the text's 30pt, and the bodyStyle's 32pt with 20% space before; all top-anchored.
+    { page: MASTER_PAGE + 2, name: "master-placeholder-title", x: 0.45, y: 0.25, w: 9.1, h: 1.1 },
+    { page: MASTER_PAGE + 2, name: "master-placeholder-body-own-size", x: 0.45, y: 1.45, w: 4.4, h: 3.6 },
+    { page: MASTER_PAGE + 2, name: "master-placeholder-body-style", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
 ] as const;
 
 // These tight crops include the stroke but exclude labels and unused slide area.
@@ -2206,12 +2211,39 @@ export function populateParityFixture(presentation: Presentation): void {
         second.background = { color: "FFF4E5" };
         second.addText("The slide's own background replaces the master's", { x: body.x, y: body.y, w: body.w, h: 0.6, fontFace: "Arial", fontSize: 20, color: "7F3F00", margin: 0 });
         second.addShape("ellipse", { x: body.x, y: 2.1, w: 3, h: 2.2, fill: { color: "F4B183" } });
+
+        populatePlaceholderFixture(presentation);
     }
 
     populateChartAxisLabelFixture(presentation);
     populateChartDataLabelFixture(presentation);
     populateChartCategoryAxisFixture(presentation);
     populateChartPlotAreaFixture(presentation);
+}
+
+/**
+ * The parity fixture's placeholder slide (MASTER_CASES), also the WASM backend's placeholder deck: the master's prompt
+ * text draws nothing, and the text filling a placeholder takes its options and inherits the rest from the master's
+ * titleStyle or bodyStyle.
+ */
+export function populatePlaceholderFixture(presentation: Presentation): void {
+    // A placeholder's options reach the text that fills it, objectName included, but PptxGenJS's PlaceholderProps
+    // type omits objectName; the names give each placeholder its own WASM crop key.
+    const named = (options: PptxGenJS.PlaceholderProps, objectName: string) => ({ ...options, objectName }) as PptxGenJS.PlaceholderProps;
+
+    presentation.defineSlideMaster({
+        title: "PARITY_PLACEHOLDERS",
+        objects: [
+            { placeholder: { options: named({ name: "title", type: "title", x: 0.5, y: 0.3, w: 9, h: 1, fontFace: "Arial" }, "Title Placeholder"), text: "Title prompt" } },
+            { placeholder: { options: named({ name: "body", type: "body", x: 0.5, y: 1.5, w: 4.3, h: 3.5, fontFace: "Arial", fontSize: 20 }, "Body Placeholder"), text: "Body prompt" } },
+            { placeholder: { options: named({ name: "side", type: "body", x: 5.2, y: 1.5, w: 4.3, h: 3.5 }, "Side Placeholder") } },
+        ],
+    });
+    const filled = presentation.addSlide({ masterName: "PARITY_PLACEHOLDERS" });
+
+    filled.addText("Placeholder title", { placeholder: "title" });
+    filled.addText("Body placeholder text at its own 20pt, lorem ipsum dolor sit amet, consectetur adipiscing elit", { placeholder: "body", fontSize: 30 });
+    filled.addText("Body style 32pt\nSecond paragraph", { placeholder: "side", fontFace: "Arial" });
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */

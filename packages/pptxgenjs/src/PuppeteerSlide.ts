@@ -24,9 +24,11 @@ import type { SlideContext } from "./slideContext";
 import { RENDERING_TARGETS } from "./target";
 import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
 
-/** A `placeholder` names one of the slide master's; filling it is not drawn yet (#465). */
-function placeholderError(method: "addText" | "addImage"): UnsupportedFeatureError {
-    return new UnsupportedFeatureError(`${method}({ placeholder })`, "Filling a slide master's placeholder is not drawn yet (#465). Remove `placeholder` and give the object the placeholder's x, y, w, h and style.", "property");
+/** The warnings() line for a `placeholder` the slide's master does not have, which PptxGenJS ignores without a word. */
+function unknownPlaceholderWarning(method: "addText" | "addImage", name: string, hasMaster: boolean): string {
+    const where = hasMaster ? "the slide's master has no placeholder" : "the slide was added without a master, so it has no placeholder";
+
+    return `${method}({ placeholder: ${JSON.stringify(name)} }): ${where} of that name, so the object is drawn from its own options, as PptxGenJS does. Name a placeholder of the master in addSlide({ masterName }), or remove \`placeholder\`.`;
 }
 
 export class PuppeteerSlide implements PptxSlide {
@@ -235,11 +237,24 @@ export class PuppeteerSlide implements PptxSlide {
         return this.addObject({ kind: "chartExtension", style, svg, altText });
     }
 
-    addImage(options: PptxGenJS.ImageProps): PptxGenJS.Slide {
-        if (options.placeholder !== undefined) {
-            throw placeholderError("addImage");
+    addImage(input: PptxGenJS.ImageProps): PptxGenJS.Slide {
+        const placeholder = input.placeholder ? this.context.master?.placeholders.get(input.placeholder) : undefined;
+
+        if (input.placeholder && !placeholder) {
+            this.context.warn(unknownPlaceholderWarning("addImage", input.placeholder, this.context.master !== null));
         }
 
+        // slideObjectToXml places a picture that fills a placeholder at the placeholder's x and y and keeps its own size;
+        // the placeholder's w and h are the `sizing` box when `sizing` names none.
+        const area = placeholder?.options;
+        const options: PptxGenJS.ImageProps = area
+            ? {
+                  ...input,
+                  x: area.x ?? input.x,
+                  y: area.y ?? input.y,
+                  ...(input.sizing ? { sizing: { ...input.sizing, w: input.sizing.w || (area.w ?? input.sizing.w), h: input.sizing.h || (area.h ?? input.sizing.h) } } : {}),
+              }
+            : input;
         const image = normalizeImage(options, this.pageSize);
         const { transparency: _imageTransparency, ...opaqueOptions } = options;
         const geometryOptions = options.sizing ? { ...opaqueOptions, w: options.sizing.w, h: options.sizing.h } : opaqueOptions;
@@ -319,10 +334,41 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     addText(text: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
-        const textOptions = options ?? {};
+        let textOptions = options ?? {};
+        let fillsPlaceholder = false;
 
-        if (textOptions.placeholder !== undefined) {
-            throw placeholderError("addText");
+        // PptxGenJS 4.0.1 addTextDefinition (A.3): text that names one of its master's placeholders takes the
+        // placeholder's options over its own, and slideObjectToXml writes it with no anchor and, for a string, no
+        // color. What neither sets comes from the master's titleStyle or bodyStyle (PPTX_DEFAULTS.placeholder).
+        if (textOptions.placeholder) {
+            const placeholder = this.context.master?.placeholders.get(textOptions.placeholder);
+
+            if (!placeholder) {
+                this.context.warn(unknownPlaceholderWarning("addText", textOptions.placeholder, this.context.master !== null));
+            }
+
+            fillsPlaceholder = placeholder !== undefined;
+            const merged = { ...textOptions, ...placeholder?.options };
+            const typeStyle = placeholder?.title ? PPTX_DEFAULTS.placeholder.title : PPTX_DEFAULTS.placeholder.body;
+            const fontSize = merged.fontSize ?? typeStyle.fontSizePt;
+
+            textOptions = {
+                ...merged,
+                valign: merged.valign ?? PPTX_DEFAULTS.placeholder.valign,
+                ...(typeof text === "string" && !merged.color ? { color: PPTX_DEFAULTS.placeholder.color } : {}),
+                // shortcut: the bodyStyle's 20% space before is of the box's size, where LibreOffice takes each
+                // paragraph's; measure runs of another size against the reference when a deck needs them (#493).
+                ...(placeholder
+                    ? {
+                          fontSize,
+                          align: merged.align ?? typeStyle.align,
+                          paraSpaceBefore: merged.paraSpaceBefore ?? fontSize * typeStyle.spaceBeforeFontRatio,
+                          // shortcut: resolved when the text is added, and the theme setter only throws for a late
+                          // bodyFontFace; make it throw for headFontFace too once title placeholder text is tracked (#494).
+                          ...(placeholder.title && !merged.fontFace ? { fontFace: this.context.headFontFace() } : {}),
+                      }
+                    : {}),
+            };
         }
 
         if (textOptions.shadow?.type === "inner") {
@@ -355,17 +401,21 @@ export class PuppeteerSlide implements PptxSlide {
                 shared: this.context.sharedRunOptions,
             },
         );
+        // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph
+        // only in plain text boxes (EEControlBits::ULSPACEFIRSTPARA), and PowerPoint in none (spacesFirstParagraph).
+        const [firstParagraph, ...laterParagraphs] = normalizedText.paragraphs;
+        const placedText = fillsPlaceholder && firstParagraph ? { ...normalizedText, paragraphs: [{ ...firstParagraph, spaceBefore: 0 }, ...laterParagraphs] } : normalizedText;
         const height = textStyle.geometry.height ?? 0;
         const width = textStyle.geometry.width ?? 0;
 
         if (!textOptions.shape) {
-            return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizedText, width, this.context.target), height) });
+            return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(placedText, width, this.context.target), height) });
         }
 
         // `as`: PptxGenJS writes a text box's shape from its own options object, so normalizeShape reads them as ShapeProps.
         const shapeOptions = textOptions as unknown as PptxGenJS.ShapeProps;
         const shape = normalizeShape(textOptions.shape, shapeOptions, width, height, this.pageSize);
 
-        return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizeShapeTextBox(normalizedText, shape), width, this.context.target), height), shape });
+        return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizeShapeTextBox(placedText, shape), width, this.context.target), height), shape });
     }
 }

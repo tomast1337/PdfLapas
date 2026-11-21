@@ -500,5 +500,10 @@
   "chartPlot": {
     "p1-Chart0": 0.0867,
     "p1-Chart1": 0.0879
+  },
+  "placeholders": {
+    "p1-TitlePlaceholder": 0.0626,
+    "p1-BodyPlaceholder": 0.0185,
+    "p1-SidePlaceholder": 0.0409
   }
 }

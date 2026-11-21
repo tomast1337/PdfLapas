@@ -14,6 +14,16 @@ export type SlideMaster = {
     readonly slideNumber: PptxGenJS.SlideNumberProps | null;
     /** `margin` in inches, [top, right, bottom, left] or one for all: where autoPage tables on its slides start and stop. */
     readonly margin: PptxGenJS.Margin;
+    /** The master's `placeholder` objects by `name`, the first one under a name, as addText({ placeholder }) finds it. */
+    readonly placeholders: ReadonlyMap<string, MasterPlaceholder>;
+};
+
+/** A slide master's `placeholder` object, which text filling it takes its options from. */
+export type MasterPlaceholder = {
+    /** Whether its `type` is "title", which inherits the master's titleStyle; every other type the bodyStyle. */
+    readonly title: boolean;
+    /** Its `options` without `name` and `type`, as PptxGenJS's createSlideMaster and addTextDefinition clean them. */
+    readonly options: PptxGenJS.TextPropsOptions;
 };
 
 /** What a slide reads from the presentation that owns it. PuppeteerGen.addSlide() creates one per slide; every field is required. */
@@ -26,6 +36,10 @@ export type SlideContext = {
     readonly components: ComponentRegistry;
     /** `pres.theme.bodyFontFace`: the font of text, table cells and chart legends that name none (PowerPoint's `+mn-lt`). */
     readonly bodyFontFace: () => string;
+    /** `pres.theme.headFontFace`: the font of title placeholder text that names none (PowerPoint's `+mj-lt`). */
+    readonly headFontFace: () => string;
+    /** Adds a line to the presentation's warnings(): what PptxGenJS ignores without a word. */
+    readonly warn: (message: string) => void;
     /** The presentation's rendering target, which text is normalized for. */
     readonly target: RenderingTarget;
     /** The faces' metrics (`fontMetrics`, `resolveFontMetrics`, FONT_WIN_METRICS) the target may place baselines from. */

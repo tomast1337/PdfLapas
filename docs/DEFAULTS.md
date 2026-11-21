@@ -54,7 +54,7 @@ and only a number above it as EMU. Two table quirks follow: `h: 100` is a 100 EM
 
 `pres.theme.bodyFontFace` replaces Calibri as the font of text boxes, shape text, table cells and
 chart legends that set no `fontFace`: PptxGenJS writes it as the theme's minor font, which their
-runs inherit. `headFontFace` only reaches title placeholders, which PdfLapas does not fill yet (#465).
+runs inherit. `headFontFace` only reaches text that fills a title placeholder (`addText(text, { placeholder })`).
 
 Where the Microsoft Office fonts are not installed, install their metric-compatible equivalents so
 text wraps as in PowerPoint: Carlito for Calibri, Caladea for Cambria, and Liberation Sans, Serif

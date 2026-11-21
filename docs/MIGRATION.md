@@ -83,10 +83,9 @@ returns a `.pptx`:
   uses the 1in default stops.
 
 **What throws.** PdfLapas fails instead of writing a PDF that silently lacks something:
-`addMedia()` throws `UnsupportedFeatureError` with a suggested alternative, and so does
-`placeholder` on `addText()` and `addImage()`: slide masters (`defineSlideMaster()`, `masterName`,
-`masterSlideName`) are drawn, but filling a master's placeholder is not yet
-([#465](https://github.com/tomast1337/PdfLapas/issues/465)). An inner shadow on a shape or text box (`addShape` or `addText`) throws `UnsupportedFeatureError`
+`addMedia()` throws `UnsupportedFeatureError` with a suggested alternative. A `placeholder` the slide's
+master does not have is drawn from the object's own options, as PptxGenJS does, and listed in
+`warnings()`. An inner shadow on a shape or text box (`addShape` or `addText`) throws `UnsupportedFeatureError`
 where it is added (PptxGenJS writes it as malformed XML, and LibreOffice then draws none of the slide);
 an image's inner shadow is drawn for the PowerPoint target and left out for the LibreOffice one, as each draws it; a chart type or option it cannot draw throws `UnsupportedChartError`. An unknown `outputType`
 throws before rendering. A size in points that PptxGenJS writes unchecked throws a `RangeError` naming the option where

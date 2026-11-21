@@ -477,7 +477,9 @@
     "p9-textunderlinedotDotDash": 0.0745,
     "p9-textunderlinewavy": 0.0577,
     "p9-textunderlinewavyDbl": 0.0845,
-    "p9-textunderlinewavyHeavy": 0.0576
+    "p9-textunderlinewavyHeavy": 0.0576,
+    "p10-textunderlinecoloursngStrike": 0.166,
+    "p10-textunderlinecolourdblStrike": 0.1658
   },
   "tableOptions": {
     "p1-Table0": 0.0138,

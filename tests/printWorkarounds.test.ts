@@ -323,6 +323,35 @@ describe("Puppeteer print workarounds", () => {
         expect(printHtml(run("", "a‑b"))).toContain(">a‑b</span>");
     });
 
+    test("draws a run's strike on a span of its own, in the text colour, and keeps the underline's colour and style on the run (#470)", async () => {
+        const presentation = new PuppeteerGenPowerPoint();
+        const slide = presentation.addSlide();
+        const underline = { style: "dotted", color: "FF0000" } as const;
+
+        slide.addText(
+            [
+                { text: "Single‑one", options: { strike: "sngStrike", underline } },
+                { text: "Double", options: { strike: "dblStrike", underline } },
+                { text: "Plain", options: { strike: "sngStrike" } },
+            ],
+            { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial", color: "0000FF" },
+        );
+        const [single, double, plain] = (await printedPage(presentation)).querySelectorAll<HTMLElement>(".text-run");
+
+        for (const run of [single, double]) {
+            const strike = run?.firstElementChild as HTMLElement | null;
+
+            expect([run?.style.textDecorationLine, run?.style.textDecorationStyle, run?.style.textDecorationColor]).toEqual(["underline", "dotted", "#FF0000"]);
+            expect([strike?.style.textDecorationLine, strike?.style.textDecorationColor, strike?.style.textDecorationThickness]).toEqual(["line-through", "", "from-font"]);
+        }
+
+        expect((single?.firstElementChild as HTMLElement | null)?.style.textDecorationStyle).toBe("solid");
+        expect((double?.firstElementChild as HTMLElement | null)?.style.textDecorationStyle).toBe("double");
+        // The hyphen rewrite still reaches the text inside the strike span.
+        expect(single?.textContent).toBe("Single-⁠one");
+        expect([plain?.style.textDecorationLine, plain?.children.length]).toEqual(["line-through", 0]);
+    });
+
     test("names the object when a paragraph has no line box", async () => {
         const presentation = new PuppeteerGen();
 

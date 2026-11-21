@@ -47,3 +47,15 @@ export const UNDERLINE_DOUBLE_CROP_THRESHOLDS: Readonly<Record<string, number>> 
     "text-underline-dbl": 0.088,
     "text-underline-wavyDbl": 0.11,
 };
+
+/**
+ * Puppeteer crops of a red underline with a strike over blue 32pt Arial (#470). The colours match LibreOffice's; the
+ * geometry does not (#489): Chromium draws its auto thickness, 4px rows against LibreOffice's 2px (strike rows 31-34
+ * against 33-35, underline 48-51 against 49-50, at 96 dpi), a double strike as one 8px band, and skips ink under
+ * the "p". Measured in the pinned image: sngStrike 0.1245, dblStrike 0.1433 (before #470, with the strike in the
+ * underline's red: 0.1586 and 0.2252).
+ */
+export const STRIKE_DECORATION_CROP_THRESHOLDS: Readonly<Record<string, number>> = {
+    "text-underline-colour-sngStrike": 0.13,
+    "text-underline-colour-dblStrike": 0.15,
+};

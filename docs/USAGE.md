@@ -473,10 +473,20 @@ not a path) and throws `FontFileError` on bytes that are not a readable TrueType
 LibreOffice target ignores `fontMetrics` (its `underline` too: it draws its own underline) and `resolveFontMetrics`, as LibreOffice's line box does not
 depend on the font; it never calls the resolver.
 
-`resolveFontMetrics` takes a face name and returns its metrics, or `undefined` to fall through to
-`FONT_WIN_METRICS`. It is called at most once per face per presentation, only for the PowerPoint target and
-only for faces `fontMetrics` does not list; a result that is not valid metrics throws a `TypeError` naming
-the face. Pass your own to look fonts up elsewhere, or `null` to turn the lookup off:
+`resolveFontMetrics` takes a face name and returns `{ kind: "metrics", metrics }`, or `{ kind: "unknown" }` to
+fall through to `FONT_WIN_METRICS`. It is called at most once per face per presentation, only for the PowerPoint target and
+only for faces `fontMetrics` does not list; a result that is not one of those two, or carries invalid metrics,
+throws a `TypeError` naming the face. Pass your own to look fonts up elsewhere, or `null` to turn the lookup off:
+
+```typescript
+import { readFileSync } from "node:fs";
+import { PuppeteerGenPowerPoint, readFontWinMetrics } from "@pdflapas/pptxgenjs";
+
+const brand = readFontWinMetrics(readFileSync("fonts/MyBrandSans-Regular.ttf"));
+const pres = new PuppeteerGenPowerPoint(undefined, {
+    resolveFontMetrics: face => (face === "My Brand Sans" ? { kind: "metrics", metrics: brand } : { kind: "unknown" }),
+});
+```
 
 ```typescript
 // The same HTML on every machine: no installed font is read.
@@ -499,9 +509,10 @@ widths of the font the run's face, weight and style resolve to. `options.resolve
 italic)` finds them: by default on Node the installed font fontconfig matches (when its family is the face),
 read with `readGlyphAdvances(bytes, faceIndex = 0)`, which is browser-safe and throws `FontFileError` on a
 font it cannot read. It is called at most once per face, weight and style per presentation, never for the
-LibreOffice target; a result that is not `{ unitsPerEm, advances: Map<codePoint, fontUnits> }`, with an optional
+LibreOffice target. It returns `{ kind: "advances", advances }` or `{ kind: "unknown" }`; anything else, or
+advances that are not `{ unitsPerEm, advances: Map<codePoint, fontUnits> }` with an optional
 `kerning: Map<leftCodePoint, Map<rightCodePoint, fontUnits>>` (the `kern` table's pairs, which kerned runs add), throws a
-`TypeError` naming the face. A face it returns `undefined` for, every face with `resolveGlyphAdvances: null`,
+`TypeError` naming the face. A face it returns `{ kind: "unknown" }` for, every face with `resolveGlyphAdvances: null`,
 and every face in the `@pdflapas/pptxgenjs/html` entry without a resolver keep their natural advances:
 
 ```typescript
@@ -511,7 +522,7 @@ import { PuppeteerGenPowerPoint, readGlyphAdvances } from "@pdflapas/pptxgenjs";
 const brand = readGlyphAdvances(readFileSync("fonts/MyBrandSans-Regular.ttf"));
 const pres = new PuppeteerGenPowerPoint(undefined, {
     // Only the regular face here: bold and italic runs keep their natural advances.
-    resolveGlyphAdvances: (face, bold, italic) => (face === "My Brand Sans" && !bold && !italic ? brand : undefined),
+    resolveGlyphAdvances: (face, bold, italic) => (face === "My Brand Sans" && !bold && !italic ? { kind: "advances", advances: brand } : { kind: "unknown" }),
 });
 ```
 

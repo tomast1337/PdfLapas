@@ -12,6 +12,9 @@ export type WordSpacing = {
     readonly spaces?: readonly number[];
 };
 
+/** A run's letter-spacing on the advance grid, or `natural`: its natural advances, each character taking `charSpacing`. */
+export type GridSpacing = { kind: "grid"; spacing: WordSpacing } | { kind: "natural" };
+
 /**
  * Where a paragraph's runs have ended so far, px: `rounded` is PowerPoint's width of them, `laidOut` the profile's, on
  * whole LayoutUnits. The paragraph creates one at 0 and each run (`advanceGridWordSpacing`) starts from it and moves it
@@ -115,8 +118,8 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
 
 /**
  * The letter-spacing that lays each word of `text` out as wide as PowerPoint does, `charSpacingPt` included: each
- * advance at `sizePt` rounded to the nearest `gridPt`, plus, when `kerned`, the font's pair kerning, unrounded. Undefined
- * without a grid or a font, or for a font without a space, which keeps the natural advances.
+ * advance at `sizePt` rounded to the nearest `gridPt`, plus, when `kerned`, the font's pair kerning, unrounded. Natural
+ * for a font without a space, which keeps the natural advances; without a grid or a font the caller keeps them.
  *
  * A line fits in PowerPoint while the sum of its rounded advances, without its trailing spaces, is no wider than the
  * box (zero tolerance). The profile's line breaker rounds each piece of a line (a word span, or the spaces between)
@@ -150,8 +153,8 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * shows one.
  * The sums run on across the runs of a paragraph through `cursor`: started again at each run, they added up to a
  * LayoutUnit per run boundary on a line, enough for pdf-core to break a line of SimSun and Arial runs that fills its
- * box to 0.01pt one character early (#370). A run without a grid or font sets `cursor` back to 0, as a tab and a
- * soft break do.
+ * box to 0.01pt one character early (#370). A run without a grid or font (normalize/text.ts) or a space in its font
+ * sets `cursor` back to 0, as a tab and a soft break do.
  * `after` is the text of the next runs that PowerPoint kerns with this one (same face, size, weight and style, kerned),
  * up to `wordAfter`. A pair across the run edge is kerned like one inside the run, on its left character's piece (#398).
  * A word that goes on into `after` is laid out as one word: each of its characters, in this run and the next, takes one
@@ -166,26 +169,16 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * up to 1/(512 x size px) narrower than the font's (8pt: 0.044 px over a 720 px line, against the 1/6 px step); the
  * WASM renderer uses the exact size. Size the words for that truncation if a tie between steps flips in Chromium.
  */
-export function advanceGridWordSpacing(
-    text: string,
-    sizePt: number,
-    font: GlyphAdvances | undefined,
-    gridPt: number | undefined,
-    charSpacingPt: number,
-    kerned: boolean,
-    cursor: GridCursor = { rounded: 0, laidOut: 0 },
-    after = "",
-    // eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-): WordSpacing | undefined {
-    const spaceAdvance = font?.advances.get(" ".codePointAt(0) ?? 0);
+export function advanceGridWordSpacing(text: string, sizePt: number, font: GlyphAdvances, gridPt: number, charSpacingPt: number, kerned: boolean, cursor: GridCursor = { rounded: 0, laidOut: 0 }, after = ""): GridSpacing {
+    const spaceAdvance = font.advances.get(" ".codePointAt(0) ?? 0);
     const continued = cursor.word;
 
     cursor.word = undefined;
-    if (gridPt === undefined || font === undefined || spaceAdvance === undefined) {
+    if (spaceAdvance === undefined) {
         cursor.rounded = 0;
         cursor.laidOut = 0;
 
-        return undefined;
+        return { kind: "natural" };
     }
 
     const sizePx = pointsToPixels(sizePt);
@@ -330,5 +323,5 @@ export function advanceGridWordSpacing(
     cursor.rounded = rounded;
     cursor.laidOut = laidOut;
 
-    return { space: spacing(spaceSpacing), words, ...(ownSpaces ? { spaces } : {}) };
+    return { kind: "grid", spacing: { space: spacing(spaceSpacing), words, ...(ownSpaces ? { spaces } : {}) } };
 }

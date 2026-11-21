@@ -1,11 +1,11 @@
 import type PptxGenJS from "pptxgenjs";
-import { type FontMetricsLookup, PPTX_DEFAULTS } from "#src/defaults";
+import { type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#src/defaults";
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
 import { builtInFontMetrics } from "#src/fontMetrics";
 import type { NormalizedTextBox, NormalizedTextBullet, NormalizedTextParagraph, NormalizedTextRun } from "@pdflapas/model";
 import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
 import { inch2EmuToPixels } from "#src/units";
-import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, runPieces, wordAfter } from "./advanceGrid";
+import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, type GridSpacing, runPieces, wordAfter } from "./advanceGrid";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "./eastAsianLineBreak";
 import { fallbackChain, type FallbackSegment, fallbackSegments } from "./fallback";
 import { paragraphAlign, verticalAlign } from "./alignment";
@@ -90,13 +90,15 @@ function kerned(options: PptxGenJS.TextPropsOptions, target: RenderingTarget, fo
 
     const fontFace = options.fontFace ?? PPTX_DEFAULTS.text.fontFace;
 
-    if (fontMetrics(fontFace)?.pairKerning === false) {
+    const metrics = fontMetrics(fontFace);
+
+    if (metrics.kind === "metrics" && metrics.metrics.pairKerning === false) {
         return false;
     }
 
     const advances = fontMetrics.glyphAdvances?.(fontFace, options.bold ?? PPTX_DEFAULTS.text.bold, options.italic ?? PPTX_DEFAULTS.text.italic);
 
-    return advances === undefined || Boolean(advances.kerning?.size);
+    return advances === undefined || advances.kind === "unknown" || Boolean(advances.advances.kerning?.size);
 }
 
 /** A run's font size in px, before any superscript or subscript reduction. */
@@ -108,7 +110,14 @@ function runFontSize(options: PptxGenJS.TextPropsOptions): number {
  * `cursor`: where the paragraph's earlier runs end on the advance grid (GridCursor), moved to this run's end; `after`:
  * the text of the next runs PowerPoint kerns with this one (normalizeText).
  */
-export function normalizeTextRun(text: string, options: PptxGenJS.TextPropsOptions, target: RenderingTarget = DEFAULT_RENDERING_TARGET, fontMetrics: FontMetricsLookup = builtInFontMetrics, cursor?: GridCursor, after = ""): NormalizedTextRun {
+export function normalizeTextRun(
+    text: string,
+    options: PptxGenJS.TextPropsOptions,
+    target: RenderingTarget = DEFAULT_RENDERING_TARGET,
+    fontMetrics: FontMetricsLookup = builtInFontMetrics,
+    cursor: GridCursor = { rounded: 0, laidOut: 0 },
+    after = "",
+): NormalizedTextRun {
     // The `u` PptxGenJS 4.0.1 genXmlTextRunProperties writes for a run: `underline.style`, a string as given (deprecated
     // since 3.5.0, still written), or `sng` for a hyperlink. addTextDefinition turns `underline: true` on a text box or its
     // runs into `{ style: "sng" }`; a table cell's `true` stays a boolean (normalizeText) and writes no `u`.
@@ -160,14 +169,15 @@ export function normalizeTextRun(text: string, options: PptxGenJS.TextPropsOptio
 
     const underlineColor = typeof options.underline === "object" && options.underline.color ? normalizeColor(options.underline.color) : undefined;
     // The caller's `fontMetrics` underline for the face (#391), in em: the band drawn in place of its `post` band.
-    const faceMetrics = underlined && underlineFromFont ? fontMetrics(fontFace) : undefined;
-    const band = faceMetrics?.underline;
+    const faceMetrics: FontMetricsResult = underlined && underlineFromFont ? fontMetrics(fontFace) : { kind: "unknown" };
+    const metrics = faceMetrics.kind === "metrics" ? faceMetrics.metrics : undefined;
+    const band = metrics?.underline;
     const decoration: NormalizedTextRun["decoration"] = {
         // `u=""`, which only the string form writes, is no underline type: it draws none.
         underline: underlined,
         underlineStyle,
         underlineColor,
-        ...(underlined && underlineFromFont ? { underlineFromFont, ...(faceMetrics && band ? { underlineBand: { position: band.position / faceMetrics.unitsPerEm, thickness: band.thickness / faceMetrics.unitsPerEm } } : {}) } : {}),
+        ...(underlined && underlineFromFont ? { underlineFromFont, ...(metrics && band ? { underlineBand: { position: band.position / metrics.unitsPerEm, thickness: band.thickness / metrics.unitsPerEm } } : {}) } : {}),
         // shortcut: only `heavy` is measured; dashHeavy, dottedHeavy, wavyHeavy and the other heavy dashes draw at
         // their normal thickness (#397), measure them against PowerPoint's PDF export when a deck uses one.
         ...(underlined && underlineFromFont && underline === "heavy" ? { underlineHeavy: true } : {}),
@@ -193,12 +203,21 @@ export function normalizeTextRun(text: string, options: PptxGenJS.TextPropsOptio
     const advances = advanceGridPt === undefined ? undefined : fontMetrics.glyphAdvances?.(fontFace, bold, italic);
     // A U+2011 drawn with the hyphen-minus glyph takes its advance.
     const drawn = nonBreakingHyphen === "hyphen-minus" ? text.replaceAll(NON_BREAKING_HYPHEN, "-") : text;
-    const gridSpacing = advanceGridWordSpacing(drawn, sizePt, advances, advanceGridPt, charSpacing, kerned(options, target, fontMetrics), cursor, after);
+    let grid: GridSpacing = { kind: "natural" };
+
+    if (advanceGridPt !== undefined && advances?.kind === "advances") {
+        grid = advanceGridWordSpacing(drawn, sizePt, advances.advances, advanceGridPt, charSpacing, kerned(options, target, fontMetrics), cursor, after);
+    } else {
+        // Without a grid or the face's advances the paragraph's sums start again, as at a tab.
+        Object.assign(cursor, { rounded: 0, laidOut: 0, word: undefined });
+    }
+
     let spacing: Pick<NormalizedTextRun, "characterSpacing" | "wordCharacterSpacing" | "spaceCharacterSpacing">;
 
-    if (!gridSpacing) {
+    if (grid.kind === "natural") {
         spacing = { characterSpacing: pointsToPixels(charSpacing) };
     } else {
+        const gridSpacing = grid.spacing;
         const [word, ...others] = gridSpacing.words;
 
         if (word !== undefined && !others.length && runPieces(text).length === 1) {
@@ -344,11 +363,11 @@ function fallbackRuns(text: string, options: PptxGenJS.TextPropsOptions, target:
     const font = RENDERING_TARGETS[target].advanceGridPt === undefined ? undefined : fontMetrics.glyphAdvances?.(fontFace, bold, italic);
     let segments: FallbackSegment[] = fallback;
 
-    if (font) {
+    if (font?.kind === "advances") {
         segments = [];
 
         for (const segment of fallback) {
-            for (const stretch of fullWidthStretches(segment.text, font)) {
+            for (const stretch of fullWidthStretches(segment.text, font.advances)) {
                 segments.push({ ...segment, text: stretch });
             }
         }
@@ -674,7 +693,7 @@ export function normalizeText(
             } else {
                 const next = paragraphPieces[pieceIndex + 1];
                 const after = next && !next.options.softBreakBefore ? [...next.text][0] : undefined;
-                const font = fontMetrics.glyphAdvances?.(runOptions.fontFace ?? PPTX_DEFAULTS.text.fontFace, runOptions.bold ?? PPTX_DEFAULTS.text.bold, runOptions.italic ?? PPTX_DEFAULTS.text.italic);
+                const font = fontMetrics.glyphAdvances?.(runOptions.fontFace ?? PPTX_DEFAULTS.text.fontFace, runOptions.bold ?? PPTX_DEFAULTS.text.bold, runOptions.italic ?? PPTX_DEFAULTS.text.italic) ?? { kind: "unknown" };
                 const segments = hangingSegments(piece.text, after, marks.marks);
 
                 for (const [segmentIndex, { text, hangs }] of segments.entries()) {
@@ -1003,9 +1022,9 @@ function singleLineExtents(runs: ReadonlyArray<Pick<NormalizedTextRun, "fontFace
 
     for (const run of runs) {
         // The part of a single-spaced line above the baseline in the run's font, else the font-independent 1em of 1.2em.
-        const metrics = fontMetrics(run.fontFace);
+        const found = fontMetrics(run.fontFace);
         const { singleLineEm, lineDescentEm } = PPTX_DEFAULTS.text;
-        const share = metrics ? metrics.winAscent / (metrics.winAscent + metrics.winDescent) : (singleLineEm - lineDescentEm) / singleLineEm;
+        const share = found.kind === "metrics" ? found.metrics.winAscent / (found.metrics.winAscent + found.metrics.winDescent) : (singleLineEm - lineDescentEm) / singleLineEm;
 
         ascent = Math.max(ascent, share * PPTX_DEFAULTS.text.singleLineEm * run.fontSize);
         descent = Math.max(descent, (1 - share) * PPTX_DEFAULTS.text.singleLineEm * run.fontSize);

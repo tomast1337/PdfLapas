@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pointsToPixels } from "@pdflapas/model";
 import type { GlyphAdvances } from "../packages/pptxgenjs/src/defaults";
-import { PuppeteerGenPowerPoint, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
+import { installedAdvances } from "./installedFonts";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor } from "../packages/pptxgenjs/src/normalize/advanceGrid";
 import { RENDERING_TARGETS } from "../packages/pptxgenjs/src/target";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
@@ -31,7 +32,7 @@ describe("Han next to Latin text on the advance grid", () => {
     });
 
     test("keeps an empty paragraph's run when the face's advances are known", async () => {
-        const pres = new PuppeteerGenPowerPoint(undefined, { resolveGlyphAdvances: () => LATIN });
+        const pres = new PuppeteerGenPowerPoint(undefined, { resolveGlyphAdvances: () => ({ kind: "advances", advances: LATIN }) });
 
         pres.addSlide().addText("1\n\n2", { x: 1, y: 1, w: 4, h: 1, fontFace: "Arial", fontSize: 10 });
         const paragraphs = pres.getModel().slides[0]?.objects.flatMap(object => (object.kind === "text" ? object.text.paragraphs : []));
@@ -94,8 +95,8 @@ async function drawnLines(pdf: Uint8Array, pages: number, pdftotext: string): Pr
 }
 
 describe("the measured boxes of Han next to digits, Latin words and ASCII parentheses, in both renderers", () => {
-    const arial = resolveInstalledGlyphAdvances("Arial", false, false);
-    const times = resolveInstalledGlyphAdvances("Times New Roman", false, false);
+    const arial = installedAdvances("Arial", false, false);
+    const times = installedAdvances("Times New Roman", false, false);
     const pdftotext = Bun.which("pdftotext");
     const cases = fullWidthFitCases();
     const expected = cases.map(({ label, lines }) => ({ label, lines: [...lines] }));

@@ -1,4 +1,4 @@
-import type { FontMetricsLookup } from "#src/defaults";
+import type { FontMetricsLookup, GlyphAdvancesResult } from "#src/defaults";
 import { RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
 
 /** A stretch of a run's text and the faces a character its face lacks is drawn in, first to last. */
@@ -53,20 +53,29 @@ export function fallbackSegments(text: string, fontFace: string, bold: boolean, 
     const chain = fallbackChain(fontFace, target);
     const { emojiFace } = RENDERING_TARGETS[target];
     const lookup = fontMetrics.glyphAdvances;
-    const own = chain.length ? lookup?.(fontFace, bold, italic) : undefined;
 
-    if (!lookup || !own) {
+    if (lookup === undefined || !chain.length) {
         return [{ text, fallbackFaces: chain }];
     }
 
+    const ownFont = lookup(fontFace, bold, italic);
+
+    if (ownFont.kind === "unknown") {
+        return [{ text, fallbackFaces: chain }];
+    }
+
+    const own = ownFont.advances;
     // Each face's characters, looked up once for the run.
-    const characters = new Map<string, ReadonlyMap<number, number> | undefined>();
+    const characters = new Map<string, GlyphAdvancesResult>();
     const has = (face: string, codePoint: number) => {
-        if (!characters.has(face)) {
-            characters.set(face, lookup(face, bold, italic)?.advances);
+        let font = characters.get(face);
+
+        if (font === undefined) {
+            font = lookup(face, bold, italic);
+            characters.set(face, font);
         }
 
-        return characters.get(face)?.has(codePoint) ?? false;
+        return font.kind === "advances" && font.advances.advances.has(codePoint);
     };
     const eastAsian = eastAsianFaces(fontFace, target).filter(face => chain.includes(face));
     const segments: { text: string; first: string | undefined }[] = [];

@@ -2,7 +2,7 @@
 // reading them from font bytes; glyph advances for the PowerPoint target's advance grid (`resolveGlyphAdvances`) the same
 // way. Browser-safe: bytes in, no node:* module.
 import { z } from "zod";
-import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsTable, type FontWinMetrics, type GlyphAdvanceLookup, type GlyphAdvances } from "./defaults";
+import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsResult, type FontMetricsTable, type FontWinMetrics, type GlyphAdvanceLookup, type GlyphAdvances, type GlyphAdvancesResult } from "./defaults";
 
 const integer = (min: 0 | 1, what: string) => z.int({ error: `must be ${what}` }).min(min, { error: `must be ${what}` });
 
@@ -26,11 +26,16 @@ const FONT_WIN_METRICS_SCHEMA = z
 
 const FONT_METRICS_OPTION_SCHEMA = z.record(z.string(), FONT_WIN_METRICS_SCHEMA, { error: "must be an object keyed by font face name" });
 
+const UNKNOWN = { kind: "unknown" } as const;
+const RESULT_ERROR = (found: string) => `must be { kind: "${found}", ${found} } or { kind: "unknown" }`;
+// A resolver's result: the discriminator checked first, so an old-style bare value or undefined names the result shape.
+const FONT_METRICS_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("metrics"), metrics: FONT_WIN_METRICS_SCHEMA }), z.strictObject({ kind: z.literal("unknown") })], { error: RESULT_ERROR("metrics") });
+
 const HOW_TO_FIX = 'Pass font units from the font\'s head and OS/2 tables, e.g. fontMetrics: { "My Brand Sans": readFontWinMetrics(fontBytes) }.';
 
 /**
  * The metrics the PowerPoint target reads for a face, case-insensitively: the caller's `fontMetrics` option, else
- * `resolve` (the Node entry reads the installed font), else FONT_WIN_METRICS; undefined keeps the font-independent
+ * `resolve` (the Node entry reads the installed font), else FONT_WIN_METRICS; `unknown` keeps the font-independent
  * baseline. `resolve` runs only when a face is looked up, at most once per face for the presentation that owns the lookup.
  * Its `glyphAdvances` looks a face's advances up through `resolveAdvances` the same way, per weight and style; without
  * one, no face has advances.
@@ -74,41 +79,37 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
         throw new TypeError(`PuppeteerGen option \`resolveGlyphAdvances\` must be a function, or null to turn the lookup off; got ${typeof resolveAdvances}.`);
     }
 
-    const resolved = new Map<string, FontWinMetrics | undefined>();
-    // eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-    const lookup = (fontFace: string): FontWinMetrics | undefined => {
+    const resolved = new Map<string, FontMetricsResult>();
+    const lookup = (fontFace: string): FontMetricsResult => {
         const key = fontFace.toLowerCase();
+        const own = Object.hasOwn(caller, key) ? caller[key] : undefined;
 
-        if (Object.hasOwn(caller, key)) {
-            return caller[key];
+        if (own !== undefined) {
+            return { kind: "metrics", metrics: own };
         }
 
         if (resolve) {
-            // `resolve(fontFace)` checked: undefined (not found) or valid metrics. Anything else is the resolver's bug, so it throws.
-            if (!resolved.has(key)) {
-                const returned: unknown = resolve(fontFace);
+            // `resolve(fontFace)` checked: unknown (not found) or valid metrics. Anything else is the resolver's bug, so it throws.
+            let metrics = resolved.get(key);
 
-                if (returned === undefined) {
-                    resolved.set(key, undefined);
-                } else {
-                    const parsed = FONT_WIN_METRICS_SCHEMA.safeParse(returned);
+            if (metrics === undefined) {
+                const parsed = FONT_METRICS_RESULT_SCHEMA.safeParse(resolve(fontFace));
 
-                    if (!parsed.success) {
-                        const issue = parsed.error.issues[0];
-                        const field = issue?.path.length ? `${issue.path.map(String).join(".")} ` : "";
+                if (!parsed.success) {
+                    const issue = parsed.error.issues[0];
+                    const path = issue?.path.slice(1) ?? [];
+                    const field = path.length ? `${path.map(String).join(".")} ` : "";
 
-                        throw new TypeError(
-                            `PuppeteerGen option \`resolveFontMetrics\` returned invalid metrics for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readFontWinMetrics(fontBytes).`,
-                        );
-                    }
-
-                    resolved.set(key, Object.freeze(parsed.data));
+                    throw new TypeError(
+                        `PuppeteerGen option \`resolveFontMetrics\` returned invalid metrics for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return { kind: "unknown" } for a face it cannot find, or { kind: "metrics", metrics: readFontWinMetrics(fontBytes) }.`,
+                    );
                 }
+
+                metrics = parsed.data.kind === "metrics" ? { kind: "metrics", metrics: Object.freeze(parsed.data.metrics) } : UNKNOWN;
+                resolved.set(key, metrics);
             }
 
-            const metrics = resolved.get(key);
-
-            if (metrics) {
+            if (metrics.kind === "metrics") {
                 return metrics;
             }
         }
@@ -121,45 +122,44 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
     }
 
     // `resolveAdvances`'s results cached per face (case-insensitive), weight and style.
-    const resolvedAdvances = new Map<string, GlyphAdvances | undefined>();
+    const resolvedAdvances = new Map<string, GlyphAdvancesResult>();
     const glyphAdvances: GlyphAdvanceLookup = (fontFace, bold, italic) => {
         const key = `${bold ? "b" : ""}${italic ? "i" : ""}:${fontFace.toLowerCase()}`;
+        const cached = resolvedAdvances.get(key);
 
-        // Its result checked: undefined (not found) or valid advances. Anything else is the resolver's bug, so it throws.
-        if (!resolvedAdvances.has(key)) {
-            // `as`: typeof checked it is a function, and the schema checks what it returns.
-            const returned: unknown = (resolveAdvances as GlyphAdvanceLookup)(fontFace, bold, italic);
-
-            if (returned === undefined) {
-                resolvedAdvances.set(key, undefined);
-            } else {
-                const parsed = GLYPH_ADVANCES_SCHEMA.safeParse(returned);
-
-                if (!parsed.success) {
-                    const issue = parsed.error.issues[0];
-                    const field = issue?.path[0] === undefined ? "" : `${String(issue.path[0])} `;
-
-                    throw new TypeError(
-                        `PuppeteerGen option \`resolveGlyphAdvances\` returned invalid advances for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readGlyphAdvances(fontBytes).`,
-                    );
-                }
-
-                resolvedAdvances.set(key, Object.freeze(parsed.data));
-            }
+        if (cached !== undefined) {
+            return cached;
         }
 
-        return resolvedAdvances.get(key);
+        // Its result checked: unknown (not found) or valid advances. Anything else is the resolver's bug, so it throws.
+        // `as`: typeof checked it is a function, and the schema checks what it returns.
+        const parsed = GLYPH_ADVANCES_RESULT_SCHEMA.safeParse((resolveAdvances as GlyphAdvanceLookup)(fontFace, bold, italic));
+
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0];
+            const field = issue?.path[1] === undefined ? "" : `${String(issue.path[1])} `;
+
+            throw new TypeError(
+                `PuppeteerGen option \`resolveGlyphAdvances\` returned invalid advances for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return { kind: "unknown" } for a face it cannot find, or { kind: "advances", advances: readGlyphAdvances(fontBytes) }.`,
+            );
+        }
+
+        const result: GlyphAdvancesResult = parsed.data.kind === "advances" ? { kind: "advances", advances: Object.freeze(parsed.data.advances) } : UNKNOWN;
+
+        resolvedAdvances.set(key, result);
+
+        return result;
     };
 
     return Object.assign(lookup, { glyphAdvances });
 }
 
 /** `fontFace`'s FONT_WIN_METRICS, case-insensitively; an own property only, so a face named "constructor" finds nothing. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function builtInFontMetrics(fontFace: string): FontWinMetrics | undefined {
+export function builtInFontMetrics(fontFace: string): FontMetricsResult {
     const key = fontFace.toLowerCase();
+    const metrics = Object.hasOwn(FONT_WIN_METRICS, key) ? FONT_WIN_METRICS[key] : undefined;
 
-    return Object.hasOwn(FONT_WIN_METRICS, key) ? FONT_WIN_METRICS[key] : undefined;
+    return metrics === undefined ? UNKNOWN : { kind: "metrics", metrics };
 }
 
 /** Font bytes readFontWinMetrics() or readGlyphAdvances() cannot read: not an sfnt (TrueType/OpenType) font, or truncated or inconsistent. */
@@ -343,6 +343,9 @@ const GLYPH_ADVANCES_SCHEMA = z.strictObject({
     unitsPerEm: integer(1, "a positive integer (head.unitsPerEm)"),
     advances: z.map(CODE_POINT, z.number().min(0).max(Number.MAX_SAFE_INTEGER), { error: "must be a Map from code point to advance width in font units" }),
     kerning: z.map(CODE_POINT, z.map(CODE_POINT, z.number().finite(), { error: KERNING_ERROR }), { error: KERNING_ERROR }).optional(),
+});
+const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("advances"), advances: GLYPH_ADVANCES_SCHEMA }), z.strictObject({ kind: z.literal("unknown") })], {
+    error: RESULT_ERROR("advances"),
 });
 
 /**

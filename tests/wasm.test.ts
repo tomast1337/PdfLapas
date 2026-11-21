@@ -9,7 +9,8 @@ import type PptxGenJS from "pptxgenjs";
 import { PuppeteerGen as HtmlPuppeteerGen, type HtmlPresentationDocument, type PresentationRenderer } from "../packages/pptxgenjs/src/html";
 import { closeBrowser, withBrowser } from "../packages/puppeteer/src/browser";
 import { PRINT_ZOOM, printHtml } from "../packages/puppeteer/src/printWorkarounds";
-import { PuppeteerGen, PuppeteerGenLibreOffice, PuppeteerGenPowerPoint, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGen, PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
+import { installedAdvances } from "./installedFonts";
 import { CORE_SVG_SHAPES } from "../packages/pptxgenjs/src/normalize/shape";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { completeProfileHtml, pptxHtmlDocument } from "../packages/pptxgenjs/src/render/completion";
@@ -335,7 +336,7 @@ describe.skipIf(!canRender)("WASM backend render", () => {
 
     // The PowerPoint target lays each word out at its advances rounded to 0.125pt: a last line exactly as wide as its
     // box or 0.125pt narrower fits, 0.125pt wider wraps, as in PowerPoint and Chromium (tests/advanceGrid.test.ts).
-    const arial = (bold: boolean) => resolveInstalledGlyphAdvances("Arial", bold, false);
+    const arial = (bold: boolean) => installedAdvances("Arial", bold, false);
 
     test.skipIf(!arial(false) || !arial(true))("breaks the PowerPoint target's lines at the box's width by the rounded advances, as PowerPoint does", async () => {
         const cases = wrapLimitCases(bold => arial(bold) ?? { unitsPerEm: 1, advances: new Map() });

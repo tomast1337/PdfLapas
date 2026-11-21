@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NormalizedTextRun } from "@pdflapas/model";
-import { PuppeteerGenLibreOffice, PuppeteerGenPowerPoint, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
+import { installedAdvances } from "./installedFonts";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "../packages/pptxgenjs/src/normalize/eastAsianLineBreak";
 import { RENDERING_TARGETS } from "../packages/pptxgenjs/src/target";
@@ -66,7 +67,7 @@ describe("East Asian line breaks on the PowerPoint target", () => {
 
     test("draws a hanging mark with no advance, then a U+3000 as wide as the mark was laid out", () => {
         // 1em from U+2000 without the face's advances; the advance grid spacing (0.25) stays in the pair's width.
-        expect(hangingMarkRuns(mark, undefined)).toEqual([
+        expect(hangingMarkRuns(mark, { kind: "unknown" })).toEqual([
             { ...mark, characterSpacing: -size },
             { ...mark, text: "\u3000", characterSpacing: 0.25, softBreakBefore: false },
         ]);
@@ -79,12 +80,12 @@ describe("East Asian line breaks on the PowerPoint target", () => {
             ]),
         };
 
-        expect(hangingMarkRuns({ ...mark, text: ")" }, font)).toEqual([
+        expect(hangingMarkRuns({ ...mark, text: ")" }, { kind: "advances", advances: font })).toEqual([
             { ...mark, text: ")", characterSpacing: -size / 2 },
             { ...mark, text: "\u3000", characterSpacing: 0.25 - size / 2, softBreakBefore: false },
         ]);
         // A narrow mark whose advance is not known is left as it is.
-        expect(hangingMarkRuns({ ...mark, text: ")" }, undefined)).toEqual([{ ...mark, text: ")" }]);
+        expect(hangingMarkRuns({ ...mark, text: ")" }, { kind: "unknown" })).toEqual([{ ...mark, text: ")" }]);
     });
 
     test("in a language with hanging marks, breaks before “ after Han, between Han and an ASCII quote, and between two dashes only", () => {
@@ -173,7 +174,7 @@ async function drawnLines(pdf: Uint8Array, pages: number): Promise<number[][]> {
 }
 
 describe("the measured East Asian boxes, in both renderers", () => {
-    const simSun = resolveInstalledGlyphAdvances("SimSun", false, false);
+    const simSun = installedAdvances("SimSun", false, false);
     const cases = eastAsianBreakCases();
     const expected = (selected: readonly EastAsianBreakCase[]) => selected.map(({ label, lines }) => ({ label, lines: [...lines] }));
     const drawn = (selected: readonly EastAsianBreakCase[], lines: number[][]) => selected.map(({ label }, index) => ({ label, lines: lines[index] }));
@@ -204,8 +205,8 @@ describe("the measured East Asian boxes, in both renderers", () => {
 });
 
 describe("the measured boxes of full-width punctuation next to digits and Latin text, in both renderers", () => {
-    const arial = resolveInstalledGlyphAdvances("Arial", false, false);
-    const times = resolveInstalledGlyphAdvances("Times New Roman", false, false);
+    const arial = installedAdvances("Arial", false, false);
+    const times = installedAdvances("Times New Roman", false, false);
     const cases = mixedBreakCases();
     const expected = cases.map(({ label, lines }) => ({ label, lines: [...lines] }));
     const drawn = (lines: number[][]) => cases.map(({ label }, index) => ({ label, lines: lines[index] }));

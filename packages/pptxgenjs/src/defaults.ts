@@ -426,10 +426,12 @@ export type FontWinMetrics = {
 };
 /** Font metrics keyed by lower-case face name. */
 export type FontMetricsTable = Readonly<Record<string, FontWinMetrics>>;
-/** A face's metrics by face name, or undefined when they are not known. */
+/** What a lookup found for a face: its `metrics`, or `unknown` when they are not known. */
+export type FontMetricsResult = { readonly kind: "metrics"; readonly metrics: FontWinMetrics } | { readonly kind: "unknown" };
+/** A face's metrics by face name. */
 export type FontMetricsLookup = {
-    (fontFace: string): FontWinMetrics | undefined;
-    /** The advances of a face in a weight and style, for `advanceGridPt`; missing, or undefined for a face, lays it out with the natural advances. */
+    (fontFace: string): FontMetricsResult;
+    /** The advances of a face in a weight and style, for `advanceGridPt`; missing, or `unknown` for a face, lays it out with the natural advances. */
     readonly glyphAdvances?: GlyphAdvanceLookup;
 };
 /**
@@ -441,9 +443,10 @@ export type GlyphAdvances = {
     readonly advances: ReadonlyMap<number, number>;
     readonly kerning?: ReadonlyMap<number, ReadonlyMap<number, number>>;
 };
-/** A face's advances in a weight and style, or undefined when they are not known. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export type GlyphAdvanceLookup = (fontFace: string, bold: boolean, italic: boolean) => GlyphAdvances | undefined;
+/** What a lookup found for a face in a weight and style: its `advances`, or `unknown` when they are not known. */
+export type GlyphAdvancesResult = { readonly kind: "advances"; readonly advances: GlyphAdvances } | { readonly kind: "unknown" };
+/** A face's advances in a weight and style. */
+export type GlyphAdvanceLookup = (fontFace: string, bold: boolean, italic: boolean) => GlyphAdvancesResult;
 
 /**
  * OS/2 usWinAscent and usWinDescent of common Office fonts, in units of `unitsPerEm`, keyed by lower-case face name:

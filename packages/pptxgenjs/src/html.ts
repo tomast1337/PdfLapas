@@ -74,7 +74,7 @@ export type { UnsupportedChartDetails, UnsupportedChartReason } from "./chart/er
 export type { ChartExtensionInput, ChartExtensionOptions } from "./chart/types";
 export type { ApiEntry, ApiStatus, CompatibilityEntry, CompatibilityStatus } from "./compatibility";
 export type { ComponentContext, ComponentDefinition, ComponentInput, ComponentOptions, ComponentProps, ComponentValue } from "./components/types";
-export type { FontWinMetrics, FourSideMargin, GlyphAdvances } from "./defaults";
+export type { FontMetricsResult, FontWinMetrics, FourSideMargin, GlyphAdvanceLookup, GlyphAdvances, GlyphAdvancesResult } from "./defaults";
 export type { PowerPointFace, PowerPointFaceRole, RenderingTarget } from "./target";
 export type { MissingFont, MissingFontPolicy, NormalizedPresentation, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
 export { MissingFontError } from "@pdflapas/model";

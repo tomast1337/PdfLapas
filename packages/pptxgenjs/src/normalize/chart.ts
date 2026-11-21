@@ -698,7 +698,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         legendColor: normalizeColor(options.legendColor ?? PPTX_DEFAULTS.text.color),
         // Bar options.
         barDirection: options.barDir === "bar" ? ("bar" as const) : PPTX_DEFAULTS.chart.barDirection,
-        barGapWidthPercent: Math.max(0, Math.min(1000, options.barGapWidthPct ?? PPTX_DEFAULTS.chart.barGapWidthPct)),
+        // PptxGenJS 4.0.1 sets a stacked grouping's `barGapWidthPct` to 50 when it is unset or 0 (`if (!barGapWidthPct)`).
+        barGapWidthPercent: Math.max(0, Math.min(1000, (stackedBars && !options.barGapWidthPct ? PPTX_DEFAULTS.chart.stackedGapWidthPct : options.barGapWidthPct) ?? PPTX_DEFAULTS.chart.barGapWidthPct)),
         barGapDepthPercent: Math.max(0, Math.min(1000, options.barGapDepthPct ?? PPTX_DEFAULTS.chart.barGapDepthPct)),
         bar3DShape: BAR_3D_SHAPES.has(options.bar3DShape ?? "") ? (options.bar3DShape as NormalizedChart["bar3DShape"]) : PPTX_DEFAULTS.chart.bar3DShape,
         perspective3D: Math.max(0, Math.min(240, options.v3DPerspective ?? PPTX_DEFAULTS.chart.v3DPerspective)),

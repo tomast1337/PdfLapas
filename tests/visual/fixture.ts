@@ -2232,6 +2232,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartPieFixture(presentation);
     populateChartBarOrderFixture(presentation);
     populateChartLegendOrderFixture(presentation);
+    populateChartStackedFixture(presentation);
 }
 
 /**
@@ -2922,8 +2923,8 @@ export function populateChartPieFixture(presentation: Presentation): void {
 /**
  * Horizontal bar series order (#472): a clustered chart runs its series bottom-up in each band and lists the legend from
  * the last series. A parity slide after the others (no page number moves) and the WASM chartBarOrder deck, which crops
- * the chart. No stacked chart: LibreOffice draws a stacked bar as wide as the clustered group (#503), which alone
- * puts the page over the limit; tests/chart.test.ts checks its legend order.
+ * the chart. The stacked chart has its own slide (populateChartStackedFixture): beside this one the plot area's top
+ * edge, about 8px lower than LibreOffice's, puts the page over the limit; tests/chart.test.ts checks its legend order.
  */
 export function populateChartBarOrderFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -2957,4 +2958,24 @@ export function populateChartLegendOrderFixture(presentation: Presentation): voi
     ];
 
     slide.addChart("bar", data, { x: 0.4, y: 0.9, w: 2.8, h: 2.6, barDir: "col", barGrouping: "stacked", barGapWidthPct: 50, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "r" });
+}
+
+/**
+ * Stacked bar width (#503): PptxGenJS writes a stacked chart's `<c:gapWidth>` as 50 when barGapWidthPct is unset, so
+ * each bar is two thirds of its band, a horizontal and a column chart alike. A parity slide after the others (no page
+ * number moves) and the WASM chartStacked deck, which crops each chart.
+ */
+export function populateChartStackedFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Stacked bar width", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+        { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 3, 1, 5] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, barGrouping: "stacked", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, barDir: "bar" });
+    slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "col" });
 }

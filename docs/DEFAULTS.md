@@ -425,7 +425,8 @@ contract includes:
   without a font, uses the theme body font (Calibri), as LibreOffice draws it. Without Microsoft
   fonts, Arial resolves to the metric-compatible Liberation Sans: through fontconfig in Chromium
   and LibreOffice, and through the WASM renderer's alias table.
-- Bar direction/grouping, 3D shape, gaps, overlap, and rotations.
+- Bar direction/grouping, 3D shape, gaps, overlap, and rotations. A stacked or percent-stacked chart's
+  gap width is 50% when `barGapWidthPct` is unset or 0, as PptxGenJS writes it (150% otherwise).
 - Legend, data-label, axis visibility, and data-table flags.
 - Data labels: 12pt black Arial, `#,##0` (a pie or doughnut: `0%` with `showPercent`, else `General`),
   outside a clustered bar's end, in a stacked bar's or a doughnut ring's center, right of a line point

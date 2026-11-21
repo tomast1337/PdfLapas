@@ -817,6 +817,37 @@ describe("chart normalization and rendering", () => {
         expect(legend("bar", { barDir: "bar", barGrouping: "stacked", legendPos: "r" })).toEqual(["First", "Second"]);
     });
 
+    test("gives a stacked bar chart PptxGenJS's 50% gap width when barGapWidthPct is unset or 0", () => {
+        // PptxGenJS 4.0.1: `if (barGrouping.includes('tacked') && !barGapWidthPct) barGapWidthPct = 50`, then `|| 150`.
+        expect(normalizeChart("bar", categoricalData, { barGrouping: "stacked" }).barGapWidthPercent).toBe(50);
+        expect(normalizeChart("bar", categoricalData, { barGrouping: "percentStacked", barGapWidthPct: 0 }).barGapWidthPercent).toBe(50);
+        expect(normalizeChart("bar3D", categoricalData, { barGrouping: "stacked" }).barGapWidthPercent).toBe(50);
+        expect(normalizeChart("bar", categoricalData, { barGrouping: "stacked", barGapWidthPct: 300 }).barGapWidthPercent).toBe(300);
+        expect(normalizeChart("bar", categoricalData).barGapWidthPercent).toBe(150);
+        expect(normalizeChart("bar", categoricalData, { barGapWidthPct: 0 }).barGapWidthPercent).toBe(0);
+
+        // Each first-series bar's thickness (a horizontal bar's height) in px.
+        const thickness = (options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("bar", categoricalData, { x: 0, y: 0, w: 5, h: 3, barDir: "bar", chartColors: ["4472C4", "ED7D31"], ...options });
+            const heights = new Set<number>();
+
+            for (const path of renderedPage(presentation).querySelectorAll('.slide-chart path[ecmeta_ssr_type="chart"][fill="#4472C4"]')) {
+                // ECharts draws a bar as `M x y l w 0 l 0 h l -w 0 Z`.
+                heights.add(Number(/l0 ([\d.]+)/.exec(path.getAttribute("d") ?? "")?.[1]));
+            }
+
+            return [...heights];
+        };
+        const [stacked] = thickness({ barGrouping: "stacked" });
+        const [clustered] = thickness({});
+
+        // In the same band, a stacked bar is band / 1.5 and each of two clustered bars band / (2 + 1.5).
+        expect(stacked).toBeDefined();
+        expect((stacked ?? 0) / (clustered ?? 1)).toBeCloseTo(3.5 / 1.5, 1);
+    });
+
     test("draws outside major tick marks on the category axis, as PptxGenJS writes them", () => {
         // PptxGenJS 4.0.1: `<c:majorTickMark val="${catAxisMajorTickMark || 'out'}"/>` on every category axis but scatter's.
         expect(normalizeChart("bar", categoricalData).categoryMajorTickMark).toBe("outside");

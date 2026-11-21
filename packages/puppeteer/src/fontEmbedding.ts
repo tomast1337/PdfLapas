@@ -26,19 +26,21 @@ const OS2_FS_TYPE = 8;
 const TAG_TTCF = 0x74746366; // "ttcf"
 const TAG_OS2 = 0x4f532f32; // "OS/2"
 
+/** What a face's OS/2 fsType says about embedding it; "unreadable" when the file is not an sfnt or has no readable OS/2 table. */
+export type FsTypeEmbedding = { kind: "restricted" } | { kind: "embeddable" } | { kind: "unreadable" };
+
 /**
- * Whether the face of an sfnt file (`index` in a collection) forbids embedding by its OS/2 fsType; undefined when the
- * file has no OS/2 table or is not an sfnt (bounds-checked: the bytes come from a font file on disk).
+ * Whether the face of an sfnt file (`index` in a collection) forbids embedding by its OS/2 fsType (bounds-checked: the
+ * bytes come from a font file on disk).
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function restrictedByFsType(bytes: Uint8Array, index = 0): boolean | undefined {
+export function restrictedByFsType(bytes: Uint8Array, index = 0): FsTypeEmbedding {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const u16 = (at: number) => (at + 2 <= view.byteLength ? view.getUint16(at) : undefined);
     const u32 = (at: number) => (at + 4 <= view.byteLength ? view.getUint32(at) : undefined);
     const font = u32(0) === TAG_TTCF ? u32(TTC_FONT_OFFSETS + 4 * index) : 0;
 
     if (font === undefined) {
-        return undefined;
+        return { kind: "unreadable" };
     }
 
     const tables = u16(font + SFNT_TABLE_COUNT) ?? 0;
@@ -53,10 +55,14 @@ export function restrictedByFsType(bytes: Uint8Array, index = 0): boolean | unde
         const offset = u32(record + 8);
         const fsType = offset === undefined ? undefined : u16(offset + OS2_FS_TYPE);
 
-        return fsType === undefined ? undefined : (fsType & FS_TYPE_RESTRICTED) !== 0;
+        if (fsType === undefined) {
+            return { kind: "unreadable" };
+        }
+
+        return (fsType & FS_TYPE_RESTRICTED) !== 0 ? { kind: "restricted" } : { kind: "embeddable" };
     }
 
-    return undefined;
+    return { kind: "unreadable" };
 }
 
 /**
@@ -81,7 +87,7 @@ async function isRestricted(fontName: string): Promise<boolean> {
     }
 
     try {
-        return restrictedByFsType(await readFile(file), Number(index) & FC_FACE_INDEX_MASK) ?? false;
+        return restrictedByFsType(await readFile(file), Number(index) & FC_FACE_INDEX_MASK).kind === "restricted";
     } catch {
         return false;
     }

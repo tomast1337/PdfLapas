@@ -157,12 +157,12 @@ function sfntWithFsType(fsType: number, collection = false): Uint8Array {
 
 describe("font embedding permission (OS/2 fsType)", () => {
     test("reads the restricted-licence bit, in a font and in a collection", () => {
-        expect(restrictedByFsType(sfntWithFsType(0x0002))).toBe(true);
-        expect(restrictedByFsType(sfntWithFsType(0x0000))).toBe(false);
-        expect(restrictedByFsType(sfntWithFsType(0x0008))).toBe(false);
-        expect(restrictedByFsType(sfntWithFsType(0x0002, true), 1)).toBe(true);
-        expect(restrictedByFsType(new Uint8Array(6))).toBeUndefined();
-        expect(restrictedByFsType(sfntWithFsType(0x0002).subarray(0, 30))).toBeUndefined();
+        expect(restrictedByFsType(sfntWithFsType(0x0002))).toEqual({ kind: "restricted" });
+        expect(restrictedByFsType(sfntWithFsType(0x0000))).toEqual({ kind: "embeddable" });
+        expect(restrictedByFsType(sfntWithFsType(0x0008))).toEqual({ kind: "embeddable" });
+        expect(restrictedByFsType(sfntWithFsType(0x0002, true), 1)).toEqual({ kind: "restricted" });
+        expect(restrictedByFsType(new Uint8Array(6))).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(sfntWithFsType(0x0002).subarray(0, 30))).toEqual({ kind: "unreadable" });
     });
 
     test("finds the face by its PostScript name through fontconfig; an unknown face is not restricted", async () => {

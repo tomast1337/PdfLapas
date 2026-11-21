@@ -44,11 +44,14 @@ const SANS_FALLBACK = 'Arial, "Liberation Sans", sans-serif';
  * Cambria face. Text drawn in it is drawn as intended, so it is not a missing font (PptxGenJS writes Calibri and the
  * theme's Calibri Light by default).
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function metricSubstitute(face: string): "Carlito" | "Caladea" | undefined {
+export function metricSubstitute(face: string): { kind: "substitute"; face: "Carlito" | "Caladea" } | { kind: "none" } {
     const lower = face.toLowerCase();
 
-    return lower.startsWith("calibri") ? "Carlito" : lower.startsWith("cambria") ? "Caladea" : undefined;
+    if (lower.startsWith("calibri")) {
+        return { kind: "substitute", face: "Carlito" };
+    }
+
+    return lower.startsWith("cambria") ? { kind: "substitute", face: "Caladea" } : { kind: "none" };
 }
 
 /**
@@ -199,7 +202,7 @@ export function printHtml(html: string): string {
             }
 
             const substitute = metricSubstitute(face);
-            const fallback = substitute === "Carlito" ? CALIBRI_FALLBACK : substitute === "Caladea" ? CAMBRIA_FALLBACK : SANS_FALLBACK;
+            const fallback = substitute.kind === "none" ? SANS_FALLBACK : substitute.face === "Carlito" ? CALIBRI_FALLBACK : CAMBRIA_FALLBACK;
 
             edits.push(setAttribute(element, "style", style.replace(FONT_FAMILY, `$1, ${fallback}`)));
             // data-non-breaking-hyphen="hyphen-minus": Chromium picks a face by the character, so it draws U+2011 in a

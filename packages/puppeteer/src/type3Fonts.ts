@@ -41,7 +41,7 @@ export function withType1CFonts(pdf: Uint8Array, restricted: ReadonlySet<string>
         // The font, descriptor and font file objects that make Type 3 `font` a Type 1 font with an embedded CFF program,
         // the new descriptor numbered `next` and the font file after it; the font stays Type 3 when one of its glyphs is
         // not a plain filled outline.
-        const matrix = numbers(FONT_MATRIX.exec(font.body)?.[1]);
+        const matrix = numbers(FONT_MATRIX.exec(font.body)?.[1] ?? "");
         const [a, b, c, d, e, f] = matrix;
 
         // Skia writes [s 0 0 -s 0 0]: anything else is not a font this rewrite can express in a Type 1 font matrix.
@@ -53,7 +53,7 @@ export function withType1CFonts(pdf: Uint8Array, restricted: ReadonlySet<string>
         const descriptorNumber = Number(DESCRIPTOR.exec(font.body)?.[1] ?? Number.NaN);
         const procedures = CHAR_PROCS.exec(font.body)?.[1];
         const encoding = ENCODING.exec(font.body)?.[1];
-        const bbox = numbers(FONT_BBOX.exec(font.body)?.[1]);
+        const bbox = numbers(FONT_BBOX.exec(font.body)?.[1] ?? "");
 
         if (!Number.isInteger(descriptorNumber) || procedures === undefined || encoding === undefined || bbox.length !== 4) {
             throw fontError(`its Type 3 font ${font.number} has no /FontDescriptor, /CharProcs, /Encoding or /FontBBox`);
@@ -160,7 +160,7 @@ export function withType1CFonts(pdf: Uint8Array, restricted: ReadonlySet<string>
         }
 
         const program = deflateSync(cffFont(fontName, glyphs, box));
-        const widths = numbers(WIDTHS.exec(font.body)?.[1]).map(width => pdfNumber(width * scale.x));
+        const widths = numbers(WIDTHS.exec(font.body)?.[1] ?? "").map(width => pdfNumber(width * scale.x));
         const toUnicode = TO_UNICODE.exec(font.body)?.[1];
         const heights = [CAP_HEIGHT, X_HEIGHT].map(entry => {
             const value = Number(entry.exec(descriptor)?.[1] ?? Number.NaN);
@@ -324,12 +324,8 @@ function unitScale(matrixEntry: number): number {
     return Number((TYPE1_UNITS_PER_EM * matrixEntry).toPrecision(FLOAT32_DIGITS));
 }
 
-function numbers(list: string | undefined): number[] {
+function numbers(list: string): number[] {
     const values: number[] = [];
-
-    if (list === undefined) {
-        return values;
-    }
 
     for (const part of list.trim().split(WHITESPACE_RUN)) {
         if (part) {

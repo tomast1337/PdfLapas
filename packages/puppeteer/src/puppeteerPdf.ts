@@ -88,7 +88,11 @@ export class PuppeteerPdfRenderer implements PresentationRenderer {
                 const missing = await page.evaluate(missingFonts);
 
                 reportMissingFonts(
-                    missing.filter(({ face, usedFace }) => !usedFace || usedFace !== metricSubstitute(face)),
+                    missing.filter(({ face, usedFace }) => {
+                        const substitute = metricSubstitute(face);
+
+                        return !usedFace || substitute.kind === "none" || usedFace !== substitute.face;
+                    }),
                     this.onMissingFont,
                 );
                 const links = await page.evaluate(placeLinkPlaceholders, LINK_PLACEHOLDER);

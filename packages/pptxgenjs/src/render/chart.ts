@@ -254,6 +254,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             fontSize: pointsToPixels(chart.legendFontSize),
         },
     };
+    // PptxGenJS writes <c:marker> on line, radar and scatter series: <c:size> is in points (ECharts takes pixels) and
+    // <a:ln> outlines each marker with lineDataSymbolLineSize in the series color.
+    const symbolSize = pointsToPixels(chart.lineSymbolSize);
+    const symbolBorderWidth = pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt);
     const common: EChartsCoreOption = {
         animation: false,
         color: chart.colors,
@@ -421,7 +425,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 {
                     type: "radar",
                     symbol: chart.radarStyle === "standard" ? "none" : lineSymbol(chart.lineSymbol),
-                    symbolSize: chart.lineSymbolSize,
+                    symbolSize,
+                    itemStyle: { borderWidth: symbolBorderWidth },
                     areaStyle: chart.radarStyle === "filled" ? {} : undefined,
                     data: chart.series.map(series => ({ name: series.name, value: series.values })),
                 },
@@ -445,8 +450,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 name: series.name,
                 type: "scatter",
                 data: series.values.map((value, index) => (chart.type === "bubble" ? [xValues[index], value, series.sizes?.[index] ?? 0] : [xValues[index], value])),
-                symbolSize: chart.type === "bubble" ? (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32 : chart.lineSymbolSize,
-                itemStyle: { opacity: chart.colorOpacity },
+                ...(chart.type === "bubble"
+                    ? { symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32, itemStyle: { opacity: chart.colorOpacity } }
+                    : { symbol: lineSymbol(chart.lineSymbol), symbolSize, itemStyle: { opacity: chart.colorOpacity, borderWidth: symbolBorderWidth } }),
             });
         }
 
@@ -615,11 +621,12 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 barWidth: seriesType === "bar" ? barWidth : undefined,
                 barGap: seriesType === "bar" ? "0%" : undefined,
                 smooth: lineLike ? chart.lineSmooth : undefined,
-                symbol: lineLike ? lineSymbol(chart.lineSymbol) : undefined,
-                symbolSize: lineLike ? chart.lineSymbolSize : undefined,
+                // PptxGenJS writes no <c:marker> on an area series, and Office draws none.
+                symbol: series.type === "line" ? lineSymbol(chart.lineSymbol) : series.type === "area" ? "none" : undefined,
+                symbolSize: series.type === "line" ? symbolSize : undefined,
                 lineStyle: lineLike ? { width: pointsToPixels(chart.lineSize), color } : undefined,
                 areaStyle: series.type === "area" ? {} : undefined,
-                itemStyle: { opacity: chart.colorOpacity, color },
+                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, borderWidth: symbolBorderWidth } : {}) },
                 yAxisIndex: series.valueAxisIndex,
             });
         }

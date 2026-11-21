@@ -574,6 +574,31 @@ describe("chart normalization and rendering", () => {
         }
     });
 
+    test("draws a point marker as PptxGenJS's c:marker writes it: size in points, 0.75pt outline, none on area series", () => {
+        const markers = (type: "area" | "line" | "radar" | "scatter", options: PptxGenJS.IChartOpts = {}) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart(type, categoricalData, { x: 0, y: 0, w: 5, h: 3, ...options });
+
+            return Array.from(renderedPage(presentation).querySelectorAll('.slide-chart path[ecmeta_ssr_type="chart"][ecmeta_data_index]'));
+        };
+        const lineMarkers = markers("line");
+        // The default 6pt circle: a unit circle scaled to a 4px radius (8px across).
+        const scale = pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolSize) / 2;
+
+        expect(lineMarkers).toHaveLength(6);
+        expect(lineMarkers[0]?.getAttribute("transform")).toStartWith(`matrix(${scale},0,0,${scale},`);
+        expect(lineMarkers[0]?.getAttribute("stroke")).toBe(lineMarkers[0]?.getAttribute("fill") ?? "fill");
+        // ECharts writes the stroke inside the scaled transform.
+        expect(Number(lineMarkers[0]?.getAttribute("stroke-width")) * scale).toBe(pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt));
+        expect(markers("line", { lineDataSymbol: "square" })).toHaveLength(6);
+        expect(markers("line", { lineDataSymbol: "none" })).toHaveLength(0);
+        expect(markers("area")).toHaveLength(0);
+        expect(markers("radar", { radarStyle: "marker" })).toHaveLength(6);
+        expect(markers("radar")).toHaveLength(0);
+        expect(markers("scatter", { lineDataSymbol: "none" })).toHaveLength(0);
+    });
+
     test("keys bar entries with a square 0.6 of the legend font size and keeps line entries as a line", () => {
         const legendKeys = (type: "bar" | "line", options: PptxGenJS.IChartOpts = {}) => {
             const presentation = new PuppeteerGen();

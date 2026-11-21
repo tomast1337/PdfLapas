@@ -52,9 +52,16 @@ returns a `.pptx`:
   LibreOffice export it. The other slides keep their numbers, so `slide.slideNumber` prints the
   same number as with the slide shown, and a link to slide 3 jumps to the page that shows slide 3;
   a link to the hidden slide jumps nowhere.
+- **Number type of a numbered list:** set it with `bullet.style`, as in
+  `{ type: "number", style: "romanUcPeriod" }`. PptxGenJS 4.0.1 declares `bullet.numberType` but never
+  reads it: `genXmlTextBody` writes `<a:buAutoNum type="${bullet.style || 'arabicPeriod'}" …>`
+  (`dist/pptxgen.cjs.js` line 5859), so `{ type: "number", numberType: "romanUcPeriod" }` comes out of
+  PowerPoint as `1.`, `2.`, … PdfLapas does the same: `numberType` is accepted and ignored, and the list
+  is numbered `arabicPeriod`. `style` is marked deprecated in PptxGenJS's types, but it is the only option
+  that works.
 - **Shown nowhere, as in PowerPoint's slide show:** `addNotes()`, `addSection()` and `pres.rtlMode`
   (which orients PowerPoint's editing views) are accepted and change nothing on the page.
-- **Ignored, as PptxGenJS ignores them:** text `bulletNumberType`, `textDirection` (a table cell
+- **Ignored, as PptxGenJS ignores them:** text `bullet.numberType` (see above), `textDirection` (a table cell
   option), `isTextBox`, `data` and `path`, shape `align` and table `verbose` are accepted and draw
   nothing different. A string `line` and `lineSize`, `lineDash`, `lineHead`, `lineTail` apply to
   `addText` only with `shape: "line"`, as in PptxGenJS. Inside a `line` object, the deprecated `pt`,

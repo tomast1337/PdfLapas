@@ -230,4 +230,11 @@ describe("compatibility manifest", () => {
         expect(API_COMPATIBILITY.presentation.addSlide?.note).toContain("masterName");
         expect(API_COMPATIBILITY.presentation.addSlide?.note).toContain("throws UnsupportedFeatureError");
     });
+
+    test("names `compression` as accepted without effect on every output method (#456)", () => {
+        // PptxGenJS 4.0.1 passes it to JSZip only (DEFLATE vs STORE); tests/output.test.ts checks the bytes ignore it.
+        for (const method of ["write", "stream", "writeFile"]) {
+            expect(API_COMPATIBILITY.presentation[method]?.note).toContain("`compression` is accepted and has no effect");
+        }
+    });
 });

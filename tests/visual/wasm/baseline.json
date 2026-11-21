@@ -528,5 +528,9 @@
   },
   "chartLegendOrder": {
     "p1-Chart0": 0.2878
+  },
+  "chartStacked": {
+    "p1-Chart0": 0.1483,
+    "p1-Chart1": 0.0996
   }
 }

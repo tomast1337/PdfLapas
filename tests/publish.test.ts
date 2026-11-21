@@ -58,9 +58,15 @@ describe("publish:npm", () => {
     });
 
     test("rejects workspace specifiers, other versions, missing entry points and a wrong binary", () => {
-        expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "workspace:*" }), files, HASH, HASH)).toEqual(["@pdflapas/wasm its package.json still has a workspace: specifier", "@pdflapas/wasm depends on @pdflapas/model@workspace:*, expected exactly 1.2.3"]);
+        expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "workspace:*" }), files, HASH, HASH)).toEqual([
+            "@pdflapas/wasm its package.json still has a workspace: specifier",
+            "@pdflapas/wasm depends on @pdflapas/model@workspace:*, expected exactly 1.2.3",
+        ]);
         expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "^1.2.3" }), files, HASH, HASH)).toEqual(["@pdflapas/wasm depends on @pdflapas/model@^1.2.3, expected exactly 1.2.3"]);
-        expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "1.2.3" }), ["package/dist/browser.js"], undefined, HASH)).toEqual(["@pdflapas/wasm is missing package/dist/node.js, which its package.json points at (was it built?)", `@pdflapas/wasm carries no dist/pdf_wasm_bg.wasm, expected sha256 ${HASH}`]);
+        expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "1.2.3" }), ["package/dist/browser.js"], undefined, HASH)).toEqual([
+            "@pdflapas/wasm is missing package/dist/node.js, which its package.json points at (was it built?)",
+            `@pdflapas/wasm carries no dist/pdf_wasm_bg.wasm, expected sha256 ${HASH}`,
+        ]);
         expect(tarballProblems(wasm, packedWasm({ "@pdflapas/model": "1.2.3" }), files, OTHER_HASH, HASH)).toEqual([`@pdflapas/wasm carries a different (${OTHER_HASH}) dist/pdf_wasm_bg.wasm, expected sha256 ${HASH}`]);
         expect(tarballProblems(model, JSON.stringify({ ...model, version: "1.2.2" }), ["package/dist/index.d.ts", "package/dist/index.js"], undefined, HASH)).toEqual(["@pdflapas/model packed as @pdflapas/model@1.2.2, expected @pdflapas/model@1.2.3"]);
     });

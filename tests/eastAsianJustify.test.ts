@@ -166,7 +166,9 @@ describe("the spacing pass moves no line break", () => {
 
         for (let index = 0; index < 24; index++) {
             const runs = Array.from({ length: 24 }, (_, piece) =>
-                piece % 2 ? { text: ` ${LATIN_PHRASES[(index * 7 + piece) % LATIN_PHRASES.length]} `, options: { fontFace: "Calibri", bold: (index + piece) % 5 === 0 } } : { text: HAN_PHRASES[(index * 3 + piece) % HAN_PHRASES.length] ?? "", options: { fontFace: "Microsoft JhengHei" } },
+                piece % 2
+                    ? { text: ` ${LATIN_PHRASES[(index * 7 + piece) % LATIN_PHRASES.length]} `, options: { fontFace: "Calibri", bold: (index + piece) % 5 === 0 } }
+                    : { text: HAN_PHRASES[(index * 3 + piece) % HAN_PHRASES.length] ?? "", options: { fontFace: "Microsoft JhengHei" } },
             );
 
             presentation.addSlide().addText(runs, { lang: "zh-TW", x: 0.5, y: 0.3, w: 2 + (index % 8) * 0.37, h: 6, margin: 0.05, valign: "top", align, fontSize: [8, 9, 10, 10.5, 11, 12][index % 6] });

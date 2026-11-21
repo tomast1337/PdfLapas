@@ -166,8 +166,17 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * up to 1/(512 x size px) narrower than the font's (8pt: 0.044 px over a 720 px line, against the 1/6 px step); the
  * WASM renderer uses the exact size. Size the words for that truncation if a tie between steps flips in Chromium.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function advanceGridWordSpacing(text: string, sizePt: number, font: GlyphAdvances | undefined, gridPt: number | undefined, charSpacingPt: number, kerned: boolean, cursor: GridCursor = { rounded: 0, laidOut: 0 }, after = ""): WordSpacing | undefined {
+export function advanceGridWordSpacing(
+    text: string,
+    sizePt: number,
+    font: GlyphAdvances | undefined,
+    gridPt: number | undefined,
+    charSpacingPt: number,
+    kerned: boolean,
+    cursor: GridCursor = { rounded: 0, laidOut: 0 },
+    after = "",
+    // eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
+): WordSpacing | undefined {
     const spaceAdvance = font?.advances.get(" ".codePointAt(0) ?? 0);
     const continued = cursor.word;
 

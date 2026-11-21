@@ -309,7 +309,20 @@ describe("shape normalization", () => {
     });
 
     test("normalizes the complete action-button preset family", () => {
-        const names = ["actionButtonBackPrevious", "actionButtonBeginning", "actionButtonBlank", "actionButtonDocument", "actionButtonEnd", "actionButtonForwardNext", "actionButtonHelp", "actionButtonHome", "actionButtonInformation", "actionButtonMovie", "actionButtonReturn", "actionButtonSound"] as const;
+        const names = [
+            "actionButtonBackPrevious",
+            "actionButtonBeginning",
+            "actionButtonBlank",
+            "actionButtonDocument",
+            "actionButtonEnd",
+            "actionButtonForwardNext",
+            "actionButtonHelp",
+            "actionButtonHome",
+            "actionButtonInformation",
+            "actionButtonMovie",
+            "actionButtonReturn",
+            "actionButtonSound",
+        ] as const;
 
         for (const name of names) {
             const geometry = normalizeShape(name, {}, 180, 100, PAGE).geometry;

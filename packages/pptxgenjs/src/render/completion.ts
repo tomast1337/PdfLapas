@@ -280,7 +280,11 @@ function completeElement(element: Element, context: TextContext, slide: number):
         const lineBox = lineBoxOf(fontSize, lineHeight === undefined ? undefined : pxValue(lineHeight, "line-height", where(slide, element)));
         const has = getAttribute(element, "data-line-baseline") !== undefined;
 
-        return addToElement(element, [...DEFAULTS.paragraph.css.filter(([property]) => !style.has(property)), ...(lineHeight === undefined ? [["line-height", px(lineBox.height)] as const] : [])], has ? [] : [["data-line-baseline", String(lineBox.baseline)]]);
+        return addToElement(
+            element,
+            [...DEFAULTS.paragraph.css.filter(([property]) => !style.has(property)), ...(lineHeight === undefined ? [["line-height", px(lineBox.height)] as const] : [])],
+            has ? [] : [["data-line-baseline", String(lineBox.baseline)]],
+        );
     }
 
     if (hasClass(element, "text-run")) {

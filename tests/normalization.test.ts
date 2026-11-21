@@ -128,7 +128,9 @@ describe("shared object normalization", () => {
         const deprecated = { color: "FF0000", pt: 4, size: 5, lineDash: "dash", lineHead: "arrow", lineTail: "oval" } as const;
 
         expect(normalizeLine(deprecated)).toEqual(normalizeLine({ color: "FF0000" }));
-        expect(normalizeShapeLine({ line: { color: "FF0000" }, lineSize: 4, lineDash: "dash", lineHead: "arrow", lineTail: "oval" }, normalizeLine)).toEqual(normalizeLine({ color: "FF0000", width: 4, dashType: "dash", beginArrowType: "arrow", endArrowType: "oval" }));
+        expect(normalizeShapeLine({ line: { color: "FF0000" }, lineSize: 4, lineDash: "dash", lineHead: "arrow", lineTail: "oval" }, normalizeLine)).toEqual(
+            normalizeLine({ color: "FF0000", width: 4, dashType: "dash", beginArrowType: "arrow", endArrowType: "oval" }),
+        );
     });
 
     test("uses the ECMA-376 prstDash ratios LibreOffice imports", () => {

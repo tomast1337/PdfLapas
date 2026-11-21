@@ -718,7 +718,9 @@ describe("a kerned run on the PowerPoint grid in Chromium", () => {
             const drawn = (starts[index] ?? []).map(start => start / PRINT_ZOOM);
 
             // At most two LayoutUnits past PowerPoint's start (advanceGridWordSpacing).
-            expect(drawn.map((start, word) => ({ fontSize, word, within: start - (expected[word] ?? Number.NaN) > -1e-6 && start - (expected[word] ?? Number.NaN) < 3 / LAYOUT_UNITS_PER_PX }))).toEqual(expected.map((_, word) => ({ fontSize, word, within: true })));
+            expect(drawn.map((start, word) => ({ fontSize, word, within: start - (expected[word] ?? Number.NaN) > -1e-6 && start - (expected[word] ?? Number.NaN) < 3 / LAYOUT_UNITS_PER_PX }))).toEqual(
+                expected.map((_, word) => ({ fontSize, word, within: true })),
+            );
         }
     });
 });
@@ -905,6 +907,8 @@ describe("the PowerPoint target's wrap limit in Chromium", () => {
             }
         });
 
-        expect(cases.map(({ fontSize, bold, lines, steps }, index) => ({ fontSize, bold, lines, steps, drawn: drawn[index] }))).toEqual(cases.map(({ fontSize, bold, lines, steps, expectedLines }) => ({ fontSize, bold, lines, steps, drawn: expectedLines })));
+        expect(cases.map(({ fontSize, bold, lines, steps }, index) => ({ fontSize, bold, lines, steps, drawn: drawn[index] }))).toEqual(
+            cases.map(({ fontSize, bold, lines, steps, expectedLines }) => ({ fontSize, bold, lines, steps, drawn: expectedLines })),
+        );
     });
 });

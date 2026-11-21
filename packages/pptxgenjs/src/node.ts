@@ -214,7 +214,9 @@ export function resolveInstalledFontMetrics(fontFace: string): FontWinMetrics | 
         try {
             metrics = readFontWinMetrics(readFileSync(font.file), font.index);
         } catch (error) {
-            console.warn(`PdfLapas: cannot read the metrics of ${JSON.stringify(fontFace)} from ${font.file} (${error instanceof Error ? error.message : String(error)}); the PowerPoint target uses FONT_WIN_METRICS or the font-independent baseline for it.`);
+            console.warn(
+                `PdfLapas: cannot read the metrics of ${JSON.stringify(fontFace)} from ${font.file} (${error instanceof Error ? error.message : String(error)}); the PowerPoint target uses FONT_WIN_METRICS or the font-independent baseline for it.`,
+            );
         }
     }
 

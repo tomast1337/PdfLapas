@@ -98,7 +98,14 @@ describe("text normalization", () => {
         for (const target of ["libreoffice", "powerpoint"] as const) {
             const { paragraphs } = normalizeText(runs, { align: "justify", fontFace: "Arial" }, target);
 
-            expect(paragraphs.map(paragraph => paragraph.runs.map(run => [run.text, run.fontSize, run.bold]))).toEqual([[["Head line.", 64 / 3, true]], [["", 64 / 3, true]], [["Body text that wraps.", 32 / 3, false]], [["", 32 / 3, false]], [["More body.", 32 / 3, false]], [["", 32 / 3, false]]]);
+            expect(paragraphs.map(paragraph => paragraph.runs.map(run => [run.text, run.fontSize, run.bold]))).toEqual([
+                [["Head line.", 64 / 3, true]],
+                [["", 64 / 3, true]],
+                [["Body text that wraps.", 32 / 3, false]],
+                [["", 32 / 3, false]],
+                [["More body.", 32 / 3, false]],
+                [["", 32 / 3, false]],
+            ]);
             // 1.2 x 8pt lines on every body paragraph, 1.2 x 16pt on the head and its empty paragraph.
             expect(paragraphs.map(paragraph => paragraph.lineBox.height)).toEqual([25.6, 25.6, 12.8, 12.8, 12.8, 12.8].map(height => expect.closeTo(height) as unknown as number));
         }
@@ -604,7 +611,14 @@ describe("text DOM rendering", () => {
         const presentation = new PuppeteerGen();
         const slide = presentation.addSlide();
 
-        slide.addText([{ text: "Intro", options: { breakLine: true } }, { text: "\nTITLE", options: { bold: true, breakLine: false } }, { text: "Description", options: { breakLine: true } }, { text: "Tail" }], { x: 1, y: 1, w: 4, h: 2, fontFace: "Arial", fontSize: 12 });
+        slide.addText([{ text: "Intro", options: { breakLine: true } }, { text: "\nTITLE", options: { bold: true, breakLine: false } }, { text: "Description", options: { breakLine: true } }, { text: "Tail" }], {
+            x: 1,
+            y: 1,
+            w: 4,
+            h: 2,
+            fontFace: "Arial",
+            fontSize: 12,
+        });
         slide.addTable([[{ text: [{ text: "Heading", options: { bold: true } }, { text: "Body" }] }]], { x: 1, y: 3.5, w: 4, align: "left", fontFace: "Arial", fontSize: 12 });
 
         const [box, cell] = Array.from(renderedPage(presentation).querySelectorAll<HTMLElement>(".slide-text, td"), element => Array.from(element.querySelectorAll(".text-paragraph"), paragraph => paragraph.textContent?.replace("\u200b", "")));
@@ -779,7 +793,9 @@ describe("text DOM rendering", () => {
         slide.addText("No height", { x: 1, y: 1, w: 2 });
         slide.addText("Thin", { x: 1, y: 2, w: 2, h: 0.05, margin: [7, 2, 20, 7] });
         slide.addText("Tall", { x: 1, y: 3, w: 2, h: 1 });
-        const [none, thin, tall] = presentation.getModel().slides[0]!.objects.map(object => (object.kind === "text" ? { height: Number(object.style.geometry.height?.toFixed(3)), margin: object.text.margin.map(value => Number(value.toFixed(3))) } : undefined));
+        const [none, thin, tall] = presentation
+            .getModel()
+            .slides[0]!.objects.map(object => (object.kind === "text" ? { height: Number(object.style.geometry.height?.toFixed(3)), margin: object.text.margin.map(value => Number(value.toFixed(3))) } : undefined));
 
         expect(none).toEqual({ height: 0, margin: [0, 9.6, 0, 9.6] });
         expect(thin).toEqual({ height: 4.8, margin: [2.4, 2.667, 2.4, 9.333] });

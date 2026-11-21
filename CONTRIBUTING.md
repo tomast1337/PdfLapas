@@ -59,7 +59,7 @@ image when the host has no matching rustc (`WASM_BUILD=docker` forces it).
 Configuration, in one place each:
 
 - `.editorconfig`: four-space indentation (two in JSON/YAML), LF endings and
-  the 320-column line width, read by both `bun fmt` and WebStorm.
+  the 256-column line width, read by both `bun fmt` and WebStorm.
 - `bunfig.toml` `[fmt]`: the rest of the style (double quotes, semicolons,
   trailing commas, `x => x` arrows) and the files never formatted: the
   wasm-bindgen glue, generated preset shapes, `crates/` and gallery output.

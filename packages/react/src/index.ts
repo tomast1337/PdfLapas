@@ -11,7 +11,13 @@ export type ReactComponentRegistrar = {
 export type ReactComponentOptions<Props extends object> = { schema: z.ZodType<Props>; parseProps?: never } | { schema?: never; parseProps?: (props: ComponentProps) => Props };
 
 /** Register a synchronous React-to-HTML renderer. React code never enters the saved document. */
-export function registerReactComponent<Props extends object, Presentation extends ReactComponentRegistrar>(presentation: Presentation, type: string, version: number, component: ComponentType<Props>, options: ReactComponentOptions<NoInfer<Props>> = {}): Presentation {
+export function registerReactComponent<Props extends object, Presentation extends ReactComponentRegistrar>(
+    presentation: Presentation,
+    type: string,
+    version: number,
+    component: ComponentType<Props>,
+    options: ReactComponentOptions<NoInfer<Props>> = {},
+): Presentation {
     const { schema, parseProps } = options;
 
     if (schema && parseProps) {

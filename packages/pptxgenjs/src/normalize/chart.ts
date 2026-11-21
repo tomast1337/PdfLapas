@@ -448,7 +448,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     const grouping = options.barGrouping;
-    const normalizedGrouping: NormalizedChart["grouping"] = grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : normalizedType === "bar3D" ? PPTX_DEFAULTS.chart.grouping.bar3D : PPTX_DEFAULTS.chart.grouping.bar;
+    const normalizedGrouping: NormalizedChart["grouping"] =
+        grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : normalizedType === "bar3D" ? PPTX_DEFAULTS.chart.grouping.bar3D : PPTX_DEFAULTS.chart.grouping.bar;
     const hasSecondaryValueAxis = series.some(item => item.valueAxisIndex === 1);
 
     if (hasSecondaryValueAxis && valueAxisOptions.length !== 2) {

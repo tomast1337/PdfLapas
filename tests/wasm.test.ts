@@ -255,7 +255,8 @@ describe.skipIf(!canRender)("WASM backend render", () => {
     // A hand-written td without padding took the stylesheet's table margin in Chromium on top of the cell text's
     // padding: 32px rows against WASM's 22.4px (#291). Completion writes padding: 0px, so both lay out the same rows.
     test("gives a completed hand-written table the row heights Chromium gives it", async () => {
-        const cell = (text: string) => `<td style="border-top: 1px solid #000000; border-bottom: 1px solid #000000;"><div class="table-cell-text"><div class="text-content"><div class="text-paragraph"><span class="text-run">${text}</span></div></div></div></td>`;
+        const cell = (text: string) =>
+            `<td style="border-top: 1px solid #000000; border-bottom: 1px solid #000000;"><div class="table-cell-text"><div class="text-content"><div class="text-paragraph"><span class="text-run">${text}</span></div></div></div></td>`;
         const table = `<div class="slide-element slide-table-container" data-object-name="Grid" style="left: 96px; top: 96px; width: 288px;">
           <table class="slide-table" style="width: 288px; table-layout: fixed; border-collapse: collapse;">
             <colgroup><col style="width: 144px;"><col style="width: 144px;"></colgroup>
@@ -348,7 +349,9 @@ describe.skipIf(!canRender)("WASM backend render", () => {
             return new Set([...content.matchAll(/(-?[\d.]+) Tm/g)].map(([, y]) => y)).size;
         });
 
-        expect(cases.map(({ fontSize, bold, lines, steps }, index) => ({ fontSize, bold, lines, steps, drawn: drawn[index] }))).toEqual(cases.map(({ fontSize, bold, lines, steps, expectedLines }) => ({ fontSize, bold, lines, steps, drawn: expectedLines })));
+        expect(cases.map(({ fontSize, bold, lines, steps }, index) => ({ fontSize, bold, lines, steps, drawn: drawn[index] }))).toEqual(
+            cases.map(({ fontSize, bold, lines, steps, expectedLines }) => ({ fontSize, bold, lines, steps, drawn: expectedLines })),
+        );
     });
 
     // Measured against PowerPoint's PDF export of the same deck (tests/boxFloorCases.ts), the two 14pt "Dolor sit AVA"
@@ -518,7 +521,9 @@ describe.skipIf(!canRender)("WASM backend render", () => {
             const chromiumContents = pdfContentStreams(await pres.toPdf());
             // Chromium draws in 1/PRINT_ZOOM CSS px from the page top; WASM in CSS px from a `cm` origin in pt from the bottom.
             const chromium = chromiumContents.flatMap(content => [...content.matchAll(/\n1 0 0 -1 [\d.]+ ([\d.]+) Tm\n/g)].map(([, y]) => Number(y) / PRINT_ZOOM));
-            const wasm = pdfContentStreams(await renderer.render(await pres.toHtml())).flatMap(content => [...content.matchAll(/ -0\.75 [\d.]+ ([\d.]+) cm[^\n]*\nBT [^\n]*? 1 0 0 -1 [\d.]+ ([\d.]+) Tm/g)].map(([, origin, y]) => pointsToPixels(pageTopPt - Number(origin)) + Number(y)));
+            const wasm = pdfContentStreams(await renderer.render(await pres.toHtml())).flatMap(content =>
+                [...content.matchAll(/ -0\.75 [\d.]+ ([\d.]+) cm[^\n]*\nBT [^\n]*? 1 0 0 -1 [\d.]+ ([\d.]+) Tm/g)].map(([, origin, y]) => pointsToPixels(pageTopPt - Number(origin)) + Number(y)),
+            );
 
             // Plain box, then the box with the lowered run: each draws its two runs.
             expect(chromium).toHaveLength(4);
@@ -870,7 +875,9 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const render = (object: string) => renderer.render({ html: completeProfileHtml(handWrittenDocument(object)), pageSize: PAGE });
 
-        await expect(render(HAND_WRITTEN_OBJECTS.text.replace("font-weight: bold;", "font-variant: small-caps;"))).rejects.toThrow("invalid PdfLapas HTML: slide 1: object 'Title': paragraph 1: run 1: CSS property 'font-variant' on <span> is not in profile v2");
+        await expect(render(HAND_WRITTEN_OBJECTS.text.replace("font-weight: bold;", "font-variant: small-caps;"))).rejects.toThrow(
+            "invalid PdfLapas HTML: slide 1: object 'Title': paragraph 1: run 1: CSS property 'font-variant' on <span> is not in profile v2",
+        );
         await expect(render(HAND_WRITTEN_OBJECTS.text.replace("font-weight: bold;", "font-family: &quot;Calibri&quot;, Arial;"))).rejects.toThrow("font-family '\"Calibri\", Arial' is not a list of quoted families");
     });
 });

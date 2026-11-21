@@ -125,7 +125,8 @@ export function paginateTableRows(inputRows: PptxGenJS.TableRow[], options: Pptx
             // nothing, a run without a line feed is trimmed, and a run with line feeds is split, untrimmed, into pieces that
             // each end with a break.
             const text: unknown = cell.text;
-            const runs: ReadonlyArray<{ text?: unknown; options?: PptxGenJS.TableCellProps }> = text && String(text).trim().length === 0 ? [{ text: " " }] : typeof text === "string" || typeof text === "number" ? [{ text: String(text).trim() }] : Array.isArray(text) ? text : [];
+            const runs: ReadonlyArray<{ text?: unknown; options?: PptxGenJS.TableCellProps }> =
+                text && String(text).trim().length === 0 ? [{ text: " " }] : typeof text === "string" || typeof text === "number" ? [{ text: String(text).trim() }] : Array.isArray(text) ? text : [];
             const pieces = runs.flatMap((run): TextPiece[] => {
                 if (typeof run.text !== "string") {
                     return [];

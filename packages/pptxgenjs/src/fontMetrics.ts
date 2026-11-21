@@ -97,7 +97,9 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
                         const issue = parsed.error.issues[0];
                         const field = issue?.path.length ? `${issue.path.map(String).join(".")} ` : "";
 
-                        throw new TypeError(`PuppeteerGen option \`resolveFontMetrics\` returned invalid metrics for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readFontWinMetrics(fontBytes).`);
+                        throw new TypeError(
+                            `PuppeteerGen option \`resolveFontMetrics\` returned invalid metrics for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readFontWinMetrics(fontBytes).`,
+                        );
                     }
 
                     resolved.set(key, Object.freeze(parsed.data));
@@ -137,7 +139,9 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
                     const issue = parsed.error.issues[0];
                     const field = issue?.path[0] === undefined ? "" : `${String(issue.path[0])} `;
 
-                    throw new TypeError(`PuppeteerGen option \`resolveGlyphAdvances\` returned invalid advances for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readGlyphAdvances(fontBytes).`);
+                    throw new TypeError(
+                        `PuppeteerGen option \`resolveGlyphAdvances\` returned invalid advances for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return undefined for a face it cannot find, or readGlyphAdvances(fontBytes).`,
+                    );
                 }
 
                 resolvedAdvances.set(key, Object.freeze(parsed.data));

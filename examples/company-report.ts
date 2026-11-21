@@ -56,7 +56,11 @@ export function buildCompanyReport(pres: pptxgen): pptxgen {
     pres.title = `${COMPANY} annual report 2026 (fictional)`;
     pres.company = COMPANY;
 
-    const logo = svgData(100, 100, `<circle cx="50" cy="50" r="46" fill="#${THEME.white}"/><circle cx="50" cy="50" r="30" fill="#${THEME.teal}"/><circle cx="50" cy="50" r="16" fill="#${THEME.white}"/><polygon points="58,58 86,86 72,90 50,66" fill="#${THEME.amber}"/>`);
+    const logo = svgData(
+        100,
+        100,
+        `<circle cx="50" cy="50" r="46" fill="#${THEME.white}"/><circle cx="50" cy="50" r="30" fill="#${THEME.teal}"/><circle cx="50" cy="50" r="16" fill="#${THEME.white}"/><polygon points="58,58 86,86 72,90 50,66" fill="#${THEME.amber}"/>`,
+    );
     const chartText = { fontFace: FONT, fontSize: 9, titleFontFace: FONT, titleFontSize: 11, titleColor: THEME.navy, legendFontFace: FONT, legendFontSize: 9 } as const;
 
     // 1. Title slide.
@@ -377,7 +381,13 @@ export function buildCompanyReport(pres: pptxgen): pptxgen {
     for (const milestone of milestones) {
         const labelY = milestone.above ? 2.2 : 4.0;
 
-        roadmap.addShape("line", { x: milestone.x, y: milestone.above ? 2.85 : 3.5, w: 0, h: 0.45, line: { color: THEME.teal, width: 1, dashType: "dash", beginArrowType: milestone.above ? "none" : "oval", endArrowType: milestone.above ? "oval" : "none" } });
+        roadmap.addShape("line", {
+            x: milestone.x,
+            y: milestone.above ? 2.85 : 3.5,
+            w: 0,
+            h: 0.45,
+            line: { color: THEME.teal, width: 1, dashType: "dash", beginArrowType: milestone.above ? "none" : "oval", endArrowType: milestone.above ? "oval" : "none" },
+        });
         roadmap.addShape("ellipse", { x: milestone.x - 0.1, y: 3.3, w: 0.2, h: 0.2, fill: { color: THEME.amber }, line: { color: THEME.white, width: 1.5 } });
         roadmap.addText(
             [

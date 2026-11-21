@@ -108,7 +108,8 @@ describe("slide margin convention (PptxGenJS 4.0.1 getSlidesForTableRows: inches
 
     // getSlidesForTableRows counts a row's cell margins only on the page the row starts on (step 6, E/F reset the
     // height after adding them) and repeated header rows count nothing (step G).
-    const longRows = (count: number, lines: (index: number) => number): PptxGenJS.TableRow[] => Array.from({ length: count }, (_, index) => [{ text: `Row ${index + 1}` }, { text: Array.from({ length: lines(index) }, (_, line) => `Line ${line + 1}`).join("\n") }]);
+    const longRows = (count: number, lines: (index: number) => number): PptxGenJS.TableRow[] =>
+        Array.from({ length: count }, (_, index) => [{ text: `Row ${index + 1}` }, { text: Array.from({ length: lines(index) }, (_, line) => `Line ${line + 1}`).join("\n") }]);
 
     test.each<[string, PptxGenJS.TableRow[]]>([
         ["40 one-line rows", longRows(40, () => 1)],

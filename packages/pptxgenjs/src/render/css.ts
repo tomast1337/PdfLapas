@@ -32,7 +32,9 @@ export function styleAttribute(style: InlineStyle): Attribute {
         const calls = Array.from(bare.matchAll(CSS_FUNCTION), ([, name]) => name ?? "");
 
         if (CSS_DELIMITER.test(bare) || !calls.every(name => CSS_FUNCTIONS.has(name))) {
-            throw new Error(`Refusing inline CSS ${property}: ${JSON.stringify(value)}: outside a quoted string a value holds no ; { } \\ or quote and calls only ${[...CSS_FUNCTIONS].join(", ")}. This is a PdfLapas bug: the option behind it should have been refused when it was normalized; please report it.`);
+            throw new Error(
+                `Refusing inline CSS ${property}: ${JSON.stringify(value)}: outside a quoted string a value holds no ; { } \\ or quote and calls only ${[...CSS_FUNCTIONS].join(", ")}. This is a PdfLapas bug: the option behind it should have been refused when it was normalized; please report it.`,
+            );
         }
 
         declarations.push(`${property}: ${value};`);

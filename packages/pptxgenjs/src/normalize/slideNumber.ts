@@ -39,7 +39,15 @@ function slideNumberMargin(margin: unknown): { kind: "margin"; margin: number | 
  * and the default layout, so the slide's placeholder inherits from it what its own props leave out: size, color and
  * font, vertical alignment and insets. Alignment and bold are the slide's own; PptxGenJS reads no other text option.
  */
-export function normalizeSlideNumber(own: PptxGenJS.SlideNumberProps, last: PptxGenJS.SlideNumberProps, slideNumber: number, pageSize: PageSize, bodyFontFace: string, target: RenderingTarget = DEFAULT_RENDERING_TARGET, fontMetrics: FontMetricsLookup = builtInFontMetrics): NormalizedSlideObject {
+export function normalizeSlideNumber(
+    own: PptxGenJS.SlideNumberProps,
+    last: PptxGenJS.SlideNumberProps,
+    slideNumber: number,
+    pageSize: PageSize,
+    bodyFontFace: string,
+    target: RenderingTarget = DEFAULT_RENDERING_TARGET,
+    fontMetrics: FontMetricsLookup = builtInFontMetrics,
+): NormalizedSlideObject {
     const defaults = PPTX_DEFAULTS.slideNumber;
     const emuPerInch = PPTX_DEFAULTS.units.emuPerInch;
     const style = normalizeObjectStyle({ x: own.x, y: own.y, w: own.w || defaults.wEmu / emuPerInch, h: own.h || defaults.hEmu / emuPerInch }, PPTX_DEFAULTS.text, pageSize, defaults.objectName);

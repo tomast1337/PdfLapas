@@ -25,7 +25,11 @@ import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
 
 /** A `placeholder` names one on the slide's layout, which only defineSlideMaster() can define. */
 function placeholderError(method: "addText" | "addImage"): UnsupportedFeatureError {
-    return new UnsupportedFeatureError(`${method}({ placeholder })`, "Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.", "property");
+    return new UnsupportedFeatureError(
+        `${method}({ placeholder })`,
+        "Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.",
+        "property",
+    );
 }
 
 export class PuppeteerSlide implements PptxSlide {
@@ -316,10 +320,18 @@ export class PuppeteerSlide implements PptxSlide {
         // the order of the addText() and addTable() calls; they differ only when a deck adds to a slide after a later
         // one with options both share. Normalize at write time if a deck needs that order.
         const box = { ...textOptions, color: textOptions.color || this.color || PPTX_DEFAULTS.text.color };
-        const normalizedText = normalizeText(text, { color: this.color, ...textOptions, fontFace: textOptions.fontFace ?? this.context.bodyFontFace() }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
-            box,
-            shared: this.context.sharedRunOptions,
-        });
+        const normalizedText = normalizeText(
+            text,
+            { color: this.color, ...textOptions, fontFace: textOptions.fontFace ?? this.context.bodyFontFace() },
+            this.context.target,
+            this.context.fontMetrics,
+            this.context.bodyFontFace(),
+            this.context.bodyFontFace(),
+            {
+                box,
+                shared: this.context.sharedRunOptions,
+            },
+        );
         const height = textStyle.geometry.height ?? 0;
         const width = textStyle.geometry.width ?? 0;
 

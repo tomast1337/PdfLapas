@@ -6,15 +6,25 @@ const pres = new pptxgen();
 const slide = pres.addSlide();
 
 // A run array: each run carries its own options; `breakLine` ends the paragraph after the run.
-slide.addText([{ text: "Bold, ", options: { bold: true } }, { text: "italic, ", options: { italic: true } }, { text: "underlined, ", options: { underline: { style: "sng" } } }, { text: "gray", options: { color: "888888", breakLine: true } }, { text: "Superscript x" }, { text: "2", options: { superscript: true } }], {
-    x: 0.5,
-    y: 0.3,
-    w: 4.5,
-    h: 1.2,
-    fontSize: 18,
-    fontFace: "Arial",
-    color: "333333",
-});
+slide.addText(
+    [
+        { text: "Bold, ", options: { bold: true } },
+        { text: "italic, ", options: { italic: true } },
+        { text: "underlined, ", options: { underline: { style: "sng" } } },
+        { text: "gray", options: { color: "888888", breakLine: true } },
+        { text: "Superscript x" },
+        { text: "2", options: { superscript: true } },
+    ],
+    {
+        x: 0.5,
+        y: 0.3,
+        w: 4.5,
+        h: 1.2,
+        fontSize: 18,
+        fontFace: "Arial",
+        color: "333333",
+    },
+);
 
 // Bullets: plain, indented, numbered and a custom character (a Unicode code point).
 slide.addText(

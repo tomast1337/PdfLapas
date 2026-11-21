@@ -338,7 +338,12 @@ const TEXT_OPTION_SLIDES: readonly { title: string; cases: readonly TextOptionCa
             { name: "text-line-deprecated-ignored", label: "line object; lineSize 6 and lineDash ignored", text: "Outline", options: { x: 0.5, y: 1.25, w: 4, h: 0.75, line: { color: "C00000", width: 2 }, lineSize: 6, lineDash: "dash" } },
             { name: "text-line-hairline", label: "line object without width: hairline", text: "Hairline", options: { x: 5.5, y: 1.25, w: 4, h: 0.75, line: { color: "2F5597" } } },
             { name: "text-line-string-ignored", label: "string line on a text box: no outline", text: "None", options: { x: 0.5, y: 2.75, w: 4, h: 0.75, fill: { color: "F2F2F2" }, line: "C00000" as unknown as PptxGenJS.ShapeLineProps, lineSize: 3 } },
-            { name: "text-line-shape-line-deprecated", label: "shape line: lineSize, lineDash, lineHead, lineTail", text: "", options: { x: 0.5, y: 4.25, w: 4, h: 0.75, shape: "line", line: { color: "2F5597" }, lineSize: 4, lineDash: "dash", lineHead: "triangle", lineTail: "oval" } },
+            {
+                name: "text-line-shape-line-deprecated",
+                label: "shape line: lineSize, lineDash, lineHead, lineTail",
+                text: "",
+                options: { x: 0.5, y: 4.25, w: 4, h: 0.75, shape: "line", line: { color: "2F5597" }, lineSize: 4, lineDash: "dash", lineHead: "triangle", lineTail: "oval" },
+            },
             { name: "text-line-shape-line-string", label: "shape line: string line and lineSize", text: "", options: { x: 5.5, y: 4.25, w: 4, h: 0.75, shape: "line", line: "C00000" as unknown as PptxGenJS.ShapeLineProps, lineSize: 3 } },
         ],
     },
@@ -1986,7 +1991,17 @@ export function populateParityFixture(presentation: Presentation): void {
         const emu = (inches: number) => Math.round(inches * PPTX_DEFAULTS.units.emuPerInch);
 
         slide.addText("Placed in EMU", { x: emu(emuLengths.x), y: emu(emuLengths.y), w: emu(1.9), h: emu(emuLengths.h), fill: { color: "D9EAF7" }, fontFace: "Arial", fontSize: 12, color: "363636", margin: 0 });
-        slide.addTable([[{ text: "colW" }, { text: "EMU" }]], { x: emu(emuLengths.x + 2), y: emu(emuLengths.y), colW: [emu(1), emu(1)], rowH: emu(emuLengths.h), fill: { color: "FFF2CC" }, fontFace: "Arial", fontSize: 12, color: "363636", border: { type: "solid", color: "7F8C8D", pt: 1 } });
+        slide.addTable([[{ text: "colW" }, { text: "EMU" }]], {
+            x: emu(emuLengths.x + 2),
+            y: emu(emuLengths.y),
+            colW: [emu(1), emu(1)],
+            rowH: emu(emuLengths.h),
+            fill: { color: "FFF2CC" },
+            fontFace: "Arial",
+            fontSize: 12,
+            color: "363636",
+            border: { type: "solid", color: "7F8C8D", pt: 1 },
+        });
     }
 
     // A run ending with "\n" keeps its line feeds inside its <a:t>. The empty text after the last one takes no room in the
@@ -2061,7 +2076,17 @@ export function populateParityFixture(presentation: Presentation): void {
         // then writes 1in columns.
         const colWLength = COLW_LENGTH_CASE;
 
-        slide.addTable([[{ text: "1in" }, { text: "1in" }, { text: "1in" }]], { x: colWLength.x, y: colWLength.y, colW: [1, 2], rowH: colWLength.h, fontFace: "Arial", fontSize: 10, color: "363636", fill: { color: "E2EFDA" }, border: { type: "solid", pt: 1, color: "404040" } });
+        slide.addTable([[{ text: "1in" }, { text: "1in" }, { text: "1in" }]], {
+            x: colWLength.x,
+            y: colWLength.y,
+            colW: [1, 2],
+            rowH: colWLength.h,
+            fontFace: "Arial",
+            fontSize: 10,
+            color: "363636",
+            fill: { color: "E2EFDA" },
+            border: { type: "solid", pt: 1, color: "404040" },
+        });
     }
 
     // PptxGenJS writes a custom baseline as baseline="Math.round(baseline * 50)", thousandths of a percent of the run's size
@@ -2073,18 +2098,30 @@ export function populateParityFixture(presentation: Presentation): void {
 
         slide.addText("Custom baselines", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
         for (const { fontSize, x, y, w, h } of CUSTOM_BASELINE_CASES) {
-            slide.addText([{ text: "Base " }, { text: "up", options: { baseline: 600 } }, { text: " mid " }, { text: "down", options: { baseline: -600 } }, { text: " H" }, { text: "+10%", options: { baseline: 200 } }, { text: " H" }, { text: "-50%", options: { baseline: -1000 } }], {
-                x,
-                y,
-                w,
-                h,
-                fontFace: "Arial",
-                fontSize,
-                color: "363636",
-                valign: "top",
-                margin: 0,
-                fill: { color: "F2F2F2" },
-            });
+            slide.addText(
+                [
+                    { text: "Base " },
+                    { text: "up", options: { baseline: 600 } },
+                    { text: " mid " },
+                    { text: "down", options: { baseline: -600 } },
+                    { text: " H" },
+                    { text: "+10%", options: { baseline: 200 } },
+                    { text: " H" },
+                    { text: "-50%", options: { baseline: -1000 } },
+                ],
+                {
+                    x,
+                    y,
+                    w,
+                    h,
+                    fontFace: "Arial",
+                    fontSize,
+                    color: "363636",
+                    valign: "top",
+                    margin: 0,
+                    fill: { color: "F2F2F2" },
+                },
+            );
         }
     }
 
@@ -2502,7 +2539,13 @@ export function populateComponentFixture(presentation: Presentation): void {
             schema,
             render: props => `<div style="width:100%;height:100%;background:#E0E0E0"><div style="width:${Number(props.percent)}%;height:200%;background:#4472C4"></div></div>`,
         });
-        registerReactComponent(presentation, "fixture/react-progress", 1, ({ percent }: z.output<typeof schema>) => createElement("div", { style: { width: "100%", height: "100%", background: "#E0E0E0" } }, createElement("div", { style: { width: `${percent}%`, height: "200%", background: "#4472C4" } })), { schema });
+        registerReactComponent(
+            presentation,
+            "fixture/react-progress",
+            1,
+            ({ percent }: z.output<typeof schema>) => createElement("div", { style: { width: "100%", height: "100%", background: "#E0E0E0" } }, createElement("div", { style: { width: `${percent}%`, height: "200%", background: "#4472C4" } })),
+            { schema },
+        );
         const componentSlide = presentation.addSlide();
 
         for (const [index, box] of componentBoxes.entries()) {

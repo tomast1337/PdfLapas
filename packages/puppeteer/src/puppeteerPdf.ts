@@ -1,4 +1,17 @@
-import { assertHtmlPresentationDocument, assertLinkUrl, checkImagePixels, type HtmlPresentationDocument, type ImagePixelLimits, imagePixelLimits, inchesToPixels, type MissingFont, type MissingFontPolicy, missingFontPolicy, type PresentationRenderer, reportMissingFonts } from "@pdflapas/model";
+import {
+    assertHtmlPresentationDocument,
+    assertLinkUrl,
+    checkImagePixels,
+    type HtmlPresentationDocument,
+    type ImagePixelLimits,
+    imagePixelLimits,
+    inchesToPixels,
+    type MissingFont,
+    type MissingFontPolicy,
+    missingFontPolicy,
+    type PresentationRenderer,
+    reportMissingFonts,
+} from "@pdflapas/model";
 import { withBrowser } from "./browser";
 import { DEFAULT_LAUNCH_OPTIONS, type PuppeteerLaunchOptions } from "./launchOptions";
 import { type DocumentInfo, withDocumentInfo } from "./pdfInfo";
@@ -211,7 +224,9 @@ async function prepareForPrint(): Promise<string[]> {
         if (!(step > 0 && step < 1) || !Number.isInteger(maxSteps) || maxSteps < 0 || !(tolerance >= 0)) {
             const name = box.dataset.objectName ?? "unnamed text box";
 
-            throw new Error(`Cannot print '${name}': a data-text-fit="shrink" box needs data-text-fit-step (between 0 and 1), data-text-fit-max-steps (a whole number) and data-text-fit-tolerance (px); complete hand-written HTML with completeProfileHtml()`);
+            throw new Error(
+                `Cannot print '${name}': a data-text-fit="shrink" box needs data-text-fit-step (between 0 and 1), data-text-fit-max-steps (a whole number) and data-text-fit-tolerance (px); complete hand-written HTML with completeProfileHtml()`,
+            );
         }
 
         const boxStyle = getComputedStyle(box);
@@ -380,7 +395,9 @@ async function prepareForPrint(): Promise<string[]> {
         // CSS word-separator characters, which word-spacing widens; trailing ones and zero-width ones end no line.
         const SEPARATOR = /^[  ]$/;
         const TRAILING = /^[\s​⁠　]$/;
-        const paragraphs = Array.from(document.querySelectorAll<HTMLElement>(".text-paragraph")).filter(paragraph => INTER_WORD.test(paragraph.getAttribute("style") ?? "") && paragraph.style.direction !== "rtl" && paragraph.closest<HTMLElement>(".slide-text")?.dataset.textDirection === "horizontal");
+        const paragraphs = Array.from(document.querySelectorAll<HTMLElement>(".text-paragraph")).filter(
+            paragraph => INTER_WORD.test(paragraph.getAttribute("style") ?? "") && paragraph.style.direction !== "rtl" && paragraph.closest<HTMLElement>(".slide-text")?.dataset.textDirection === "horizontal",
+        );
 
         if (paragraphs.length) {
             // Client rects are in zoomed px, word-spacing in CSS px; the line breaker rounds each piece up to a LayoutUnit.

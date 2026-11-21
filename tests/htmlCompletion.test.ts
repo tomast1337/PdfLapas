@@ -128,7 +128,9 @@ describe("completeProfileHtml()", () => {
         expect(() => completeProfileHtml("")).toThrow("expected a non-empty HTML string, got an empty string");
         expect(() => completeProfileHtml(42 as unknown as string)).toThrow("expected a non-empty HTML string, got number");
         expect(() => completeProfileHtml("<html><body><p>Hi</p></body></html>")).toThrow('not a PdfLapas profile document: add <meta name="pdflapas-profile" content="2"> to <head>');
-        expect(() => completeProfileHtml(handWrittenDocument("", `<meta name="pdflapas-profile" content="3">`))).toThrow(`profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`);
+        expect(() => completeProfileHtml(handWrittenDocument("", `<meta name="pdflapas-profile" content="3">`))).toThrow(
+            `profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`,
+        );
         expect(() => completeProfileHtml(handWrittenDocument("", `<meta name="pdfdeck-profile" content="1"><meta name="pdfdeck-page-size" content="Huge">`))).toThrow("page size 'Huge' is not a known size");
         const em = handWrittenDocument(`<div class="slide-element slide-text" data-object-name="T"><div class="text-content"><div class="text-paragraph"><span class="text-run" style="font-size: 2em;">x</span></div></div></div>`);
 

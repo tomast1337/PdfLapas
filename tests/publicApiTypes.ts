@@ -1,7 +1,20 @@
 // Type-level consumer test (#277): the public API takes the plain numbers and strings of the PptxGenJS docs, never an
 // internal brand (Px, Pt, Inches, CssColor, Html, DataUri). `bun run typecheck` compiles it against the sources and
 // scripts/test-package.ts against the built declarations of each public entry. It is never run.
-import PuppeteerGen, { colorToCSS, convertToPixels, generatePageCSS, inchesToPixels, PAGE_SIZES, percentageToPixels, pointsToPixels, PuppeteerGenPowerPoint, PuppeteerPdfRenderer, printHtml, type PresentationRenderer, type PuppeteerSlide } from "@pdflapas/pptxgenjs";
+import PuppeteerGen, {
+    colorToCSS,
+    convertToPixels,
+    generatePageCSS,
+    inchesToPixels,
+    PAGE_SIZES,
+    percentageToPixels,
+    pointsToPixels,
+    PuppeteerGenPowerPoint,
+    PuppeteerPdfRenderer,
+    printHtml,
+    type PresentationRenderer,
+    type PuppeteerSlide,
+} from "@pdflapas/pptxgenjs";
 import HtmlPuppeteerGen, { pptxHtmlDocument } from "@pdflapas/pptxgenjs/html";
 import { createWasmRenderer } from "@pdflapas/wasm";
 

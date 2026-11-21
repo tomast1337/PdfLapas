@@ -161,7 +161,10 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const frontSideTop = project(sideX, frontDepth, maximum);
     const frontOtherBottom = project(otherX, frontDepth, minimum);
     const floor = polygon("bar3d-floor", [frontSideBottom, frontOtherBottom, backOtherBottom, backSideBottom], `#${PPTX_DEFAULTS.chart.bar3DLighting.floorColor}`);
-    const wall = [polygon("bar3d-wall", [backSideBottom, backOtherBottom, backOtherTop, backSideTop], `#${PPTX_DEFAULTS.chart.bar3DLighting.wallColor}`), polygon("bar3d-wall", [frontSideBottom, backSideBottom, backSideTop, frontSideTop], `#${PPTX_DEFAULTS.chart.bar3DLighting.wallColor}`)];
+    const wall = [
+        polygon("bar3d-wall", [backSideBottom, backOtherBottom, backOtherTop, backSideTop], `#${PPTX_DEFAULTS.chart.bar3DLighting.wallColor}`),
+        polygon("bar3d-wall", [frontSideBottom, backSideBottom, backSideTop, frontSideTop], `#${PPTX_DEFAULTS.chart.bar3DLighting.wallColor}`),
+    ];
     const frame = [
         element("polyline", [["class", "bar3d-frame"], ["points", [frontSideTop, frontSideBottom, frontOtherBottom, backOtherBottom, backOtherTop, backSideTop, frontSideTop].map(p).join(" ")], ...gridStroke]),
         element("polyline", [["class", "bar3d-frame"], ["points", [backSideBottom, backSideTop].map(p).join(" ")], ...gridStroke]),

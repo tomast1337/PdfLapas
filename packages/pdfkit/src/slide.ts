@@ -223,6 +223,25 @@ export function drawSlide(slide: Element, context: SlideContext, size: { width: 
             drawBox(element, style, paint, box);
         }
 
-        reportUnread(element, style, ["data-object-name", "data-shape", "data-text-fit", "data-text-fit-step", "data-text-fit-max-steps", "data-text-fit-tolerance", "data-text-direction", "data-slide", "data-image-sizing", "data-line-dash-array", "data-line-begin-arrow", "data-line-end-arrow"], report, BOX_LAYOUT);
+        reportUnread(
+            element,
+            style,
+            [
+                "data-object-name",
+                "data-shape",
+                "data-text-fit",
+                "data-text-fit-step",
+                "data-text-fit-max-steps",
+                "data-text-fit-tolerance",
+                "data-text-direction",
+                "data-slide",
+                "data-image-sizing",
+                "data-line-dash-array",
+                "data-line-begin-arrow",
+                "data-line-end-arrow",
+            ],
+            report,
+            BOX_LAYOUT,
+        );
     }
 }

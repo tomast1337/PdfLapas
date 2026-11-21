@@ -356,6 +356,39 @@ describe("addText and addImage({ placeholder })", () => {
         expect(filled).toEqual(plain);
     });
 
+    test("title placeholder text takes the head font PptxGenJS resolves when it writes the file, set before or after the text", async () => {
+        const runs: PptxGenJS.TextProps[] = [{ text: "Run" }, { text: "Arial run", options: { fontFace: "Arial" } }];
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+        reference.addSlide({ masterName: "PH" }).addText(structuredClone(runs), { placeholder: "title" });
+        reference.theme = { headFontFace: "Georgia" };
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+        const slideXml = (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+        const themeXml = (await zip.file("ppt/theme/theme1.xml")?.async("string")) ?? "";
+
+        // The runs name no font but their own, so the title's comes from the master's +mj-lt: the theme's major font.
+        expect(slideXml.match(/<a:latin typeface="[^"]*"/g)).toEqual(['<a:latin typeface="Arial"']);
+        expect(themeXml).toContain('<a:majorFont><a:latin typeface="Georgia"');
+
+        const before = new PuppeteerGen();
+        const after = new PuppeteerGen();
+
+        before.theme = { headFontFace: "Georgia" };
+        before.defineSlideMaster(PLACEHOLDER_MASTER);
+        before.addSlide({ masterName: "PH" }).addText(runs, { placeholder: "title" });
+        after.defineSlideMaster(PLACEHOLDER_MASTER);
+        after.addSlide({ masterName: "PH" }).addText(runs, { placeholder: "title" });
+        expect(after.getModel().slides[0]?.objects[1]).toMatchObject({ text: { paragraphs: [{ runs: [{ fontFace: "Calibri Light" }, { fontFace: "Arial" }] }] } });
+        after.theme = { headFontFace: "Georgia" };
+
+        const { slides } = after.getModel();
+
+        expect(slides).toEqual(before.getModel().slides);
+        expect(slides[0]?.objects[1]).toMatchObject({ text: { paragraphs: [{ runs: [{ fontFace: "Georgia" }, { fontFace: "Arial" }] }] } });
+    });
+
     test("a body placeholder without a size takes the bodyStyle's 32pt with 20% space before after its first paragraph; a run array keeps each run's color", () => {
         const runs: PptxGenJS.TextProps[] = [
             { text: "A", options: { breakLine: true } },

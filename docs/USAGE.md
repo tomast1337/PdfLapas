@@ -474,8 +474,10 @@ LibreOffice target ignores `fontMetrics` (its `underline` too: it draws its own 
 depend on the font; it never calls the resolver.
 
 `resolveFontMetrics` takes a face name and returns `{ kind: "metrics", metrics }`, or `{ kind: "unknown" }` to
-fall through to `FONT_WIN_METRICS`. It is called at most once per face per presentation, only for the PowerPoint target and
-only for faces `fontMetrics` does not list; a result that is not one of those two, or carries invalid metrics,
+fall through to `FONT_WIN_METRICS`, or `{ kind: "unreadable", face, path, reason }` for a font file it found
+but could not read: the face falls through as an unknown one and `pres.warnings()` lists a line naming the
+face, file and reason. It is called at most once per face per presentation, only for the PowerPoint target and
+only for faces `fontMetrics` does not list; a result that is not one of those three, or carries invalid metrics,
 throws a `TypeError` naming the face. Pass your own to look fonts up elsewhere, or `null` to turn the lookup off:
 
 ```typescript
@@ -499,7 +501,17 @@ caches that face's result for the life of the process (a font installed later is
 lookups are synchronous; on a server, the first deck after start pays for the list. It needs fontconfig's
 `fc-list` and `fc-match` on the `PATH`: Linux has them; on macOS and Windows
 without fontconfig every face falls through to `FONT_WIN_METRICS`. A font file it cannot read (truncated,
-WOFF) is skipped with a `console.warn` naming the face and file, and the face falls through the same way.
+WOFF) is `unreadable`: the face falls through the same way, and `pres.warnings()` names the face and file,
+once per presentation (the file is parsed once per process):
+
+```typescript
+const { html } = await pres.toHtml();
+
+for (const warning of pres.warnings()) {
+    console.warn(warning); // cannot read the metrics of "My Brand Sans" from /usr/share/fonts/… (…); …
+}
+```
+
 The `@pdflapas/pptxgenjs/html` entry has no default resolver.
 
 **Glyph advances for the PowerPoint target.** PowerPoint lays text out with each glyph's advance rounded to
@@ -509,7 +521,8 @@ widths of the font the run's face, weight and style resolve to. `options.resolve
 italic)` finds them: by default on Node the installed font fontconfig matches (when its family is the face),
 read with `readGlyphAdvances(bytes, faceIndex = 0)`, which is browser-safe and throws `FontFileError` on a
 font it cannot read. It is called at most once per face, weight and style per presentation, never for the
-LibreOffice target. It returns `{ kind: "advances", advances }` or `{ kind: "unknown" }`; anything else, or
+LibreOffice target. It returns `{ kind: "advances", advances }`, `{ kind: "unknown" }` or `{ kind: "unreadable",
+face, path, reason }` (natural advances, and a `warnings()` line, as for `resolveFontMetrics`); anything else, or
 advances that are not `{ unitsPerEm, advances: Map<codePoint, fontUnits> }` with an optional
 `kerning: Map<leftCodePoint, Map<rightCodePoint, fontUnits>>` (the `kern` table's pairs, which kerned runs add), throws a
 `TypeError` naming the face. A face it returns `{ kind: "unknown" }` for, every face with `resolveGlyphAdvances: null`,

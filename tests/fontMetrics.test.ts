@@ -7,6 +7,9 @@ import { normalizeText } from "../packages/pptxgenjs/src/normalize/text";
 import { fontMetricsLookup } from "../packages/pptxgenjs/src/fontMetrics";
 import { resolveInstalledFontMetrics, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
 
+// The `warn` of a lookup whose resolvers never report an unreadable font file.
+const NO_WARNINGS = (): void => {};
+
 /**
  * A minimal sfnt: a head table with unitsPerEm and an OS/2 table with usWinAscent and usWinDescent (`os2Length` bytes),
  * `kern` as its kern table when given, an empty GPOS table with `gpos`, and `version` as its sfnt version (TrueType's
@@ -148,7 +151,7 @@ describe("fontMetrics option", () => {
 
     test("an entry's underline replaces the face's post band on the PowerPoint target only, in em in the model and the HTML (#391)", async () => {
         const underline = { position: -45, thickness: 72 };
-        const lookup = fontMetricsLookup({ "My Brand Sans": { ...BRAND, underline }, "My Brand Serif": BRAND }, null);
+        const lookup = fontMetricsLookup({ "My Brand Sans": { ...BRAND, underline }, "My Brand Serif": BRAND }, null, undefined, NO_WARNINGS);
         const decoration = (fontFace: string, target: "powerpoint" | "libreoffice" = "powerpoint", options: PptxGenJS.TextPropsOptions = { underline: { style: "sng" } }) =>
             normalizeText("Line", { fontFace, fontSize: 18, ...options }, target, lookup).paragraphs[0]?.runs[0]?.decoration;
 
@@ -186,7 +189,7 @@ describe("fontMetrics option", () => {
     });
 
     test("looks the caller's faces up over FONT_WIN_METRICS, case-insensitively, frozen", () => {
-        const lookup = fontMetricsLookup({ "My Brand Sans": BRAND, ARIAL: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } }, null);
+        const lookup = fontMetricsLookup({ "My Brand Sans": BRAND, ARIAL: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } }, null, undefined, NO_WARNINGS);
 
         expect(lookup("my brand sans")).toEqual({ kind: "metrics", metrics: BRAND });
         expect(lookup("Arial")).toEqual({ kind: "metrics", metrics: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } });
@@ -195,13 +198,13 @@ describe("fontMetrics option", () => {
 
         expect(brand.kind === "metrics" && Object.isFrozen(brand.metrics)).toBe(true);
         expect(lookup("constructor")).toEqual({ kind: "unknown" });
-        expect(fontMetricsLookup(undefined, undefined)("ARIAL")).toEqual({ kind: "metrics", metrics: FONT_WIN_METRICS.arial! });
+        expect(fontMetricsLookup(undefined, undefined, undefined, NO_WARNINGS)("ARIAL")).toEqual({ kind: "metrics", metrics: FONT_WIN_METRICS.arial! });
     });
 
     // 18pt = 24px on a 28.8px line: the baseline is the line's winAscent share, on the PowerPoint target's 1/600 in grid.
     test("the PowerPoint target places a single-spaced baseline from the caller's metrics; LibreOffice ignores them", () => {
         const baseline = (fontFace: string, target: "libreoffice" | "powerpoint", fontMetrics?: FontMetricsLookup) => normalizeText("Line", { fontFace, fontSize: 18 }, target, fontMetrics).paragraphs[0]?.lineBox.baseline;
-        const table = fontMetricsLookup({ "My Brand Sans": BRAND, Arial: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } }, null);
+        const table = fontMetricsLookup({ "My Brand Sans": BRAND, Arial: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } }, null, undefined, NO_WARNINGS);
 
         // An unlisted face: 1em without the option, 28.8 x 950/1200 = 22.8 (22.72 on the grid) with it.
         expect(baseline("My Brand Sans", "powerpoint")).toBeCloseTo(24, 6);
@@ -393,6 +396,33 @@ describe("resolveFontMetrics option", () => {
         );
         // `as`: the option arrives unchecked from JavaScript callers.
         expect(() => new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: "fc-match" as unknown as null })).toThrow("`resolveFontMetrics` must be a function, or null to turn the lookup off");
+    });
+
+    // #456: the default resolvers used to report a font file they could not parse only with console.warn.
+    test("an unreadable font file lays the face out as unknown and is listed once in warnings(), naming the face and file", async () => {
+        const unreadable = { kind: "unreadable", face: "My Brand Sans", path: "/fonts/MyBrandSans.woff", reason: "WOFF is not read" } as const;
+        const calls: string[] = [];
+        const resolveFontMetrics = (face: string) => (calls.push(face), face === "My Brand Sans" ? unreadable : ({ kind: "unknown" } as const));
+        const resolveGlyphAdvances = (face: string) => (face === "My Brand Sans" ? unreadable : ({ kind: "unknown" } as const));
+        const presentation = new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics, resolveGlyphAdvances });
+
+        expect(presentation.warnings()).toEqual([]);
+        // The same baseline as a face the resolver does not know.
+        expect(await baselines(presentation, ["My Brand Sans", "My Brand Sans", "No Such Font 123"])).toEqual([24, 24, 24]);
+        await presentation.toHtml();
+        expect(calls.filter(face => face === "My Brand Sans")).toHaveLength(1);
+        expect(presentation.warnings()).toEqual([
+            'cannot read the metrics of "My Brand Sans" from /fonts/MyBrandSans.woff (WOFF is not read); the PowerPoint target uses FONT_WIN_METRICS or the font-independent baseline for it.',
+            'cannot read the advances of "My Brand Sans" from /fonts/MyBrandSans.woff (WOFF is not read); the PowerPoint target keeps its natural advances.',
+        ]);
+        // Each presentation has its own list.
+        expect(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics }).warnings()).toEqual([]);
+    });
+
+    test("an unreadable result is checked like the others", async () => {
+        const incomplete = () => ({ kind: "unreadable", face: "My Brand Sans" }) as unknown as FontMetricsResult;
+
+        await expect(baselines(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: incomplete }), ["My Brand Sans"])).rejects.toThrow('`resolveFontMetrics` returned invalid metrics for "My Brand Sans"');
     });
 });
 

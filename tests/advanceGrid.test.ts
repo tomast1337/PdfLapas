@@ -15,6 +15,9 @@ import { type BoxFloorCase, boxFloorCases, boxFloorDeck, contextFloorCases } fro
 import { kernWrapCases, kernWrapDeck } from "./kernWrapCases";
 import { wrapLimitCases, wrapLimitDeck } from "./wrapLimitCases";
 
+// The `warn` of a lookup whose resolvers never report an unreadable font file.
+const NO_WARNINGS = (): void => {};
+
 afterAll(closeBrowser);
 
 const GRID = RENDERING_TARGETS.powerpoint.advanceGridPt;
@@ -459,7 +462,7 @@ describe("resolveGlyphAdvances option", () => {
     const font = (fontFace: string) => ({ fontFace, fontSize: 8, margin: 0 });
 
     test("carries the grid's sums from run to run of a paragraph, and starts them again at a soft break", () => {
-        const lookup = fontMetricsLookup(undefined, null, () => found(ARIAL));
+        const lookup = fontMetricsLookup(undefined, null, () => found(ARIAL), NO_WARNINGS);
         const runs = normalizeText([{ text: "i a" }, { text: " i" }, { text: "i a", options: { softBreakBefore: true } }, { text: "a", options: { softBreakBefore: true } }], { ...font("Arial"), fontSize: 7 }, "powerpoint", lookup).paragraphs[0]?.runs;
         const words = (text: string) => wordSpacing(text, 7, ARIAL, GRID, 0, false)?.words;
 
@@ -469,7 +472,7 @@ describe("resolveGlyphAdvances option", () => {
     });
 
     test("lays the PowerPoint target's words out on the grid as letter-spacing, composed with charSpacing", () => {
-        const lookup = fontMetricsLookup(undefined, null, () => found(ARIAL));
+        const lookup = fontMetricsLookup(undefined, null, () => found(ARIAL), NO_WARNINGS);
         const run = (text: string, options: PptxGenJS.TextPropsOptions = {}, target: "powerpoint" | "libreoffice" = "powerpoint") => normalizeText(text, { ...font("Arial"), ...options }, target, lookup).paragraphs[0]?.runs[0];
         const spacing = (charSpacing: number) => wordSpacing("a i", 8, ARIAL, GRID, charSpacing, false);
 
@@ -564,7 +567,7 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
             "A To",
             { fontFace: "My Brand Sans", fontSize },
             target,
-            fontMetricsLookup(undefined, null, () => found(advances)),
+            fontMetricsLookup(undefined, null, () => found(advances), NO_WARNINGS),
         ).paragraphs[0]?.runs[0];
 
     test("draws a face whose advances carry no kern pairs unkerned at 12pt and above; LibreOffice is unchanged", () => {
@@ -599,7 +602,7 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
             "A To",
             { fontFace: "Arial", fontSize: 12 },
             "powerpoint",
-            fontMetricsLookup(undefined, null, () => found(arial)),
+            fontMetricsLookup(undefined, null, () => found(arial), NO_WARNINGS),
         ).paragraphs[0]?.runs[0];
 
         expect(kerned).not.toHaveProperty("kerning");
@@ -614,7 +617,7 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
                 "AVATAR",
                 { fontFace: "Noto Sans", fontSize: 12 },
                 "powerpoint",
-                fontMetricsLookup(undefined, null, () => found(noto)),
+                fontMetricsLookup(undefined, null, () => found(noto), NO_WARNINGS),
             ).paragraphs[0]?.runs[0]?.kerning,
         ).toBe(false);
     });

@@ -2,7 +2,7 @@
 // reading them from font bytes; glyph advances for the PowerPoint target's advance grid (`resolveGlyphAdvances`) the same
 // way. Browser-safe: bytes in, no node:* module.
 import { z } from "zod";
-import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsResult, type FontMetricsTable, type FontWinMetrics, type GlyphAdvanceLookup, type GlyphAdvances, type GlyphAdvancesResult } from "./defaults";
+import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsResult, type FontMetricsTable, type FontWinMetrics, type GlyphAdvanceLookup, type GlyphAdvances, type GlyphAdvancesResult, type UnreadableFont } from "./defaults";
 
 const integer = (min: 0 | 1, what: string) => z.int({ error: `must be ${what}` }).min(min, { error: `must be ${what}` });
 
@@ -28,8 +28,12 @@ const FONT_METRICS_OPTION_SCHEMA = z.record(z.string(), FONT_WIN_METRICS_SCHEMA,
 
 const UNKNOWN = { kind: "unknown" } as const;
 const RESULT_ERROR = (found: string) => `must be { kind: "${found}", ${found} } or { kind: "unknown" }`;
+// A font file a resolver could not read (UnreadableFont); either resolver may return it.
+const UNREADABLE_SCHEMA = z.strictObject({ kind: z.literal("unreadable"), face: z.string(), path: z.string(), reason: z.string() });
 // A resolver's result: the discriminator checked first, so an old-style bare value or undefined names the result shape.
-const FONT_METRICS_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("metrics"), metrics: FONT_WIN_METRICS_SCHEMA }), z.strictObject({ kind: z.literal("unknown") })], { error: RESULT_ERROR("metrics") });
+const FONT_METRICS_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("metrics"), metrics: FONT_WIN_METRICS_SCHEMA }), z.strictObject({ kind: z.literal("unknown") }), UNREADABLE_SCHEMA], {
+    error: RESULT_ERROR("metrics"),
+});
 
 const HOW_TO_FIX = 'Pass font units from the font\'s head and OS/2 tables, e.g. fontMetrics: { "My Brand Sans": readFontWinMetrics(fontBytes) }.';
 
@@ -38,9 +42,10 @@ const HOW_TO_FIX = 'Pass font units from the font\'s head and OS/2 tables, e.g. 
  * `resolve` (the Node entry reads the installed font), else FONT_WIN_METRICS; `unknown` keeps the font-independent
  * baseline. `resolve` runs only when a face is looked up, at most once per face for the presentation that owns the lookup.
  * Its `glyphAdvances` looks a face's advances up through `resolveAdvances` the same way, per weight and style; without
- * one, no face has advances.
+ * one, no face has advances. A font file either resolver could not read is laid out as unknown, and `warn` gets a line
+ * naming it, once per face (and weight and style) for this lookup.
  */
-export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | null | undefined, resolveAdvances?: unknown): FontMetricsLookup {
+export function fontMetricsLookup(option: unknown, resolve: ((fontFace: string) => FontMetricsResult | UnreadableFont) | null | undefined, resolveAdvances: unknown, warn: (message: string) => void): FontMetricsLookup {
     if (resolve !== undefined && resolve !== null && typeof resolve !== "function") {
         throw new TypeError(`PuppeteerGen option \`resolveFontMetrics\` must be a function, or null to turn the lookup off; got ${typeof resolve}.`);
     }
@@ -105,6 +110,12 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
                     );
                 }
 
+                if (parsed.data.kind === "unreadable") {
+                    const { face, path, reason } = parsed.data;
+
+                    warn(`cannot read the metrics of ${JSON.stringify(face)} from ${path} (${reason}); the PowerPoint target uses FONT_WIN_METRICS or the font-independent baseline for it.`);
+                }
+
                 metrics = parsed.data.kind === "metrics" ? { kind: "metrics", metrics: Object.freeze(parsed.data.metrics) } : UNKNOWN;
                 resolved.set(key, metrics);
             }
@@ -133,7 +144,7 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
 
         // Its result checked: unknown (not found) or valid advances. Anything else is the resolver's bug, so it throws.
         // `as`: typeof checked it is a function, and the schema checks what it returns.
-        const parsed = GLYPH_ADVANCES_RESULT_SCHEMA.safeParse((resolveAdvances as GlyphAdvanceLookup)(fontFace, bold, italic));
+        const parsed = GLYPH_ADVANCES_RESULT_SCHEMA.safeParse((resolveAdvances as (face: string, bold: boolean, italic: boolean) => unknown)(fontFace, bold, italic));
 
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
@@ -142,6 +153,12 @@ export function fontMetricsLookup(option: unknown, resolve: FontMetricsLookup | 
             throw new TypeError(
                 `PuppeteerGen option \`resolveGlyphAdvances\` returned invalid advances for ${JSON.stringify(fontFace)}: ${field}${issue?.message ?? "is invalid"}. Return { kind: "unknown" } for a face it cannot find, or { kind: "advances", advances: readGlyphAdvances(fontBytes) }.`,
             );
+        }
+
+        if (parsed.data.kind === "unreadable") {
+            const { face, path, reason } = parsed.data;
+
+            warn(`cannot read the advances of ${JSON.stringify(face)}${bold ? " bold" : ""}${italic ? " italic" : ""} from ${path} (${reason}); the PowerPoint target keeps its natural advances.`);
         }
 
         const result: GlyphAdvancesResult = parsed.data.kind === "advances" ? { kind: "advances", advances: Object.freeze(parsed.data.advances) } : UNKNOWN;
@@ -344,7 +361,7 @@ const GLYPH_ADVANCES_SCHEMA = z.strictObject({
     advances: z.map(CODE_POINT, z.number().min(0).max(Number.MAX_SAFE_INTEGER), { error: "must be a Map from code point to advance width in font units" }),
     kerning: z.map(CODE_POINT, z.map(CODE_POINT, z.number().finite(), { error: KERNING_ERROR }), { error: KERNING_ERROR }).optional(),
 });
-const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("advances"), advances: GLYPH_ADVANCES_SCHEMA }), z.strictObject({ kind: z.literal("unknown") })], {
+const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("advances"), advances: GLYPH_ADVANCES_SCHEMA }), z.strictObject({ kind: z.literal("unknown") }), UNREADABLE_SCHEMA], {
     error: RESULT_ERROR("advances"),
 });
 

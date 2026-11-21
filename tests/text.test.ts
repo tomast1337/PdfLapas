@@ -302,6 +302,19 @@ describe("text normalization", () => {
         expect(legacyStyle.paragraphs[0]?.bullet?.marker).toBe("iii)");
     });
 
+    // #491: PptxGenJS 4.0.1 writes `numberStartAt || startAt || '1'`, `style || 'arabicPeriod'`, takes `indent` only
+    // when truthy and `code` when `characterCode` is falsy, so a falsy value falls through.
+    test("lets a falsy bullet option fall through as PptxGenJS's || does", () => {
+        const bullet = (config: PptxGenJS.TextPropsOptions["bullet"]) => normalizeText("item", { bullet: config }).paragraphs[0]?.bullet;
+
+        expect(bullet({ type: "number", numberStartAt: 0 })).toMatchObject({ marker: "1.", start: 1 });
+        expect(bullet({ type: "number", numberStartAt: 0, startAt: 3 })).toMatchObject({ marker: "3.", start: 3 });
+        expect(bullet({ type: "number", startAt: 0 })).toMatchObject({ marker: "1.", start: 1 });
+        expect(bullet({ type: "number", style: "" })).toMatchObject({ marker: "1.", numberType: "arabicPeriod" });
+        expect(bullet({ characterCode: "", code: "25BA" })).toMatchObject({ marker: "►" });
+        expect(bullet({ indent: 0 })?.indent).toBe(pointsToPixels(PPTX_DEFAULTS.bullet.indentPt));
+    });
+
     // PowerPoint starts a new list at its own startAt when <a:buAutoNum>'s type or startAt changes (sequenceIndex).
     describe("restarts the numbering when the scheme changes", () => {
         const item = (text: string, style: "arabicPeriod" | "alphaUcPeriod" | "alphaLcPeriod" | "romanUcPeriod", numberStartAt: number) => ({ text, options: { bullet: { type: "number" as const, style, numberStartAt }, breakLine: true } });

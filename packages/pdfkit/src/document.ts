@@ -1,6 +1,6 @@
 // One render: parses the profile HTML once, writes one PDFKit page per slide container and collects what the
 // renderer could not draw and the faces it had no font for.
-import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, profileMetaPrefix } from "@pdflapas/model";
+import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, checkProfileVersion, PROFILE_META_PREFIX } from "@pdflapas/model";
 import PDFDocument from "pdfkit";
 import { attribute, children, descendants, hasClass, parseDocument, textContent } from "./dom";
 import type { Face } from "./fonts";
@@ -28,7 +28,10 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const { pageSize } = htmlDocument(html);
     const root = parseDocument(html).find(element => element.tagName === "html");
     const [head, body] = [root && children(root).find(element => element.tagName === "head"), root && children(root).find(element => element.tagName === "body")];
-    const prefix = profileMetaPrefix(name => (head ? children(head).find(element => element.tagName === "meta" && attribute(element, "name") === name) : undefined)?.attrs.find(attr => attr.name === "content")?.value);
+    const profile = head && children(head).find(element => element.tagName === "meta" && attribute(element, "name") === `${PROFILE_META_PREFIX}profile`);
+    const version = profile && attribute(profile, "content");
+
+    checkProfileVersion(version === undefined ? { kind: "none" } : { kind: "content", content: version });
     const slides = body ? children(body).filter(element => hasClass(element, "slide-container")) : [];
     const size = [inchesToPoints(pageSize.width), inchesToPoints(pageSize.height)];
     // The document properties (docs/HTML_PROFILE.md "Document properties").
@@ -45,14 +48,14 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
             Author: meta("author"),
             Subject: meta("description"),
             Keywords: meta("keywords"),
-            Creator: meta(`${prefix}creator`),
-            Producer: meta(`${prefix}producer`),
-            Company: meta(`${prefix}company`),
-            Revision: meta(`${prefix}revision`),
+            Creator: meta(`${PROFILE_META_PREFIX}creator`),
+            Producer: meta(`${PROFILE_META_PREFIX}producer`),
+            Company: meta(`${PROFILE_META_PREFIX}company`),
+            Revision: meta(`${PROFILE_META_PREFIX}revision`),
         };
         const profileDates: (Date | undefined)[] = [];
 
-        for (const value of [meta(`${prefix}creation-date`), meta(`${prefix}modification-date`)]) {
+        for (const value of [meta(`${PROFILE_META_PREFIX}creation-date`), meta(`${PROFILE_META_PREFIX}modification-date`)]) {
             if (!value) {
                 profileDates.push(undefined);
                 continue;

@@ -6,7 +6,7 @@
  * Pure and browser-safe: parse5 finds what is missing, and each missing value is spliced into the original
  * string, so a document that already states everything (every `toHtml()` result) comes back byte-identical.
  */
-import { applySourceEdits, htmlDocument, type HtmlPresentationDocument, inchesToPixels, pointsToPixels, profileMetaPrefix, type SourceEdit } from "@pdflapas/model";
+import { applySourceEdits, htmlDocument, type HtmlPresentationDocument, inchesToPixels, pointsToPixels, checkProfileVersion, PROFILE_META_PREFIX, type SourceEdit } from "@pdflapas/model";
 import { type DefaultTreeAdapterTypes, parse } from "parse5";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { normalizeColor } from "#src/normalize/style";
@@ -344,18 +344,15 @@ export function completeProfileHtml(html: string): string {
 
     const document = parse(html, { sourceCodeLocationInfo: true });
     const head = findElement(document, element => element.tagName === "head");
-    // Without a <head> there is no profile <meta>, so profileMetaPrefix throws.
-    const prefix = profileMetaPrefix(name => {
-        const meta = head.kind === "found" ? metaContent(head.element, name) : { kind: "none" as const };
 
-        return meta.kind === "content" ? meta.content : undefined;
-    });
+    // Without a <head> there is no profile <meta>, so checkProfileVersion throws.
+    checkProfileVersion(head.kind === "found" ? metaContent(head.element, `${PROFILE_META_PREFIX}profile`) : { kind: "none" });
     const edits: SourceEdit[] = [];
 
-    // The shared stylesheet when no `<style>` has an `@page` rule: for the size `<prefix>page-size` names, else
+    // The shared stylesheet when no `<style>` has an `@page` rule: for the size `pdflapas-page-size` names, else
     // PptxGenJS's LAYOUT_16x9, whose name it also writes so `htmlDocument` reads the whole page size.
     if (head.kind === "found") {
-        const meta = metaContent(head.element, `${prefix}page-size`);
+        const meta = metaContent(head.element, `${PROFILE_META_PREFIX}page-size`);
         const name = meta.kind === "content" ? meta.content : undefined;
         let hasPageRule = false;
 
@@ -380,7 +377,7 @@ export function completeProfileHtml(html: string): string {
             if (!pageSize) {
                 const known = Object.values(PAGE_SIZES).flatMap(layout => [layout.landscape.name, layout.portrait.name]);
 
-                throw new Error(`invalid PdfLapas HTML: page size '${name}' is not a known size (${known.join(", ")}); name one of them in <meta name="${prefix}page-size">, or add a <style> with '@page { size: <width>in <height>in }'`);
+                throw new Error(`invalid PdfLapas HTML: page size '${name}' is not a known size (${known.join(", ")}); name one of them in <meta name="${PROFILE_META_PREFIX}page-size">, or add a <style> with '@page { size: <width>in <height>in }'`);
             }
 
             const end = head.element.sourceCodeLocation?.endTag?.startOffset;
@@ -389,7 +386,7 @@ export function completeProfileHtml(html: string): string {
                 throw new Error("invalid PdfLapas HTML: the document must write out <head>…</head> to receive the stylesheet");
             }
 
-            const pageSizeMeta = name === undefined ? `<meta name="${prefix}page-size" content="${escapeAttribute(pageSize.name)}">` : "";
+            const pageSizeMeta = name === undefined ? `<meta name="${PROFILE_META_PREFIX}page-size" content="${escapeAttribute(pageSize.name)}">` : "";
 
             edits.push({ start: end, end, text: `${pageSizeMeta}<style id="puppeteer-gen-styles">${presentationCSS(pageSize)}</style>` });
         }

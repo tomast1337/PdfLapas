@@ -8,13 +8,16 @@ export const HTML_PROFILE_VERSION = 2;
 export const CUSTOM_PAGE_SIZE_NAME = "Custom";
 
 /** The prefix of the profile's `<meta>` names (`pdflapas-profile`, `pdflapas-page-size`, ...). */
-const META_PREFIX = "pdflapas-";
-const PROFILE_META = `<meta name="${META_PREFIX}profile" content="${HTML_PROFILE_VERSION}">`;
+export const PROFILE_META_PREFIX = "pdflapas-";
+const PROFILE_META = `<meta name="${PROFILE_META_PREFIX}profile" content="${HTML_PROFILE_VERSION}">`;
 const PAGE_RULE = /@page\s*\{[^}]*?\bsize:\s*([^\s;}]+)in\s+([^\s;}]+)in\s*[;}]/;
 const CSS_COMMENT = /\/\*[\s\S]*?\*\//g;
 
-/** The `content` of the first `<meta name="<name>">`; none when there is no such `<meta>` or it has no `content`. */
-function metaContent(scan: HtmlScan, name: string): { kind: "content"; content: string } | { kind: "none" } {
+/** The `content` of a `<meta>`; none when there is no such `<meta>` or it has no `content`. */
+export type MetaContent = { kind: "content"; content: string } | { kind: "none" };
+
+/** The `content` of the first `<meta name="<name>">`. */
+function metaContent(scan: HtmlScan, name: string): MetaContent {
     const content = scan.metas.find(attributes => attributes.get("name") === name)?.get("content");
 
     return content === undefined ? { kind: "none" } : { kind: "content", content };
@@ -32,11 +35,8 @@ export function htmlDocument(html: string): HtmlPresentationDocument {
     }
 
     const scan = scanHtml(html);
-    const prefix = profileMetaPrefix(name => {
-        const meta = metaContent(scan, name);
 
-        return meta.kind === "content" ? meta.content : undefined;
-    });
+    checkProfileVersion(metaContent(scan, `${PROFILE_META_PREFIX}profile`));
     // The size of the first `@page` rule in the document's `<style>` elements, outside CSS comments.
     let match: RegExpExecArray | null = null;
 
@@ -54,27 +54,22 @@ export function htmlDocument(html: string): HtmlPresentationDocument {
         throw new Error("invalid PdfLapas HTML: the stylesheet's @page rule has no 'size: <width>in <height>in'; write the page size in inches, as <style>@page { size: 10in 5.625in; margin: 0 }</style> in <head>");
     }
 
-    const pageSizeName = metaContent(scan, `${prefix}page-size`);
+    const pageSizeName = metaContent(scan, `${PROFILE_META_PREFIX}page-size`);
 
     return { html, pageSize: { width: inches(width), height: inches(height), name: pageSizeName.kind === "content" ? pageSizeName.content : CUSTOM_PAGE_SIZE_NAME } };
 }
 
 /**
- * The prefix of a profile document's `<meta>` names, `pdflapas-`, once the document declares the version readers accept.
- * `metaContent` reads the `content` of the document's `<meta name="<name>">`. Throws when the document declares no
- * profile version, or another one.
+ * Checks the profile version a document declares, `version` being the `content` of its
+ * `<meta name="pdflapas-profile">` as the caller's parser reads it. Throws when the document declares no profile
+ * version, or another one than `HTML_PROFILE_VERSION`.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function profileMetaPrefix(metaContent: (name: string) => string | undefined): string {
-    const version = metaContent(`${META_PREFIX}profile`);
-
-    if (version === String(HTML_PROFILE_VERSION)) {
-        return META_PREFIX;
-    }
-
-    if (version === undefined) {
+export function checkProfileVersion(version: MetaContent): void {
+    if (version.kind === "none") {
         throw new Error(`invalid PdfLapas HTML: not a PdfLapas profile document: add ${PROFILE_META} to <head>. Puppeteer prints any HTML through renderer.render({ html, pageSize }).`);
     }
 
-    throw new Error(`invalid PdfLapas HTML: profile version '${version}' in <meta name="${META_PREFIX}profile"> is not supported (this library reads ${PROFILE_META})`);
+    if (version.content !== String(HTML_PROFILE_VERSION)) {
+        throw new Error(`invalid PdfLapas HTML: profile version '${version.content}' in <meta name="${PROFILE_META_PREFIX}profile"> is not supported (this library reads ${PROFILE_META})`);
+    }
 }

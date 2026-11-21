@@ -525,5 +525,8 @@
   },
   "chartBarOrder": {
     "p1-Chart0": 0.1699
+  },
+  "chartLegendOrder": {
+    "p1-Chart0": 0.2878
   }
 }

@@ -25,10 +25,16 @@ type ShapeSpace = {
 };
 
 function numberAttribute(element: Element, name: string): number {
-    const value = hasAttribute(element, name) ? Number(attribute(element, name, "")) : Number.NaN;
+    const message = `invalid PdfLapas HTML: <${element.tagName}> attribute '${name}' is missing or not a number`;
+
+    if (!hasAttribute(element, name)) {
+        throw new Error(message);
+    }
+
+    const value = Number(attribute(element, name, ""));
 
     if (!Number.isFinite(value)) {
-        throw new Error(`invalid PdfLapas HTML: <${element.tagName}> attribute '${name}' is missing or not a number`);
+        throw new Error(message);
     }
 
     return value;

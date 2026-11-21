@@ -24,49 +24,20 @@ describe("PptxGenJS methods without a PDF rendering", () => {
         expect((error as Error).message).toBe("addMedia() is not supported by PuppeteerGen yet. A PDF cannot play audio or video; add a poster frame with addImage() and link the media through its `hyperlink` option.");
     });
 
-    test("defineSlideMaster throws an UnsupportedFeatureError naming the method and a per-slide workaround", () => {
+    // Filling a slide master's placeholder is not drawn yet (#465); the option throws instead of drawing a plain object.
+    test("placeholder throws an UnsupportedFeatureError naming the option and leaves the deck unchanged", () => {
         const pres = new PuppeteerGen();
-        const error = errorFrom(() => pres.defineSlideMaster({ title: "MASTER", background: { color: "FFFFFF" } }));
 
-        expect(error).toBeInstanceOf(UnsupportedFeatureError);
-        expect(error).toMatchObject({ feature: "defineSlideMaster" });
-        expect((error as Error).message).toStartWith("defineSlideMaster() is not supported by PuppeteerGen yet. Set `slide.background`");
-    });
-
-    // Layout placeholders and masters need defineSlideMaster(); the options naming them throw instead of drawing a plain object.
-    test("placeholder and masterSlideName throw an UnsupportedFeatureError naming the option and leave the deck unchanged", () => {
-        const pres = new PuppeteerGen();
-        const slide = pres.addSlide();
-        const text = errorFrom(() => slide.addText("Title", { x: 1, y: 1, w: 4, h: 1, placeholder: "title" }));
+        pres.defineSlideMaster({ title: "MASTER", objects: [{ placeholder: { options: { name: "body", type: "body", x: 1, y: 1, w: 8, h: 3 } } }] });
+        const slide = pres.addSlide({ masterName: "MASTER" });
+        const text = errorFrom(() => slide.addText("Title", { placeholder: "body" }));
 
         expect(text).toBeInstanceOf(UnsupportedFeatureError);
         expect(text).toMatchObject({ feature: "addText({ placeholder })" });
-        expect((text as Error).message).toBe(
-            "addText({ placeholder }) is not supported by PuppeteerGen yet. Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.",
-        );
+        expect((text as Error).message).toBe("addText({ placeholder }) is not supported by PuppeteerGen yet. Filling a slide master's placeholder is not drawn yet (#465). Remove `placeholder` and give the object the placeholder's x, y, w, h and style.");
         expect(errorFrom(() => slide.addImage({ data: PNG, x: 1, y: 1, w: 1, h: 1, placeholder: "body" }))).toMatchObject({ feature: "addImage({ placeholder })" });
-        const table = errorFrom(() => pres.tableToSlides("<table><tr><td>A</td></tr></table>", { masterSlideName: "MASTER" }));
-
-        expect(table).toMatchObject({ feature: "tableToSlides({ masterSlideName })" });
-        expect((table as Error).message).toStartWith("tableToSlides({ masterSlideName }) is not supported by PuppeteerGen yet. Slide masters need defineSlideMaster()");
         expect(pres.getModel().slides).toHaveLength(1);
         expect(pres.getModel().slides[0]?.objects).toEqual([]);
-    });
-
-    test("addSlide masterName throws like masterSlideName; PptxGenJS's built-in DEFAULT and empty names are accepted", () => {
-        const pres = new PuppeteerGen();
-        const named = errorFrom(() => pres.addSlide({ masterName: "MASTER" }));
-
-        expect(named).toBeInstanceOf(UnsupportedFeatureError);
-        expect(named).toMatchObject({ feature: "addSlide({ masterName })" });
-        expect((named as Error).message).toStartWith("addSlide({ masterName }) is not supported by PuppeteerGen yet. Slide masters need defineSlideMaster()");
-        // PptxGenJS 4.0.1 still takes a master name as the first argument (deprecated since 3.2.0).
-        expect(errorFrom(() => pres.addSlide("MASTER"))).toMatchObject({ feature: "addSlide({ masterName })" });
-        expect(pres.getModel().slides).toHaveLength(0);
-        pres.addSlide({ masterName: "DEFAULT" });
-        pres.addSlide("DEFAULT");
-        pres.addSlide({ masterName: "" });
-        expect(pres.getModel().slides).toHaveLength(3);
     });
 
     // genTableToSlides: the built-in layout's 0.5in margins replace slideMargin.

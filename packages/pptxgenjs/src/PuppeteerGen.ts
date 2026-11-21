@@ -17,25 +17,9 @@ import type { PageSize, PageSizeInput } from "./pageLayouts";
 import { checkedPageSize, DEFAULT_PAGE_SIZE, PPTX_LAYOUT_PAGE_SIZES } from "./pageLayouts";
 import type { PptxAddSlideProps, PptxGenJSLike, PptxSectionProps, PptxSlideMasterProps, PptxTableToSlidesProps, PptxWriteBaseProps, PptxWriteFileProps, PptxWriteProps } from "./pptx";
 import { PuppeteerSlide } from "./PuppeteerSlide";
+import type { SlideContext, SlideMaster } from "./slideContext";
 import { type HtmlPresentationDocument, lazyDocument, type PresentationRenderer, trustedModelToHtml } from "./render/document";
 import { createBrowserDocument } from "./render/slide";
-import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
-
-/**
- * Whether a master name is PptxGenJS 4.0.1's built-in layout ("DEFAULT"), the only one that exists without defineSlideMaster().
- * PptxGenJS treats a falsy name as none; any other name needs a master, so it throws instead of drawing a plain slide.
- */
-function isBuiltInMaster(name: unknown, feature: string, workaround: string): boolean {
-    if (!name) {
-        return false;
-    }
-
-    if (name === PPTX_DEFAULTS.presentation.layoutName) {
-        return true;
-    }
-
-    throw new UnsupportedFeatureError(feature, `Slide masters need defineSlideMaster(), and PdfLapas has no slide masters. ${workaround}`, "property");
-}
 
 /**
  * PptxGenJS's enum objects. Each one is a plain object with the enum's keys and values, which tests/presentation.test.ts
@@ -125,6 +109,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     /** What PptxGenJS writes onto run options objects the deck shares between boxes, which its slides read and extend. */
     private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
     private slides: PuppeteerSlide[] = [];
+    /** defineSlideMaster() layouts by `title`; the first one defined under a title wins, as PptxGenJS finds it first. */
+    private readonly masters = new Map<string, SlideMaster>();
     private readonly renderer: PresentationRenderer | undefined;
     private readonly resolveImage: (source: string) => Promise<string>;
     private readonly createDocument: () => Document;
@@ -222,7 +208,9 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
         // PptxGenJS treats an empty font name as unset (`theme.bodyFontFace ? ... : Calibri`).
         const bodyFontFace = value?.bodyFontFace || PPTX_DEFAULTS.theme.bodyFontFace;
 
-        if (bodyFontFace !== this.bodyFontFace() && this.slides.some(slide => slide.model.objects.length > 0)) {
+        const layers = [...this.slides, ...Array.from(this.masters.values(), master => master.layer)];
+
+        if (bodyFontFace !== this.bodyFontFace() && layers.some(slide => slide.model.objects.length > 0)) {
             throw new Error(
                 `pres.theme.bodyFontFace "${bodyFontFace}" was set after slide objects were added: PdfLapas resolves an object's default font when it is added, PptxGenJS when it writes the file. Set pres.theme before adding text, tables or charts.`,
             );
@@ -423,19 +411,28 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     addSlide(props?: unknown): PuppeteerSlide {
         // A string is PptxGenJS's deprecated master name argument. `as`: PptxGenJS reads `masterName` off any object.
         const masterName = typeof props === "object" && props !== null ? (props as PptxAddSlideProps).masterName : props;
+        const found = this.findMaster(masterName);
 
-        isBuiltInMaster(masterName, "addSlide({ masterName })", "Remove `masterName` and add what the master held to each slide from a helper function, setting `slide.background` there.");
+        // PptxGenJS adds a slide without a master for a name it does not know, and says nothing; so does PdfLapas, but says so.
+        if (found.kind === "unknown") {
+            console.warn(`addSlide: no slide master is named ${JSON.stringify(found.name)}, so the slide is added without one, as PptxGenJS does. Call pres.defineSlideMaster({ title: ${JSON.stringify(found.name)}, ... }) before adding slides on it.`);
+        }
+
+        const master = found.kind === "master" ? found.master : null;
         const slideIndex = this.slides.length;
         const slide = new PuppeteerSlide({
-            pageSize: this.pageSize,
-            slideIndex,
-            components: this.components,
-            bodyFontFace: () => this.bodyFontFace(),
-            target: this.target,
-            fontMetrics: this.fontMetrics,
-            sharedRunOptions: this.sharedRunOptions,
-            getDocument: this.componentDocument,
-            continuationSlide: offset => this.slideAt(slideIndex + offset),
+            ...this.slideContext(slideIndex, master),
+            // addTableDefinition adds autoPage continuation slides on the master of the table's slide.
+            continuationSlide: offset => {
+                let continuation = this.slides[slideIndex + offset];
+
+                while (!continuation) {
+                    this.addSlide(found.kind === "master" ? { masterName: found.name } : undefined);
+                    continuation = this.slides[slideIndex + offset];
+                }
+
+                return continuation;
+            },
             setMasterSlideNumber: props => {
                 this.masterSlideNumber = props;
             },
@@ -446,16 +443,38 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
         return slide;
     }
 
-    /** The slide at `index`, adding plain slides up to it when the deck is shorter. */
-    private slideAt(index: number): PuppeteerSlide {
-        let slide = this.slides[index];
+    /** What every slide, and the layer of every master, reads from the presentation. */
+    private slideContext(slideIndex: number, master: SlideMaster | null): Omit<SlideContext, "continuationSlide" | "setMasterSlideNumber"> {
+        return {
+            pageSize: this.pageSize,
+            slideIndex,
+            components: this.components,
+            bodyFontFace: () => this.bodyFontFace(),
+            target: this.target,
+            fontMetrics: this.fontMetrics,
+            sharedRunOptions: this.sharedRunOptions,
+            getDocument: this.componentDocument,
+            master,
+        };
+    }
 
-        while (!slide) {
-            this.addSlide();
-            slide = this.slides[index];
+    /**
+     * The layout a master name selects, as PptxGenJS 4.0.1 finds it in `slideLayouts`: none for a falsy name, the
+     * built-in "DEFAULT" (a plain slide with 0.5in table margins) before any defined master, then the first master with
+     * that title.
+     */
+    private findMaster(name: unknown): { kind: "master"; name: string; master: SlideMaster } | { kind: "default" } | { kind: "none" } | { kind: "unknown"; name: string } {
+        if (!name) {
+            return { kind: "none" };
         }
 
-        return slide;
+        if (name === PPTX_DEFAULTS.presentation.layoutName) {
+            return { kind: "default" };
+        }
+
+        const master = this.masters.get(String(name));
+
+        return master ? { kind: "master", name: String(name), master } : { kind: "unknown", name: String(name) };
     }
 
     /**
@@ -471,8 +490,82 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
         }
     }
 
-    defineSlideMaster(_props: PptxSlideMasterProps): void {
-        throw new UnsupportedFeatureError("defineSlideMaster", "Set `slide.background` and add the shared objects to each slide from a helper function instead of a master.");
+    /**
+     * PptxGenJS `defineSlideMaster()`: a layout `addSlide({ masterName: title })` adds slides on. Each such slide draws
+     * the master's background unless it sets its own, then the master's `objects` in order under its own, and starts
+     * with the master's `slideNumber`. `margin` is where autoPage tables on those slides start and stop. A `placeholder`
+     * draws nothing until a slide fills it, which throws for now (#465).
+     */
+    defineSlideMaster(props: PptxSlideMasterProps): void {
+        // PptxGenJS deep-clones the props through JSON (ISSUE#406), so later changes to them do not reach the master.
+        const clone: unknown = props === undefined ? undefined : JSON.parse(JSON.stringify(props));
+
+        if (typeof clone !== "object" || clone === null || !("title" in clone) || !clone.title) {
+            throw new Error("defineSlideMaster() object argument requires a `title` value, the name addSlide({ masterName }) selects it by. (https://gitbrent.github.io/PptxGenJS/docs/masters.html)");
+        }
+
+        // `as`: the clone is the caller's props, which PptxGenJS reads as SlideMasterProps; each part is checked as it is read.
+        const master = clone as PptxSlideMasterProps;
+        // PptxGenJS: `margin || DEF_SLIDE_MARGIN_IN`.
+        const margin: unknown = master.margin || PPTX_DEFAULTS.slide.marginIn;
+
+        if (!(typeof margin === "number" || (Array.isArray(margin) && margin.length === 4 && margin.every(side => typeof side === "number")))) {
+            throw new TypeError(`defineSlideMaster({ title: ${JSON.stringify(master.title)} }) \`margin\` must be inches, a number or [top, right, bottom, left], got ${JSON.stringify(margin)}`);
+        }
+
+        const layer = new PuppeteerSlide({
+            ...this.slideContext(this.slides.length, null),
+            continuationSlide: () => {
+                throw new Error("A slide master has no autoPage continuation slides: PptxGenJS master objects hold no table.");
+            },
+            // Only slides write the deck's master slide number; slides added on this master copy `slideNumber` below.
+            setMasterSlideNumber: () => {},
+        });
+
+        // createSlideMaster (step 1) and defineSlideMaster (step 3): the deprecated `bkgd`, then `background`.
+        if (master.bkgd) {
+            // `as`: the setter also takes the deprecated object, as PptxGenJS's does, which its declaration leaves out.
+            layer.bkgd = master.bkgd as string;
+        }
+
+        if (master.background || master.bkgd) {
+            layer.background = master.background ?? {};
+        }
+
+        // createSlideMaster (step 2) adds each object by its first key, in order; PptxGenJS skips any other key.
+        for (const [index, object] of (Array.isArray(master.objects) ? master.objects : []).entries()) {
+            const key = Object.keys(object)[0];
+
+            if ("chart" in object && key === "chart") {
+                // `as`: the runtime reads `{ type, data, opts }`, which the declaration's IChartOpts leaves out.
+                const chart = object.chart as unknown as { type: PptxGenJS.CHART_NAME | PptxGenJS.IChartMulti[]; data: unknown[]; opts?: PptxGenJS.IChartOpts };
+
+                layer.addChart(chart.type, chart.data, chart.opts);
+            } else if ("image" in object && key === "image") {
+                layer.addImage(object.image);
+            } else if ("line" in object && key === "line") {
+                layer.addShape("line", object.line);
+            } else if ("rect" in object && key === "rect") {
+                layer.addShape("rect", object.rect);
+            } else if ("text" in object && key === "text") {
+                // createSlideMaster writes `text` as one run without options.
+                layer.addText([{ text: object.text.text ?? "" }], object.text.options);
+            } else if (!("placeholder" in object && key === "placeholder")) {
+                console.warn(`defineSlideMaster: objects[${index}] has key ${JSON.stringify(key)}, which PptxGenJS ignores, so it draws nothing. Use chart, image, line, rect, text or placeholder.`);
+            }
+            // A placeholder draws nothing: a layout's prompt text is not shown on its slides (LibreOffice export checked).
+        }
+
+        // PptxGenJS pushes every master and finds the first one with a title (`slideLayouts.filter(...)[0]`).
+        // `as`: `margin` was checked above to be a number or four numbers.
+        if (!this.masters.has(master.title)) {
+            this.masters.set(master.title, { layer, slideNumber: master.slideNumber ?? null, margin: margin as PptxGenJS.Margin });
+        }
+
+        // defineSlideMaster (step 4): the deck's master takes the first master's slide number while it has none.
+        if (master.slideNumber && !this.masterSlideNumber) {
+            this.masterSlideNumber = master.slideNumber;
+        }
     }
 
     /**
@@ -482,12 +575,15 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
      * `props.htmlLimits` (default TABLE_HTML_LIMITS) throws before it is parsed.
      */
     tableToSlides(source: string | HTMLTableElement, props?: (PptxTableToSlidesProps & { htmlLimits?: TableHtmlLimits }) | undefined): void {
-        // PptxGenJS takes the built-in layout's 0.5in margins over `slideMargin` (genTableToSlides, step 1).
-        const builtInMaster = isBuiltInMaster(props?.masterSlideName, "tableToSlides({ masterSlideName })", "Remove `masterSlideName` and draw what the master held on each generated slide with the `addImage`, `addShape` and `addText` options.");
-        const options = builtInMaster ? { ...props, slideMargin: PPTX_DEFAULTS.slide.marginIn } : (props ?? {});
+        // PptxGenJS takes the master's margins (the built-in layout's are 0.5in) over `slideMargin` (genTableToSlides,
+        // step 1), and adds every page on that master.
+        const found = this.findMaster(props?.masterSlideName);
+        const slideProps = found.kind === "none" ? undefined : { masterName: String(props?.masterSlideName) };
+        const masterMargin = found.kind === "master" ? found.master.margin : PPTX_DEFAULTS.slide.marginIn;
+        const options = found.kind === "master" || found.kind === "default" ? { ...props, slideMargin: masterMargin } : (props ?? {});
         const table = normalizeHtmlTable(findHtmlTable(source, this.createDocument, props?.htmlLimits), options, this.pageSize);
         const firstIndex = this.slides.length;
-        const firstSlide = this.addSlide();
+        const firstSlide = this.addSlide(slideProps);
         const pages = paginateTableRows(
             table.rows,
             {
@@ -508,7 +604,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             // because a full `colW` sets the width.
             // A cell without a computed font size (jsdom) is written without `sz`; the table-level size only fills those
             // cells, after pagination counted them at PptxGenJS's 12pt.
-            (index === 0 ? firstSlide : this.addSlide()).addTable(page.rows, { x: table.x, y: page.y, colW: table.columnWidths, fontSize: PPTX_DEFAULTS.table.unsizedRunFontSizePt });
+            (index === 0 ? firstSlide : this.addSlide(slideProps)).addTable(page.rows, { x: table.x, y: page.y, colW: table.columnWidths, fontSize: PPTX_DEFAULTS.table.unsizedRunFontSizePt });
         }
 
         // The first slide and the continuation slides added after it.

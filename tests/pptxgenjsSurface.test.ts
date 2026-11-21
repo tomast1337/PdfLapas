@@ -18,9 +18,7 @@ function namesWith(table: Readonly<Record<string, ApiEntry>>, statuses: readonly
 
 // One call per unsupported or partial member: each must throw UnsupportedFeatureError.
 const PROBES: Record<"presentation" | "slide", Record<string, (pres: PuppeteerGen) => unknown>> = {
-    presentation: {
-        defineSlideMaster: pres => pres.defineSlideMaster({ title: "MASTER" }),
-    },
+    presentation: {},
     slide: {
         addMedia: pres => pres.addSlide().addMedia({ type: "video", path: "movie.mp4", x: 0, y: 0, w: 1, h: 1 }),
     },

@@ -510,6 +510,16 @@ const IMAGE_INNER_SHADOW_CASE = { page: 11, name: "image-inner-shadow", x: 0.75,
 const NUMBER_SCHEME_CASE = { page: PARAGRAPH_PAGE + 3, name: "text-number-scheme-restart", x: 0.5, y: 1, w: 4, h: 1.8 } as const;
 // The numbering slide: a numbered list over three indent levels, beside the scheme change.
 const NUMBER_LEVELS_CASE = { page: PARAGRAPH_PAGE + 3, name: "text-number-nested-levels", x: 5.2, y: 1, w: 4, h: 1.8 } as const;
+// The slide master pages (#446): the master's header band, logo, footer and slide number under each slide's own
+// objects, its background on the first page and the slide's own on the second.
+const MASTER_PAGE = PARAGRAPH_PAGE + 4;
+const MASTER_CASES = [
+    { page: MASTER_PAGE, name: "master-header-band-logo", x: 0.05, y: 0.05, w: 9.9, h: 0.75 },
+    { page: MASTER_PAGE, name: "master-content-over-background", x: 0.5, y: 1.2, w: 9, h: 3.2 },
+    { page: MASTER_PAGE, name: "master-footer-slide-number", x: 0.05, y: 4.9, w: 9.9, h: 0.65 },
+    { page: MASTER_PAGE + 1, name: "master-own-background-content", x: 0.5, y: 1.2, w: 9, h: 3.2 },
+    { page: MASTER_PAGE + 1, name: "master-footer-slide-number-2", x: 0.05, y: 4.9, w: 9.9, h: 0.65 },
+] as const;
 
 // These tight crops include the stroke but exclude labels and unused slide area.
 export const PARITY_REGIONS = [
@@ -544,6 +554,7 @@ export const PARITY_REGIONS = [
     ...CUSTOM_BASELINE_CASES.map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.15, y: y - 0.15, w: w + 0.3, h: h + 0.3 })),
     ...[NUMBER_SCHEME_CASE, NUMBER_LEVELS_CASE].map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.15, y: y - 0.15, w: w + 0.3, h: h + 0.3 })),
     { ...COLW_LENGTH_CASE, x: COLW_LENGTH_CASE.x - 0.15, y: COLW_LENGTH_CASE.y - 0.15, w: COLW_LENGTH_CASE.w + 0.3, h: COLW_LENGTH_CASE.h + 0.3 },
+    ...MASTER_CASES,
 ].map(({ page, name, x, y, w, h }) => ({
     page,
     name,
@@ -2156,6 +2167,35 @@ export function populateParityFixture(presentation: Presentation): void {
             [0, 1, 2, 1, 2, 0].map((indentLevel, index) => ({ text: `Adipiscing ${index + 1}`, options: { bullet: { type: "number" as const }, indentLevel, breakLine: true } })),
             { x: levels.x, y: levels.y, w: levels.w, h: levels.h, fontFace: "Arial", fontSize: 12, color: "363636", valign: "top", margin: 0 },
         );
+    }
+
+    // The slide master pages (MASTER_CASES): a report master with a header band, a logo, a footer rule and text and a
+    // slide number, on two slides whose own objects sit on top; the second sets its own background over the master's.
+    {
+        presentation.defineSlideMaster({
+            title: "PARITY_REPORT",
+            background: { color: "F4F7FB" },
+            slideNumber: { x: 8.9, y: 5.05, w: 0.8, h: 0.4, fontFace: "Arial", fontSize: 12, color: "1F3A5F", align: "right" },
+            objects: [
+                { rect: { x: 0, y: 0, w: "100%", h: 0.7, fill: { color: "1F3A5F" } } },
+                { text: { text: "Slide master: header band, logo, footer and number", options: { x: 0.4, y: 0.1, w: 7.5, h: 0.5, fontFace: "Arial", fontSize: 18, bold: true, color: "FFFFFF", margin: 0 } } },
+                { image: { data: SLIDE_BACKGROUND_DATA, x: 8.6, y: 0.1, w: 1, h: 0.5 } },
+                { line: { x: 0.4, y: 5, w: 9.2, h: 0, line: { color: "7F8FA6", width: 1 } } },
+                { text: { text: "Footer text drawn by the master", options: { x: 0.4, y: 5.05, w: 5, h: 0.4, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 } } },
+            ],
+        });
+        const body = { x: 0.5, y: 1.2, w: 9, h: 3.2 } as const;
+        const first = presentation.addSlide({ masterName: "PARITY_REPORT" });
+
+        first.addText("Slide content over the master's background", { x: body.x, y: body.y, w: body.w, h: 0.6, fontFace: "Arial", fontSize: 20, color: "17365D", margin: 0 });
+        first.addShape("rect", { x: body.x, y: 2.1, w: 4, h: 2.2, fill: { color: "C9D7EA" }, line: { color: "1F3A5F", width: 1 } });
+        first.addText("A shape and text drawn on top", { x: 5, y: 2.1, w: 4.5, h: 2.2, fontFace: "Arial", fontSize: 16, color: "363636", valign: "top", margin: 0 });
+
+        const second = presentation.addSlide({ masterName: "PARITY_REPORT" });
+
+        second.background = { color: "FFF4E5" };
+        second.addText("The slide's own background replaces the master's", { x: body.x, y: body.y, w: body.w, h: 0.6, fontFace: "Arial", fontSize: 20, color: "7F3F00", margin: 0 });
+        second.addShape("ellipse", { x: body.x, y: 2.1, w: 3, h: 2.2, fill: { color: "F4B183" } });
     }
 }
 

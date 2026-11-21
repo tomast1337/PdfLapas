@@ -287,6 +287,9 @@ export const PPTX_DEFAULTS = Object.freeze({
         fontSizePt: 12,
         titleFontSizePt: 18,
         border: Object.freeze({ color: "363636", widthPt: 1 }),
+        // `layout` writes `<c:manualLayout>` (layoutTarget inner, edge mode) with `x || 0`, `y || 0`, `w || 1`,
+        // `h || 1`; a value that is not a number in 0..1 is deleted with a warning, so it falls back here too.
+        plotLayout: Object.freeze({ x: 0, y: 0, w: 1, h: 1 }),
         gridLine: Object.freeze({ color: "888888", style: "solid" as const, widthPt: 1, cap: "flat" as const }),
         scatterGridLine: Object.freeze({ color: "D9D9D9", widthPt: 1 }),
         barDirection: "col" as const,

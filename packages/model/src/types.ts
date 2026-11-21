@@ -424,8 +424,21 @@ export type NormalizedChart = {
     lineSymbolSize: number;
     lineSize: number;
     dataLabels: NormalizedChartDataLabels;
+    plotArea: NormalizedChartPlotArea;
+    /** The inner plot rectangle as fractions of the chart frame; absent for the automatic layout. */
+    plotLayout?: NormalizedChartLayout;
     altText: string;
 };
+
+export type NormalizedChartPlotArea = {
+    fill: NormalizedFill;
+    borderVisible: boolean;
+    borderColor: CssColor;
+    /** Points. */
+    borderWidth: number;
+};
+
+export type NormalizedChartLayout = { x: number; y: number; w: number; h: number };
 
 /**
  * One slide object as recorded by the PptxGenJS-compatible API, after option

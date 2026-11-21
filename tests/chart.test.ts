@@ -8,6 +8,7 @@ import { UnsupportedChartError } from "../packages/pptxgenjs/src/chart/errors";
 import { formatChartNumber } from "../packages/pptxgenjs/src/chart/format";
 import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { normalizeChart } from "../packages/pptxgenjs/src/normalize/chart";
+import { normalizeColor } from "../packages/pptxgenjs/src/normalize/style";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { unresolvedModelHtml } from "../packages/pptxgenjs/src/render/document";
 
@@ -388,6 +389,62 @@ describe("chart normalization and rendering", () => {
 
         expect(dashed.length).toBeGreaterThanOrEqual(3);
         expect(Array.from(plain?.querySelectorAll("path") ?? []).filter(path => path.hasAttribute("stroke-dasharray"))).toHaveLength(0);
+    });
+
+    test("normalizes the plot area fill, border and manual layout as PptxGenJS writes them", () => {
+        const plain = normalizeChart("bar", categoricalData);
+
+        // No plotArea: <a:noFill/> and <a:ln><a:noFill/></a:ln>; no layout: <c:layout/> (automatic).
+        expect(plain.plotArea).toEqual({ fill: { visible: false, color: "transparent" as typeof plain.plotArea.borderColor }, borderVisible: false, borderColor: "#363636" as typeof plain.plotArea.borderColor, borderWidth: 1 });
+        expect(plain.plotLayout).toBeUndefined();
+
+        const styled = normalizeChart("line", categoricalData, { plotArea: { fill: { color: "DEEBF7", transparency: 50 }, border: { pt: 2, color: "7F7F7F" } }, layout: { x: 0.15, y: 0.1, w: 0.8, h: 0.6 } });
+
+        expect(styled.plotArea.fill.visible).toBe(true);
+        expect(styled.plotArea.fill.color).toBe(normalizeColor({ color: "DEEBF7", transparency: 50 }));
+        expect(styled.plotArea).toMatchObject({ borderVisible: true, borderColor: "#7F7F7F", borderWidth: 2 });
+        expect(styled.plotLayout).toEqual({ x: 0.15, y: 0.1, w: 0.8, h: 0.6 });
+        // DEF_CHART_BORDER fills a border without pt or color; a fill without a color writes <a:noFill/>.
+        expect(normalizeChart("bar", categoricalData, { plotArea: { border: {}, fill: { transparency: 50 } } }).plotArea).toMatchObject({ fill: { visible: false }, borderVisible: true, borderColor: "#363636", borderWidth: 1 });
+
+        // Out-of-range values are dropped with PptxGenJS's warning, then `|| default`: w 0 is the full width.
+        const warn = console.warn;
+        const warnings: unknown[] = [];
+
+        console.warn = (message: unknown) => warnings.push(message);
+
+        try {
+            expect(normalizeChart("bar", categoricalData, { layout: { x: 2, y: 0.1, w: 0, h: -1 } }).plotLayout).toEqual({ x: 0, y: 0.1, w: 1, h: 1 });
+        } finally {
+            console.warn = warn;
+        }
+
+        expect(warnings).toHaveLength(2);
+        expect(String(warnings[0])).toContain("layout.x is 2");
+    });
+
+    test("rejects plot-area options the chart type does not draw and unknown plot-area keys", () => {
+        expect(() => normalizeChart("pie", [categoricalData[0]!], { plotArea: { fill: { color: "FF0000" } } })).toThrow("plotArea[pie]");
+        expect(() => normalizeChart("radar", categoricalData, { layout: { x: 0.1 } })).toThrow("layout[radar]");
+        expect(() => normalizeChart("bar", categoricalData, { plotArea: { border: { color: "FF0000", dashType: "dash" } as PptxGenJS.BorderProps } })).toThrow("plotArea.border.dashType");
+        // The deprecated top-level fill and border stay unsupported.
+        expect(() => normalizeChart("bar", categoricalData, { fill: "FF0000" })).toThrow(UnsupportedChartError);
+    });
+
+    test("draws the plot area fill and border on the plot rectangle and places it by the manual layout", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("bar", categoricalData, { x: 0, y: 0, w: 4, h: 3, plotArea: { fill: { color: "F2F2F2" }, border: { pt: 1, color: "7F7F7F" } }, layout: { x: 0.25, y: 0.1, w: 0.5, h: 0.6 } });
+        const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+        const plot = Array.from(svg?.querySelectorAll("path") ?? []).find(path => path.getAttribute("fill") === "#F2F2F2");
+
+        expect(plot?.getAttribute("stroke")).toBe("#7F7F7F");
+        // The rectangle is the layout fractions of the 4in x 3in frame: from (0.25w, 0.1h), 0.5w wide and 0.6h high.
+        const width = inchesToPixels(4);
+        const height = inchesToPixels(3);
+
+        expect(plot?.getAttribute("d")).toBe(`M${0.25 * width} ${0.1 * height}l${0.5 * width} 0l0 ${+(0.6 * height).toFixed(2)}l-${0.5 * width} 0Z`);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {

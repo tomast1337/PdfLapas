@@ -210,6 +210,8 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "showValue", // bar, line, pie and doughnut; other chart types remain explicit unsupported
     "showLabel", // pie and doughnut; scatter's custom labels remain explicit unsupported
     ...CATEGORY_AXIS_OPTIONS, // not drawn on bar3D, bubble, radar or scatter charts (#445)
+    "layout", // not drawn on pie, doughnut, radar or bar3D charts (#445)
+    "plotArea", // not drawn on pie, doughnut, radar or bar3D charts (#445)
 ]);
 // Declared in IChartOpts but read by no chart writer in PptxGenJS 4.0.1.
 const IGNORED_CHART_OPTIONS = new Set<string>(["fontFace", "fontSize"]);

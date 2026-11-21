@@ -328,14 +328,27 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // shortcut: without a canvas (Node, Bun) zrender measures every face with its built-in Arial-like width table, so a
     // face much wider than Arial can still overflow by a few px; measure with the face's advances when charts get them.
     const labelBound = gap - AXIS_LABEL_TEXT_MARGIN;
-    const grid = {
-        left: gutter,
-        right: chart.valueAxes.length > 1 ? "14%" : "2%",
-        top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
-        bottom: gap + legendBand + categoryTitleBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
-        outerBoundsMode: "auto",
-        outerBounds: { left: labelBound, right: labelBound, top: 0, bottom: 0 },
-    } as const;
+    const plotArea = chart.plotArea;
+    // The plot area's fill and border cover the inner plot rectangle (the grid), as LibreOffice draws c:plotArea/c:spPr.
+    const plotAreaStyle = {
+        show: plotArea.fill.visible || plotArea.borderVisible,
+        backgroundColor: plotArea.fill.visible ? plotArea.fill.color : "transparent",
+        borderColor: plotArea.borderColor,
+        borderWidth: plotArea.borderVisible ? pointsToPixels(plotArea.borderWidth) : 0,
+    };
+    const layout = chart.plotLayout;
+    // A manual layout (layoutTarget inner) places the plot rectangle itself, so the labels go where they fall.
+    const grid = layout
+        ? { left: layout.x * width, top: layout.y * height, width: layout.w * width, height: layout.h * height, outerBoundsMode: "none", ...plotAreaStyle }
+        : {
+              left: gutter,
+              right: chart.valueAxes.length > 1 ? "14%" : "2%",
+              top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
+              bottom: gap + legendBand + categoryTitleBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
+              outerBoundsMode: "auto",
+              outerBounds: { left: labelBound, right: labelBound, top: 0, bottom: 0 },
+              ...plotAreaStyle,
+          };
     let option: EChartsCoreOption;
 
     if (chart.type === "pie" || chart.type === "doughnut") {

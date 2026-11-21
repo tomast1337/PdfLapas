@@ -4,6 +4,7 @@ import type pptxgen from "pptxgenjs";
 import type { PuppeteerGen } from "../../../packages/pptxgenjs/src/node";
 import {
     populateChartAxisLabelFixture,
+    populateChartBarColorFixture,
     populateChartDataLabelFixture,
     populateChartCategoryAxisFixture,
     populateChartFixture,
@@ -113,6 +114,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartScatter: {
         populate: presentation => {
             populateChartScatterFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartBarColors: the shared fixture's single-series bar color slide (#473); every chart gets a crop.
+    chartBarColors: {
+        populate: presentation => {
+            populateChartBarColorFixture(presentation);
 
             return presentation;
         },

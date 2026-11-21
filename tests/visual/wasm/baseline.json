@@ -513,5 +513,9 @@
   "chartScatter": {
     "p1-Chart0": 0.1916,
     "p1-Chart1": 0.1936
+  },
+  "chartBarColors": {
+    "p1-Chart0": 0.1082,
+    "p1-Chart1": 0.1029
   }
 }

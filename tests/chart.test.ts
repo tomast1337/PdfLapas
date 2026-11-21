@@ -680,6 +680,29 @@ describe("chart normalization and rendering", () => {
         expect([key?.getAttribute("width"), key?.getAttribute("height")]).toEqual(["8", "8"]);
     });
 
+    test("colors each bar of a single-series bar chart from chartColors, as PptxGenJS's per-point c:dPt write it (#473)", () => {
+        const one = [categoricalData[0]!];
+        const varies = (type: PptxGenJS.CHART_NAME, data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts) => normalizeChart(type, data, options).series.map(series => series.varyColors);
+
+        expect(varies("bar", one, { chartColors: ["4472C4", "ED7D31"] })).toEqual([true]);
+        expect(varies("bar", one, { chartColors: ["4472C4", "ED7D31"], barDir: "bar" })).toEqual([true]);
+        // One color, the default palette, lineSize 0 (a c:dPt without a fill), two series or another chart type: none.
+        expect(varies("bar", one, { chartColors: ["4472C4"] })).toEqual([false]);
+        expect(varies("bar", one, {})).toEqual([false]);
+        expect(varies("bar", one, { chartColors: ["4472C4", "ED7D31"], lineSize: 0 })).toEqual([false]);
+        expect(varies("bar", categoricalData, { chartColors: ["4472C4", "ED7D31"] })).toEqual([false, false]);
+        expect(varies("line", one, { chartColors: ["4472C4", "ED7D31"] })).toEqual([false]);
+
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addChart("bar", one, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b" });
+        const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+
+        expect(Array.from(svg?.querySelectorAll('path[ecmeta_ssr_type="chart"]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4", "#ED7D31", "#4472C4"]);
+        // The legend keys the series in its own color, as LibreOffice draws it.
+        expect(Array.from(svg?.querySelectorAll('path[ecmeta_ssr_type="legend"][ecmeta_silent]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4"]);
+    });
+
     test("draws outside major tick marks on the category axis, as PptxGenJS writes them", () => {
         // PptxGenJS 4.0.1: `<c:majorTickMark val="${catAxisMajorTickMark || 'out'}"/>` on every category axis but scatter's.
         expect(normalizeChart("bar", categoricalData).categoryMajorTickMark).toBe("outside");

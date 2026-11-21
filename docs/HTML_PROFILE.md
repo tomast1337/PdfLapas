@@ -1069,3 +1069,13 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartCatAxis.gridLineWidth`     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.gridLineStyle`     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.gridLineCap`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChart.plotArea`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChart.plotLayout`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartPlotArea.fill`             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartPlotArea.borderVisible`    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartPlotArea.borderColor`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartPlotArea.borderWidth`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartLayout.x`                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartLayout.y`                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartLayout.w`                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartLayout.h`                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

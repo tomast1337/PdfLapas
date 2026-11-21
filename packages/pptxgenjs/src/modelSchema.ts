@@ -307,6 +307,8 @@ const chart = z.strictObject({
         bold: z.boolean(),
         italic: z.boolean(),
     }),
+    plotArea: z.strictObject({ fill, borderVisible: z.boolean(), borderColor: cssColor, borderWidth: nonNegative }),
+    plotLayout: z.strictObject({ x: nonNegative, y: nonNegative, w: nonNegative, h: nonNegative }).optional(),
     altText: z.string(),
 });
 

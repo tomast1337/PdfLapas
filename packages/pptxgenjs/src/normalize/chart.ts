@@ -4,7 +4,7 @@ import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import type { NormalizedChart, NormalizedChartSeries, NormalizedChartType } from "@pdflapas/model";
 import { checkedSize } from "./size";
-import { normalizeColor } from "./style";
+import { normalizeColor, normalizeFill } from "./style";
 
 const SUPPORTED_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "bubble", "doughnut", "line", "mixed", "pie", "radar", "scatter"]);
 
@@ -103,7 +103,19 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "dataLabelFontItalic",
     "dataLabelFontSize",
     ...CATEGORY_AXIS_OPTIONS,
+    "layout",
+    "plotArea",
 ] as const);
+
+// The plot rectangle is the ECharts grid, which pie, doughnut, radar and bar3D charts do not use.
+const PLOT_AREA_UNDRAWN_TYPES = new Set<NormalizedChartType>(["bar3D", "doughnut", "pie", "radar"]);
+const SUPPORTED_PLOT_AREA_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
+    // genXmlColorSelection reads type, color, transparency and the deprecated alpha.
+    fill: new Set(["alpha", "color", "transparency", "type"]),
+    // PptxGenJS writes pt and color and ignores type: the border is always a solid line.
+    border: new Set(["color", "pt", "type"]),
+});
+const LAYOUT_KEYS = ["x", "y", "w", "h"] as const;
 
 const SUPPORTED_CHART_OPTION_SET = new Set<string>(SUPPORTED_CHART_OPTIONS);
 const SUPPORTED_MIXED_SERIES_OPTIONS = new Set(["secondaryValAxis"]);
@@ -433,6 +445,29 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
+    for (const [key, value] of Object.entries(options.plotArea ?? {})) {
+        const supported = SUPPORTED_PLOT_AREA_OPTIONS[key];
+
+        if (!supported) {
+            unsupportedAxisOptions.push(`plotArea.${key}`);
+            continue;
+        }
+
+        for (const nested of Object.keys(value ?? {})) {
+            if (!supported.has(nested)) {
+                unsupportedAxisOptions.push(`plotArea.${key}.${nested}`);
+            }
+        }
+    }
+
+    if (!mixed && PLOT_AREA_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
+        for (const key of ["layout", "plotArea"] as const) {
+            if (options[key] !== undefined) {
+                unsupportedAxisOptions.push(`${key}[${String(type)}]`);
+            }
+        }
+    }
+
     if (unsupportedAxisOptions.length) {
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: unsupportedAxisOptions.sort() });
     }
@@ -598,6 +633,37 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         valueAxes.push(normalizeValueAxis(valueAxisOptions[1], automaticSecondary, "valAxes[1].", chartTypes));
     }
 
+    // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing
+    // color to DEF_CHART_BORDER (1pt 363636). The deprecated `fill` and `border` options stay rejected above.
+    const plotFill = options.plotArea?.fill;
+    const plotBorder = options.plotArea?.border;
+    const plotArea: NormalizedChart["plotArea"] = {
+        fill: normalizeFill(plotFill?.color ? plotFill : undefined),
+        borderVisible: plotBorder !== undefined,
+        borderColor: normalizeColor(plotBorder?.color || PPTX_DEFAULTS.chart.border.color),
+        borderWidth: checkedSize(plotBorder?.pt || PPTX_DEFAULTS.chart.border.widthPt, "plotArea.border.pt", PPTX_DEFAULTS.limits.lineWidthPt),
+    };
+    // Each value that is not a number in 0..1 is dropped (with PptxGenJS's warning), then `|| default`: a 0 width or
+    // height becomes the full frame, as PptxGenJS writes it.
+    let plotLayout: NormalizedChart["plotLayout"];
+
+    if (options.layout) {
+        const resolved: NonNullable<NormalizedChart["plotLayout"]> = { ...PPTX_DEFAULTS.chart.plotLayout };
+
+        for (const key of LAYOUT_KEYS) {
+            const value = Number(options.layout[key]);
+
+            if (Number.isNaN(value) || value < 0 || value > 1) {
+                console.warn(`addChart: layout.${key} is ${JSON.stringify(options.layout[key])}, not a fraction of the chart frame from 0 to 1, so it is dropped and ${PPTX_DEFAULTS.chart.plotLayout[key]} is used, as PptxGenJS does.`);
+                continue;
+            }
+
+            resolved[key] = value || PPTX_DEFAULTS.chart.plotLayout[key];
+        }
+
+        plotLayout = resolved;
+    }
+
     return {
         type: normalizedType,
         series,
@@ -638,6 +704,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         lineSymbolSize: checkedSize(options.lineDataSymbolSize ?? PPTX_DEFAULTS.chart.lineDataSymbolSize, "lineDataSymbolSize", PPTX_DEFAULTS.limits.chartMarkerSizePt),
         lineSize: checkedSize(options.lineSize ?? PPTX_DEFAULTS.chart.lineSizePt, "lineSize", PPTX_DEFAULTS.limits.lineWidthPt),
         dataLabels,
+        plotArea,
+        ...(plotLayout ? { plotLayout } : {}),
         altText: options.altText ?? "",
         grouping: normalizedGrouping,
         gridLineColor: normalizeColor(PPTX_DEFAULTS.chart.gridLine.color),

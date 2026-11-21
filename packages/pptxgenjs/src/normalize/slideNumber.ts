@@ -52,8 +52,10 @@ export function normalizeSlideNumber(
     const emuPerInch = PPTX_DEFAULTS.units.emuPerInch;
     const style = normalizeObjectStyle({ x: own.x, y: own.y, w: own.w || defaults.wEmu / emuPerInch, h: own.h || defaults.hEmu / emuPerInch }, PPTX_DEFAULTS.text, pageSize, defaults.objectName);
     const fontSize = setsRunStyle(own) ? own.fontSize || defaults.fontSizePt : setsRunStyle(last) ? last.fontSize || defaults.fontSizePt : PPTX_DEFAULTS.text.fontSizePt;
-    // PptxGenJS matches the first letter: "ctr" centers, "justify" falls back to left.
-    const align = own.align?.startsWith("c") ? "center" : own.align?.startsWith("r") ? "right" : defaults.align;
+    // PptxGenJS writes `left` for a falsy align (0, "", false, null too), then matches the first letter: "ctr" centers,
+    // "justify" falls back to left.
+    const ownAlign = own.align || defaults.align;
+    const align = ownAlign.startsWith("c") ? "center" : ownAlign.startsWith("r") ? "right" : defaults.align;
     const ownMargin = slideNumberMargin(own.margin);
     const margin = ownMargin.kind === "margin" ? ownMargin : slideNumberMargin(last.margin);
     const valign = verticalAlign(own.valign || last.valign || defaults.valign, "slideNumber");

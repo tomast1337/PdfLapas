@@ -23,15 +23,11 @@ use style::{Style, integer, number, split_top_level};
 
 use crate::model::{Metadata, PageSize, Presentation, Slide, SlideObject, UtcDate};
 
-/// The profile version this reader implements (`<meta name="pdflapas-profile" content="2">`). It also
-/// reads version 1, whose documents have no metadata: version 2 only added `<title>` and the
-/// `author`, `description`, `pdflapas-company` and `pdflapas-revision` meta tags.
+/// The profile version this reader implements (`<meta name="pdflapas-profile" content="2">`), the only
+/// one it reads.
 const PROFILE_VERSION: &str = "2";
-const PROFILE_VERSION_1: &str = "1";
-/// The `<meta>` that declares the version. Version 1 is frozen with the project's former name, so its
-/// documents keep `pdfdeck-profile`; version 2 is read only from `pdflapas-profile`.
+/// The `<meta>` that declares the version.
 const PROFILE_META: &str = "pdflapas-profile";
-const PROFILE_META_1: &str = "pdfdeck-profile";
 
 /// Parses a profile document into the presentation it describes.
 pub(crate) fn parse(html: &str) -> Result<Presentation, String> {
@@ -84,11 +80,10 @@ struct Head {
     metadata: Metadata,
 }
 
-/// Checks the profile version, reads the page size from the stylesheet's `@page` rule and, in
-/// version 2, the metadata.
+/// Checks the profile version, reads the page size from the stylesheet's `@page` rule and the
+/// metadata.
 fn read_head(dom: &Dom<'_>, head: &Element<'_>) -> Result<Head, String> {
     let mut version = None;
-    let mut version_1 = None;
     let mut page_size = None;
     let mut metadata = Metadata::default();
     for element in dom.elements_of(&head.children)? {
@@ -99,7 +94,6 @@ fn read_head(dom: &Dom<'_>, head: &Element<'_>) -> Result<Head, String> {
                 let content = || element.attr("content").map(|c| c.unwrap_or_default().into_owned());
                 match element.attr("name")?.as_deref() {
                     Some(PROFILE_META) => version = Some(content()?),
-                    Some(PROFILE_META_1) => version_1 = Some(content()?),
                     Some("author") => set_once(&mut metadata.author, r#"<meta name="author">"#, content()?)?,
                     Some("description") => set_once(&mut metadata.subject, r#"<meta name="description">"#, content()?)?,
                     Some("pdflapas-company") => set_once(&mut metadata.company, r#"<meta name="pdflapas-company">"#, content()?)?,
@@ -130,25 +124,18 @@ fn read_head(dom: &Dom<'_>, head: &Element<'_>) -> Result<Head, String> {
             name => return Err(format!("<{name}> in <head> is not in profile v{PROFILE_VERSION}")),
         }
     }
-    let unsupported = match (version.as_deref(), version_1.as_deref()) {
-        (Some(PROFILE_VERSION), _) => None,
-        // Version 1 gave <title> and other meta tags no meaning, so its PDFs stay without metadata.
-        (None, Some(PROFILE_VERSION_1)) => {
-            metadata = Metadata::default();
-            None
+    match version.as_deref() {
+        Some(PROFILE_VERSION) => {}
+        Some(other) => {
+            return Err(format!(
+                r#"profile version '{other}' in <meta name="{PROFILE_META}"> is not supported (this renderer reads <meta name="{PROFILE_META}" content="{PROFILE_VERSION}">)"#
+            ));
         }
-        (Some(other), _) => Some((PROFILE_META, other)),
-        (None, Some(other)) => Some((PROFILE_META_1, other)),
-        (None, None) => {
+        None => {
             return Err(format!(
                 r#"not a PdfLapas profile document: <meta name="{PROFILE_META}" content="{PROFILE_VERSION}"> is missing"#
             ));
         }
-    };
-    if let Some((name, other)) = unsupported {
-        return Err(format!(
-            r#"profile version '{other}' in <meta name="{name}"> is not supported (this renderer reads <meta name="{PROFILE_META_1}" content="{PROFILE_VERSION_1}"> and <meta name="{PROFILE_META}" content="{PROFILE_VERSION}">)"#
-        ));
     }
     let page_size = page_size.ok_or("the stylesheet has no '@page { size: <width>in <height>in }' rule")?;
     Ok(Head { page_size, metadata })
@@ -319,38 +306,24 @@ pub(crate) mod tests {
             .unwrap_or_default();
         assert!(missing.contains("not a PdfLapas profile document"), "{missing}");
         let unknown = parse(&html.replace(r#"content="2""#, r#"content="3""#)).err().unwrap_or_default();
-        let reads = r#"(this renderer reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)"#;
         assert_eq!(
             unknown,
-            format!(r#"profile version '3' in <meta name="pdflapas-profile"> is not supported {reads}"#)
+            r#"profile version '3' in <meta name="pdflapas-profile"> is not supported (this renderer reads <meta name="pdflapas-profile" content="2">)"#
         );
-        // Each version has one spelling: version 1 the former name's, version 2 the current one.
-        let renamed_1 = parse(&with_head("1", "").replace("pdfdeck-profile", "pdflapas-profile"))
-            .err()
-            .unwrap_or_default();
-        assert_eq!(
-            renamed_1,
-            format!(r#"profile version '1' in <meta name="pdflapas-profile"> is not supported {reads}"#)
-        );
-        let old_name_2 = parse(&html.replace("pdflapas-profile", "pdfdeck-profile")).err().unwrap_or_default();
-        assert_eq!(
-            old_name_2,
-            format!(r#"profile version '2' in <meta name="pdfdeck-profile"> is not supported {reads}"#)
-        );
+        let version_1 = parse(&html.replace(r#"content="2""#, r#"content="1""#)).err().unwrap_or_default();
+        assert!(version_1.starts_with("profile version '1'"), "{version_1}");
     }
 
-    /// `document("")` with `head` written after the version and page-size meta tags; version 1 under its
-    /// own meta name.
-    fn with_head(version: &str, head: &str) -> String {
-        let meta = if version == PROFILE_VERSION_1 { PROFILE_META_1 } else { PROFILE_META };
+    /// `document("")` with `head` written after the version and page-size meta tags.
+    fn with_head(head: &str) -> String {
         document("").replace(
             r#"<meta name="pdflapas-profile" content="2">"#,
-            &format!(r#"<meta name="{meta}" content="{version}">{head}"#),
+            &format!(r#"<meta name="pdflapas-profile" content="2">{head}"#),
         )
     }
 
     #[test]
-    fn reads_the_metadata_of_version_2() {
+    fn reads_the_metadata() {
         let head = r#"<title>  Q3 &amp;
  plan </title><meta name="author" content="Ana &quot;A&quot;"><meta name="description" content="Sales"><meta name="pdflapas-company" content="Co"><meta name="pdflapas-revision" content="4"><meta name="keywords" content="q3, é"><meta name="pdflapas-creator" content="App"><meta name="pdflapas-producer" content="Lib"><meta name="pdflapas-creation-date" content="2024-02-29T23:59:58.123Z"><meta name="pdflapas-modification-date" content="2026-11-19T00:00:00Z">"#;
         let Metadata {
@@ -364,7 +337,7 @@ pub(crate) mod tests {
             producer,
             creation_date,
             modification_date,
-        } = parse(&with_head("2", head)).map(|p| p.metadata).unwrap();
+        } = parse(&with_head(head)).map(|p| p.metadata).unwrap();
         assert_eq!(title.as_deref(), Some("Q3 & plan"));
         assert_eq!(author.as_deref(), Some(r#"Ana "A""#));
         assert_eq!((company.as_deref(), revision.as_deref()), (Some("Co"), Some("4")));
@@ -394,7 +367,7 @@ pub(crate) mod tests {
             "+12026-11-19T00:00:00Z",
             "2026-11-19T00:00:0éZ",
         ] {
-            let error = parse(&with_head("2", &format!(r#"<meta name="pdflapas-creation-date" content="{bad}">"#)))
+            let error = parse(&with_head(&format!(r#"<meta name="pdflapas-creation-date" content="{bad}">"#)))
                 .err()
                 .unwrap_or_default();
             assert_eq!(
@@ -403,17 +376,10 @@ pub(crate) mod tests {
             );
         }
 
-        let empty = parse(&with_head("2", r#"<title></title><meta name="author" content="">"#)).unwrap().metadata;
+        let empty = parse(&with_head(r#"<title></title><meta name="author" content="">"#)).unwrap().metadata;
         assert!(empty.title.is_none() && empty.author.is_none() && empty.subject.is_none());
-        let twice = parse(&with_head("2", "<title>a</title><title>b</title>")).err().unwrap_or_default();
+        let twice = parse(&with_head("<title>a</title><title>b</title>")).err().unwrap_or_default();
         assert_eq!(twice, "<head> has more than one <title>");
-    }
-
-    #[test]
-    fn reads_version_1_without_metadata() {
-        let old = parse(&with_head("1", r#"<title>T</title><meta name="author" content="A">"#)).unwrap();
-        assert!(old.metadata.title.is_none() && old.metadata.author.is_none());
-        assert_eq!(old.slides.len(), 1);
     }
 
     #[test]

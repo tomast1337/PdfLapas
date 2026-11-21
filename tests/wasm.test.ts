@@ -824,11 +824,11 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
 
         await expect(renderer.render({ html: tampered, pageSize })).rejects.toThrow("slide 1: object 'Title': CSS property 'filter'");
         await expect(renderer.render({ html: html.replace('<meta name="pdflapas-profile" content="2">', '<meta name="pdflapas-profile" content="3">'), pageSize })).rejects.toThrow(
-            `profile version '3' in <meta name="pdflapas-profile"> is not supported (this renderer reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`,
+            `profile version '3' in <meta name="pdflapas-profile"> is not supported (this renderer reads <meta name="pdflapas-profile" content="2">)`,
         );
     });
 
-    test("writes title, author, subject, creator and producer to the PDF Info dictionary; a version 1 document gets no title", async () => {
+    test("writes title, author, subject, creator and producer to the PDF Info dictionary", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE, { renderer });
 
@@ -836,13 +836,8 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         pres.author = "Ana";
         pres.subject = "Sales";
         pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1 });
-        const text = (pdf: Uint8Array) => Buffer.from(pdf).toString("latin1");
 
-        expect(text(await pres.toPdf())).toContain("<</Title(Q3 plan)/Subject(Sales)/Author(Ana)/Creator(PdfLapas)/Producer(PdfLapas)>>");
-        const { html, pageSize } = await pres.toHtml();
-        const v1 = await renderer.render({ html: html.replace('<meta name="pdflapas-profile" content="2">', '<meta name="pdfdeck-profile" content="1">'), pageSize });
-
-        expect(text(v1)).not.toContain("/Title");
+        expect(Buffer.from(await pres.toPdf()).toString("latin1")).toContain("<</Title(Q3 plan)/Subject(Sales)/Author(Ana)/Creator(PdfLapas)/Producer(PdfLapas)>>");
     });
 
     test("hand-written minimal documents render after the completion step", async () => {

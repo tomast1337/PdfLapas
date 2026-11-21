@@ -54,7 +54,7 @@ renders too: a stored document, an edited one, or one written by hand.
 | Any other HTML, through `render({ html, pageSize })`                            | Yes       | No: an error names the first violation |
 
 `pptxHtmlDocument(html)` (from `@pdflapas/pptxgenjs` or the browser-safe `/html` entry) checks that `html`
-is a profile document (`<meta name="pdflapas-profile" content="2">`, or version 1's `<meta name="pdfdeck-profile" content="1">`) and fills the values PptxGenJS
+is a profile document (`<meta name="pdflapas-profile" content="2">`) and fills the values PptxGenJS
 defaults (insets, line box, font, colors, the stylesheet; the list is in
 [HTML_PROFILE.md](./HTML_PROFILE.md#completion)). It also reads the page size from the document. A
 `toHtml()` result passes through byte for byte. `completeProfileHtml(html)` is the same completion step,

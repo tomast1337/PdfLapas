@@ -2231,6 +2231,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartBarColorFixture(presentation);
     populateChartPieFixture(presentation);
     populateChartBarOrderFixture(presentation);
+    populateChartLegendOrderFixture(presentation);
 }
 
 /**
@@ -2936,4 +2937,24 @@ export function populateChartBarOrderFixture(presentation: Presentation): void {
     const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, barDir: "bar", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" };
 
     slide.addChart("bar", data, { ...shared, x: 0.4 });
+}
+
+/**
+ * Stacked legend order (#508): a vertical legend lists a stacked column or area chart from the last series, in the
+ * stack's order. A parity slide after the others (no page number moves) and the WASM chartLegendOrder deck, which crops
+ * the chart. It sets its gap width so that the slide does not depend on the stacked default (#503), and it is small:
+ * our side legend overlaps the plot area where LibreOffice narrows it (#517), which alone puts a 4.4 x 4.1in chart
+ * over the page limit. The stacked area chart's order is unit-tested (its fill, #520).
+ */
+export function populateChartLegendOrderFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Stacked legend order", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+        { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 3, 1, 5] },
+    ];
+
+    slide.addChart("bar", data, { x: 0.4, y: 0.9, w: 2.8, h: 2.6, barDir: "col", barGrouping: "stacked", barGapWidthPct: 50, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "r" });
 }

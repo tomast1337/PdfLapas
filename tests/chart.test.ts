@@ -787,6 +787,36 @@ describe("chart normalization and rendering", () => {
         expect(drawn({ barDir: "col" }).legend).toEqual(["First", "Second"]);
     });
 
+    test("lists a stacked column or area chart's legend from the last series when it is vertical, as LibreOffice draws it (#508)", () => {
+        const legend = (type: "area" | "bar", options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart(type, categoricalData, { x: 0, y: 0, w: 5, h: 3, showLegend: true, ...options });
+            const names: string[] = [];
+
+            for (const text of renderedPage(presentation).querySelectorAll(".slide-chart svg text")) {
+                if (text.textContent === "First" || text.textContent === "Second") {
+                    names.push(text.textContent);
+                }
+            }
+
+            return names;
+        };
+
+        // LibreOffice 26.2: the stack's order, bottom-up, in a right, left or top-right legend.
+        expect(legend("bar", { barGrouping: "stacked", legendPos: "r" })).toEqual(["Second", "First"]);
+        expect(legend("bar", { barGrouping: "stacked", legendPos: "l" })).toEqual(["Second", "First"]);
+        expect(legend("bar", { barGrouping: "percentStacked", legendPos: "tr" })).toEqual(["Second", "First"]);
+        expect(legend("area", { barGrouping: "stacked", legendPos: "r" })).toEqual(["Second", "First"]);
+        // Series order in a top or bottom legend, beside clustered columns and standard areas, and beside a stacked
+        // horizontal bar chart, whose stack runs left to right.
+        expect(legend("bar", { barGrouping: "stacked", legendPos: "b" })).toEqual(["First", "Second"]);
+        expect(legend("bar", { barGrouping: "stacked", legendPos: "t" })).toEqual(["First", "Second"]);
+        expect(legend("bar", { legendPos: "r" })).toEqual(["First", "Second"]);
+        expect(legend("area", { legendPos: "r" })).toEqual(["First", "Second"]);
+        expect(legend("bar", { barDir: "bar", barGrouping: "stacked", legendPos: "r" })).toEqual(["First", "Second"]);
+    });
+
     test("draws outside major tick marks on the category axis, as PptxGenJS writes them", () => {
         // PptxGenJS 4.0.1: `<c:majorTickMark val="${catAxisMajorTickMark || 'out'}"/>` on every category axis but scatter's.
         expect(normalizeChart("bar", categoricalData).categoryMajorTickMark).toBe("outside");

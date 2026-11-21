@@ -18,9 +18,9 @@ const MARKS = HANGING_MARKS.zh ?? "";
 
 describe("East Asian line breaks on the PowerPoint target", () => {
     test("hangs marks by the run's primary language: zh and ja, not en-US, ko or none", () => {
-        expect(["zh", "zh-CN", "zh-TW", "ZH-hk"].map(language => languageHangingMarks(language, HANGING_MARKS))).toEqual([MARKS, MARKS, MARKS, MARKS]);
-        expect(languageHangingMarks("ja-JP", HANGING_MARKS)).toBe("，。");
-        expect(["en-US", "ko-KR", "zhx", ""].map(language => languageHangingMarks(language, HANGING_MARKS))).toEqual([undefined, undefined, undefined, undefined]);
+        expect(["zh", "zh-CN", "zh-TW", "ZH-hk"].map(language => languageHangingMarks(language, HANGING_MARKS))).toEqual(Array(4).fill({ kind: "marks", marks: MARKS }));
+        expect(languageHangingMarks("ja-JP", HANGING_MARKS)).toEqual({ kind: "marks", marks: "，。" });
+        expect(["en-US", "ko-KR", "zhx", ""].map(language => languageHangingMarks(language, HANGING_MARKS))).toEqual(Array(4).fill({ kind: "none" }));
     });
 
     test("cuts out a closing mark unless another one or a dash follows it", () => {

@@ -29,10 +29,11 @@ const OTHER_LANGUAGE_BREAK = new RegExp(`(?<=\\p{Script=Han})(?=${WIDE}|")|(?<=$
 /** The first character from which a mark is taken to be 1em wide when its face's advances are not known. */
 const FULL_WIDTH_FROM = 0x2000;
 
-/** The marks that hang in a run in `language` (its primary subtag's entry in `marksByLanguage`), or undefined. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function languageHangingMarks(language: string, marksByLanguage: Readonly<Record<string, string>>): string | undefined {
-    return marksByLanguage[language.split("-")[0]?.toLowerCase() ?? ""];
+/** The marks that hang in a run in `language`: its primary subtag's entry in `marksByLanguage`; `none` without one. */
+export function languageHangingMarks(language: string, marksByLanguage: Readonly<Record<string, string>>): { kind: "marks"; marks: string } | { kind: "none" } {
+    const marks = marksByLanguage[language.split("-")[0]?.toLowerCase() ?? ""];
+
+    return marks === undefined ? { kind: "none" } : { kind: "marks", marks };
 }
 
 /** A stretch of a run's text; `hangs`: a single mark that hangs past the line's end when the line ends after it. */

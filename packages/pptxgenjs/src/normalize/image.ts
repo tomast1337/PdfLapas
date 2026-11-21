@@ -369,7 +369,7 @@ export function normalizeImage(options: PptxGenJS.ImageProps, pageSize: PageSize
     }
 
     const transparency = Math.max(0, Math.min(100, options.transparency ?? PPTX_DEFAULTS.image.transparency));
-    const link = normalizeHyperlink(options.hyperlink);
+    const link = options.hyperlink ? normalizeHyperlink(options.hyperlink) : undefined;
 
     return {
         ...source,

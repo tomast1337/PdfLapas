@@ -77,14 +77,10 @@ export function arrowShaftStart(arrow: string, width: number): number {
  * the line, so renderers only rotate it onto each end. Outlines follow the marker polygons LibreOffice 26.2
  * builds for OOXML heads (oox lineproperties.cxx lclPushMarkerProperties), in percent of the head with the
  * tip at (50, 0): the oval and diamond are centred on the line end, the others put their tip on it. The
- * oval is a true ellipse as in PowerPoint (LibreOffice approximates it with 12 points).
+ * oval is a true ellipse as in PowerPoint (LibreOffice approximates it with 12 points). An end without a head
+ * (`none`) has no outline: the caller leaves it out.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function arrowHeadPath(arrow: string, width: number): string | undefined {
-    if (arrow === "none") {
-        return undefined;
-    }
-
+export function arrowHeadPath(arrow: string, width: number): string {
     const size = arrowHeadSize(arrow, width);
     const r = size / 2;
 
@@ -182,8 +178,11 @@ export function shaftDashes(pattern: readonly number[], start: number, end: numb
     return parts;
 }
 
+/** The path a line strokes: a straight line preset `length` px long, or any other outline. */
+export type LineOutline = { kind: "straight"; length: number } | { kind: "other" };
+
 /**
- * `straightLength` is the length (px) of a straight line preset. LibreOffice strokes such a line only between
+ * `outline` is the path the line strokes. LibreOffice strokes a straight line preset only between
  * its heads (arrowShaftStart at each end), so the stroke neither pokes out of a pointed tip nor fills the
  * stealth notch; the model spells that out as an explicit dash array.
  * shortcut: other open paths keep the full stroke under their heads; trim them by arc length if a fixture needs it.
@@ -191,7 +190,7 @@ export function shaftDashes(pattern: readonly number[], start: number, end: numb
  * `dashType` and the arrow types, never the deprecated `pt`, `size`, `lineDash`, `lineHead` or `lineTail` the
  * type declares on it. The deprecated top-level options are mapped by normalizeShapeLine.
  */
-export function normalizeLine(value?: PptxGenJS.ShapeLineProps, straightLength?: number): NormalizedLine {
+export function normalizeLine(value?: PptxGenJS.ShapeLineProps, outline: LineOutline = { kind: "other" }): NormalizedLine {
     if (!value || value.type === "none") {
         return { visible: false, color: TRANSPARENT, width: 0, style: "solid" };
     }
@@ -201,10 +200,10 @@ export function normalizeLine(value?: PptxGenJS.ShapeLineProps, straightLength?:
     const beginArrow = value.beginArrowType ?? "none";
     const endArrow = value.endArrowType ?? "none";
     const pattern = width > 0 ? PPTX_DEFAULTS.shape.dashPatterns[dash]?.map(part => part * width) : undefined;
-    const trimmed = straightLength !== undefined && (beginArrow !== "none" || endArrow !== "none");
-    const dashArray = trimmed
-        ? shaftDashes(pattern ?? [straightLength, straightLength], arrowShaftStart(beginArrow, width), straightLength - arrowShaftStart(endArrow, width), straightLength)
-        : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
+    const dashArray =
+        outline.kind === "straight" && (beginArrow !== "none" || endArrow !== "none")
+            ? shaftDashes(pattern ?? [outline.length, outline.length], arrowShaftStart(beginArrow, width), outline.length - arrowShaftStart(endArrow, width), outline.length)
+            : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
 
     return {
         visible: true,
@@ -214,8 +213,8 @@ export function normalizeLine(value?: PptxGenJS.ShapeLineProps, straightLength?:
         dashArray: dashArray?.join(" "),
         beginArrow,
         endArrow,
-        beginHeadPath: arrowHeadPath(beginArrow, width),
-        endHeadPath: arrowHeadPath(endArrow, width),
+        beginHeadPath: beginArrow === "none" ? undefined : arrowHeadPath(beginArrow, width),
+        endHeadPath: endArrow === "none" ? undefined : arrowHeadPath(endArrow, width),
     };
 }
 

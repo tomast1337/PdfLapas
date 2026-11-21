@@ -43,7 +43,6 @@ describe("convertPdfOutput", () => {
 
         expect(blob.type).toBe("application/pdf");
         expect(new Uint8Array(await blob.arrayBuffer())).toEqual(BYTES);
-        expect(convertPdfOutput(BYTES, null)).toBeInstanceOf(Blob);
     });
 
     test("arraybuffer is exact-length even for a view into a larger buffer", () => {
@@ -80,8 +79,8 @@ describe("resolveOutputType", () => {
     test("follows PptxGenJS 4.0.1: object, bare string, or nothing", () => {
         expect(resolveOutputType({ outputType: "base64" })).toBe("base64");
         expect(resolveOutputType("base64" as PptxGenJS.WRITE_OUTPUT_TYPE)).toBe("base64");
-        expect(resolveOutputType({ compression: true })).toBeNull();
-        expect(resolveOutputType()).toBeNull();
+        expect(resolveOutputType({ compression: true })).toBe("blob");
+        expect(resolveOutputType()).toBe("blob");
     });
 
     test("rejects unknown output types with the valid list", () => {

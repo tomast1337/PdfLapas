@@ -16,10 +16,9 @@ const PNG_DATA = "data:image/png;base64,iVBORw0KGgo=";
 describe("hyperlink normalization", () => {
     test("keeps http, https and mailto URLs and prefers url over slide, as PptxGenJS does", () => {
         expect(normalizeHyperlink({ url: "https://example.com", tooltip: "Tip" })).toEqual({ href: "https://example.com", tooltip: "Tip" });
-        expect(normalizeHyperlink({ url: "HTTP://example.com" })?.href).toBe("HTTP://example.com");
+        expect(normalizeHyperlink({ url: "HTTP://example.com" }).href).toBe("HTTP://example.com");
         expect(normalizeHyperlink({ url: "mailto:a@example.com", slide: 2 })).toEqual({ href: "mailto:a@example.com", tooltip: undefined });
         expect(normalizeHyperlink({ slide: 2 })).toEqual({ href: "#slide-2", tooltip: undefined, slide: 2 });
-        expect(normalizeHyperlink(undefined)).toBeUndefined();
     });
 
     test("rejects other schemes and non-integer slides loudly", () => {

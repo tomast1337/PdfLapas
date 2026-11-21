@@ -26,35 +26,34 @@ const WRITTEN_ANCHOR: Readonly<Record<VerticalAlignSource, (valign: string) => s
 /**
  * A text run's, text box's or table cell's `align`. PptxGenJS 4.0.1
  * genXmlParagraphProps writes an `algn` for these four values and none for a falsy one; any other value would reach the
- * slide's CSS as it is, so it is refused.
+ * slide's CSS as it is, so it is refused. `unset` for a falsy one.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function paragraphAlign(align: unknown): ParagraphAlign | undefined {
+export function paragraphAlign(align: unknown): { kind: "align"; align: ParagraphAlign } | { kind: "unset" } {
     if (!align) {
-        return undefined;
+        return { kind: "unset" };
     }
 
     if (typeof align === "string" && Object.hasOwn(ALIGN_H, align)) {
-        return align as ParagraphAlign;
+        return { kind: "align", align: align as ParagraphAlign };
     } // hasOwn: one of ALIGN_H's keys, which equal its values
 
     throw new TypeError(`Text option \`align\` is ${JSON.stringify(align)}; use one of ${Object.values(ALIGN_H).join(", ")}`);
 }
 
 /**
- * A `valign` as the model's value, read as PptxGenJS 4.0.1 reads it at `source`; falsy is unset. A value it writes no
- * valid anchor for is refused: it would otherwise reach the slide's CSS as it is.
+ * A `valign` as the model's value, read as PptxGenJS 4.0.1 reads it at `source`; falsy is `unset`. A value it writes
+ * no valid anchor for is refused: it would otherwise reach the slide's CSS as it is.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function verticalAlign(valign: unknown, source: VerticalAlignSource): VerticalAlign | undefined {
+export function verticalAlign(valign: unknown, source: VerticalAlignSource): { kind: "align"; align: VerticalAlign } | { kind: "unset" } {
     if (!valign) {
-        return undefined;
+        return { kind: "unset" };
     }
 
     const anchor = typeof valign === "string" ? WRITTEN_ANCHOR[source](valign) : "";
+    const align = Object.hasOwn(ANCHORS, anchor) ? ANCHORS[anchor] : undefined;
 
-    if (Object.hasOwn(ANCHORS, anchor)) {
-        return ANCHORS[anchor];
+    if (align !== undefined) {
+        return { kind: "align", align };
     }
 
     throw new TypeError(`Text option \`valign\` is ${JSON.stringify(valign)}; use one of ${Object.values(ALIGN_V).join(", ")}`);

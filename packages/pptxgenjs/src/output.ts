@@ -7,16 +7,15 @@ export type WriteOutput = string | ArrayBuffer | Blob | Uint8Array;
 const OUTPUT_TYPES: readonly string[] = ["arraybuffer", "base64", "binarystring", "blob", "nodebuffer", "uint8array", "STREAM"];
 
 /**
- * PptxGenJS 4.0.1 `write()` outputType resolution: `{ outputType }`, a bare outputType string, or nothing (null).
- * `compression` is accepted and ignored: it only picks zip DEFLATE vs STORE, which has no PDF equivalent.
- * Unknown types throw here so `write()` fails before rendering.
+ * PptxGenJS 4.0.1 `write()` outputType resolution: `{ outputType }`, a bare outputType string, or nothing (its
+ * default, `blob`). `compression` is accepted and ignored: it only picks zip DEFLATE vs STORE, which has no PDF
+ * equivalent. Unknown types throw here so `write()` fails before rendering.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function resolveOutputType(props?: PptxGenJS.WriteProps | PptxGenJS.WRITE_OUTPUT_TYPE): PptxGenJS.WRITE_OUTPUT_TYPE | null {
+export function resolveOutputType(props?: PptxGenJS.WriteProps | PptxGenJS.WRITE_OUTPUT_TYPE): PptxGenJS.WRITE_OUTPUT_TYPE {
     const outputType = props && typeof props === "object" ? props.outputType : props;
 
     if (!outputType) {
-        return null;
+        return PPTX_DEFAULTS.write.outputType;
     }
 
     if (!OUTPUT_TYPES.includes(outputType)) {
@@ -67,9 +66,9 @@ export function downloadPdf(document: Document, fileName: string, bytes: Uint8Ar
     }, 100);
 }
 
-/** Converts PDF bytes the way PptxGenJS converts its zip: STREAM -> nodebuffer, no type -> blob. */
-export function convertPdfOutput(bytes: Uint8Array, outputType: PptxGenJS.WRITE_OUTPUT_TYPE | null): WriteOutput {
-    switch (outputType ?? PPTX_DEFAULTS.write.outputType) {
+/** Converts PDF bytes the way PptxGenJS converts its zip: STREAM -> nodebuffer. */
+export function convertPdfOutput(bytes: Uint8Array, outputType: PptxGenJS.WRITE_OUTPUT_TYPE): WriteOutput {
+    switch (outputType) {
         case "uint8array":
             return bytes;
         case "arraybuffer":

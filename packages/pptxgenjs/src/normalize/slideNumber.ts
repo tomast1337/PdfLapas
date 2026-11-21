@@ -56,6 +56,7 @@ export function normalizeSlideNumber(
     const align = own.align?.startsWith("c") ? "center" : own.align?.startsWith("r") ? "right" : defaults.align;
     const ownMargin = slideNumberMargin(own.margin);
     const margin = ownMargin.kind === "margin" ? ownMargin : slideNumberMargin(last.margin);
+    const valign = verticalAlign(own.valign || last.valign || defaults.valign, "slideNumber");
     const text = normalizeText(
         String(slideNumber),
         {
@@ -64,7 +65,7 @@ export function normalizeSlideNumber(
             color: own.color || last.color || PPTX_DEFAULTS.text.color,
             bold: Boolean(own.bold),
             align,
-            valign: verticalAlign(own.valign || last.valign || defaults.valign, "slideNumber"),
+            valign: valign.kind === "align" ? valign.align : undefined,
             margin: margin.kind === "margin" ? margin.margin : undefined,
         },
         target,

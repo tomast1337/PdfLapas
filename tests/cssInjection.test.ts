@@ -15,11 +15,11 @@ const VALIGN_ERROR = `Text option \`valign\` is ${JSON.stringify(PAYLOAD)}; use 
 describe("alignment options", () => {
     test("keep PptxGenJS's values and read valign as PptxGenJS 4.0.1 reads it in each place", () => {
         for (const align of ["left", "center", "right", "justify"] as const) {
-            expect(paragraphAlign(align)).toBe(align);
+            expect(paragraphAlign(align)).toEqual({ kind: "align", align });
         }
 
-        expect(paragraphAlign(undefined)).toBeUndefined();
-        expect(paragraphAlign("")).toBeUndefined();
+        expect(paragraphAlign(undefined)).toEqual({ kind: "unset" });
+        expect(paragraphAlign("")).toEqual({ kind: "unset" });
         const accepted: Record<VerticalAlignSource, ReadonlyArray<readonly [string, string]>> = {
             // genXmlTextBody step 2: the lower-cased first letter.
             textBox: [
@@ -63,11 +63,11 @@ describe("alignment options", () => {
 
         for (const [source, cases] of Object.entries(accepted) as Array<[VerticalAlignSource, ReadonlyArray<readonly [string, string]>]>) {
             for (const [valign, expected] of cases) {
-                expect([source, valign, verticalAlign(valign, source)]).toEqual([source, valign, expected]);
+                expect<unknown>([source, valign, verticalAlign(valign, source)]).toEqual([source, valign, { kind: "align", align: expected }]);
             }
 
-            expect(verticalAlign(undefined, source)).toBeUndefined();
-            expect(verticalAlign("", source)).toBeUndefined();
+            expect(verticalAlign(undefined, source)).toEqual({ kind: "unset" });
+            expect(verticalAlign("", source)).toEqual({ kind: "unset" });
         }
     });
 

@@ -277,6 +277,8 @@ const chart = z.strictObject({
     lineSymbol: z.enum(["circle", "dash", "diamond", "dot", "none", "square", "triangle"]),
     lineSymbolSize: nonNegative,
     lineSize: nonNegative,
+    plotArea: z.strictObject({ fill, borderVisible: z.boolean(), borderColor: cssColor, borderWidth: nonNegative }),
+    plotLayout: z.strictObject({ x: nonNegative, y: nonNegative, w: nonNegative, h: nonNegative }).optional(),
     altText: z.string(),
 });
 

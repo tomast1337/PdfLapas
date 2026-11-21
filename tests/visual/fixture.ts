@@ -2199,6 +2199,7 @@ export function populateParityFixture(presentation: Presentation): void {
     }
 
     populateChartAxisLabelFixture(presentation);
+    populateChartPlotAreaFixture(presentation);
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */
@@ -2597,6 +2598,25 @@ export function populateChartAxisLabelFixture(presentation: Presentation): void 
         [{ name: "Lorem", labels: regions, values: [123600, 66100, 77400, 38200] }],
         { ...shared, x: 5.2, chartColors: ["4472C4"], barDir: "bar", valAxisMaxVal: 150000, valAxisMajorUnit: 50000 },
     );
+}
+
+/**
+ * Plot area fill and border (#445) on an automatic layout, and a manual `layout` (layoutTarget inner) with a
+ * half-transparent fill. A parity slide after the others (no page number moves) and the WASM chartPlot deck, which
+ * crops each chart.
+ */
+export function populateChartPlotAreaFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Plot area and layout", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, plotArea: { fill: { color: "F2F2F2" }, border: { pt: 1, color: "7F7F7F" } } });
+    slide.addChart("line", data, { ...shared, x: 5.2, layout: { x: 0.15, y: 0.1, w: 0.8, h: 0.6 }, plotArea: { fill: { color: "DEEBF7", transparency: 50 } } });
 }
 
 export function populateComponentFixture(presentation: Presentation): void {

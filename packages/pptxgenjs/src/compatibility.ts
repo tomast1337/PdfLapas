@@ -631,7 +631,10 @@ export const API_COMPATIBILITY = Object.freeze({
         subject: { status: "implemented", note: 'PDF Subject; no PptxGenJS default, unset reads "" and is not written' },
         title: { status: "implemented", note: 'PDF Title; no PptxGenJS default, unset reads "" and is not written' },
         addSection: { status: "implemented", note: "sections draw nothing; PptxGenJS's input warnings are kept" },
-        addSlide: { status: "implemented", note: "masterName (or the deprecated string argument) adds the slide on a defineSlideMaster() master; an unknown name adds it without one, as PptxGenJS does, with a console warning" },
+        addSlide: {
+            status: "implemented",
+            note: 'masterName (or the deprecated string argument) adds the slide on a defineSlideMaster() master; the built-in "DEFAULT" starts it with the slideNumber set last and gives autoPage tables 0.5in margins; an unknown name adds it without one, as PptxGenJS does, with a console warning',
+        },
         defineLayout: { status: "implemented", note: "also applies the size at once" },
         defineSlideMaster: { status: "implemented", note: "background, objects (drawn under each slide's own), slideNumber and margin; placeholders draw nothing until addText or addImage fills one" },
         tableToSlides: { status: "implemented", note: "finds the table id in the global document, as PptxGenJS; also takes the <table> element or its HTML" },

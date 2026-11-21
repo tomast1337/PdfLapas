@@ -8,8 +8,8 @@ import type { PuppeteerSlide } from "./PuppeteerSlide";
 
 /** A defineSlideMaster() layout: PptxGenJS draws its background and objects under those of each slide added on it. */
 export type SlideMaster = {
-    /** The master's background and objects, normalized as a slide of their own that is never a page of the deck. */
-    readonly layer: PuppeteerSlide;
+    /** The master's background and objects, normalized as a slide of their own that is never a page of the deck; null for PptxGenJS's built-in "DEFAULT", which has neither. */
+    readonly layer: PuppeteerSlide | null;
     /** The `slideNumber` each slide added on the master starts with. */
     readonly slideNumber: PptxGenJS.SlideNumberProps | null;
     /** `margin` in inches, [top, right, bottom, left] or one for all: where autoPage tables on its slides start and stop. */

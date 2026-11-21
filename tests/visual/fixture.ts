@@ -534,6 +534,8 @@ const MASTER_CASES = [
     { page: MASTER_PAGE + 2, name: "master-placeholder-title", x: 0.45, y: 0.25, w: 9.1, h: 1.1 },
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-own-size", x: 0.45, y: 1.45, w: 4.4, h: 3.6 },
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-style", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
+    // The built-in "DEFAULT" master (#475): the slide starts with the slideNumber a slide's setter wrote last.
+    { page: MASTER_PAGE + 3, name: "master-default-slide-number", x: 7.4, y: 4.5, w: 2.2, h: 1 },
 ] as const;
 
 // These tight crops include the stroke but exclude labels and unused slide area.
@@ -2213,6 +2215,9 @@ export function populateParityFixture(presentation: Presentation): void {
         second.addShape("ellipse", { x: body.x, y: 2.1, w: 3, h: 2.2, fill: { color: "F4B183" } });
 
         populatePlaceholderFixture(presentation);
+        // PptxGenJS's built-in "DEFAULT" master: a blank layout whose slide number is the one a slide's setter wrote
+        // last (populateSlidePropertiesFixture's 28pt red number), which a slide added on it starts with.
+        presentation.addSlide({ masterName: "DEFAULT" }).addText("The DEFAULT master starts with the last slide number set", { x: body.x, y: body.y, w: body.w, h: 0.6, fontFace: "Arial", fontSize: 20, color: "363636", margin: 0 });
     }
 
     populateChartAxisLabelFixture(presentation);

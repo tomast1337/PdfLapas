@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import JSZip from "jszip";
 import pptxgen from "pptxgenjs";
 import type PptxGenJS from "pptxgenjs";
 import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
@@ -432,5 +433,70 @@ describe("addText and addImage({ placeholder })", () => {
         expect(html).toContain(">Filled title<");
         expect(html).not.toContain("Title prompt");
         expect(html).toContain('data-object-name="Text 1"');
+    });
+});
+
+describe('the built-in "DEFAULT" master', () => {
+    const rows: PptxGenJS.TableRow[] = Array.from({ length: 40 }, (_, index) => [{ text: `Row ${index}` }]);
+
+    test("starts with the slideNumber a slide's setter wrote last, as PptxGenJS's Slide constructor copies the DEFAULT layout's", async () => {
+        const reference = new pptxgen();
+        const pres = new PuppeteerGen();
+
+        for (const deck of [reference, pres]) {
+            deck.defineSlideMaster({ title: "M", slideNumber: { x: 2, y: 5 } });
+        }
+
+        // A defined master's slideNumber reaches the deck's master, not the DEFAULT layout.
+        expect(pres.addSlide({ masterName: "DEFAULT" }).slideNumber).toBe(reference.addSlide({ masterName: "DEFAULT" }).slideNumber);
+        const props: PptxGenJS.SlideNumberProps = { x: 9, y: 5.2, color: "FF0000" };
+
+        reference.addSlide().slideNumber = props;
+        pres.addSlide().slideNumber = props;
+        expect(pres.addSlide({ masterName: "DEFAULT" }).slideNumber).toEqual(reference.addSlide({ masterName: "DEFAULT" }).slideNumber);
+        expect(pres.addSlide().slideNumber).toBe(reference.addSlide().slideNumber);
+        const slides = pres.getModel().slides;
+
+        expect(slides[0]?.objects).toEqual([]);
+        expect(slides[2]?.objects.at(-1)?.style.geometry).toMatchObject({ x: inchesToPixels(9), y: inchesToPixels(5.2) });
+        expect(firstRunOf(slides[2], -1).text).toBe("3");
+        expect(slides[3]?.objects).toEqual([]);
+        // Two number elements: the slide whose setter wrote the props and the DEFAULT slide added after it.
+        expect((await pres.toHtml()).html.split('data-object-name="Slide Number"')).toHaveLength(3);
+    });
+
+    // PptxGenJS reads `slideMargin` on autoPage tables, which its TableProps declaration leaves out.
+    type AutoPageTableProps = PptxGenJS.TableProps & { slideMargin?: number };
+    const plainSlideCount = (slideMargin: number) => {
+        const pres = new PuppeteerGen();
+        const options: AutoPageTableProps = { x: 0.5, y: 0.5, w: 9, autoPage: true, slideMargin };
+
+        pres.addSlide().addTable(rows, options);
+
+        return pres.getModel().slides.length;
+    };
+
+    test("takes its 0.5in margin over an autoPage table's slideMargin, and continues on DEFAULT slides, as PptxGenJS does", async () => {
+        const options: AutoPageTableProps = { x: 0.5, y: 0.5, w: 9, autoPage: true, slideMargin: 1.5 };
+        const reference = new pptxgen();
+
+        reference.addSlide({ masterName: "DEFAULT" }).addTable(structuredClone(rows), structuredClone(options));
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+        const slideXml = await zip.file("ppt/slides/slide2.xml")?.async("string");
+        const rels = await zip.file("ppt/slides/_rels/slide2.xml.rels")?.async("string");
+        const referenceY = Number(/<p:xfrm><a:off x="\d+" y="(\d+)"/.exec(slideXml ?? "")?.[1]) / 914400;
+        const pres = new PuppeteerGen();
+
+        pres.addSlide({ masterName: "DEFAULT" }).addTable(rows, options);
+        const slides = pres.getModel().slides;
+
+        // The DEFAULT master writes the same blank slideLayout1.xml a plain slide uses.
+        expect(rels).toContain("slideLayout1.xml");
+        // The 0.5in bottom margin fits more rows per page than the table's 1.5in, so it takes fewer slides.
+        expect(slides.length).toBe(Object.keys(zip.files).filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length);
+        expect(slides.length).toBeLessThan(plainSlideCount(1.5));
+        expect(referenceY).toBe(0.5);
+        expect(slides[1]?.objects.at(-1)?.style.geometry.y).toBe(inchesToPixels(referenceY));
     });
 });

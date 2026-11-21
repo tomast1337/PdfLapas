@@ -743,6 +743,50 @@ describe("chart normalization and rendering", () => {
         expect(Array.from(svg?.querySelectorAll('path[ecmeta_ssr_type="legend"][ecmeta_silent]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4"]);
     });
 
+    test("runs a clustered horizontal bar chart's series bottom-up and lists its legend from the last series, as LibreOffice and PowerPoint draw it (#472)", () => {
+        // For each fill, the top of each bar (by category) and the legend text in order.
+        const drawn = (options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("bar", categoricalData, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", ...options });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const tops: Record<string, number[]> = {};
+
+            for (const path of svg?.querySelectorAll('path[ecmeta_ssr_type="chart"]') ?? []) {
+                const fill = path.getAttribute("fill") ?? "";
+
+                (tops[fill] ??= []).push(Number(/^M[\d.]+ ([\d.]+)/.exec(path.getAttribute("d") ?? "")?.[1]));
+            }
+
+            // The legend's texts are the only ones that name a series.
+            const legend: string[] = [];
+
+            for (const text of svg?.querySelectorAll("text") ?? []) {
+                if (text.textContent === "First" || text.textContent === "Second") {
+                    legend.push(text.textContent);
+                }
+            }
+
+            return { tops, legend };
+        };
+        const clustered = drawn({ barDir: "bar" });
+        const blue = clustered.tops["#4472C4"] ?? [];
+        const orange = clustered.tops["#ED7D31"] ?? [];
+
+        expect(blue).toHaveLength(3);
+        expect(orange).toHaveLength(3);
+
+        // The first series ("First", blue) sits below the second in every band.
+        for (const [index, top] of blue.entries()) {
+            expect(top).toBeGreaterThan(orange[index] ?? Infinity);
+        }
+
+        expect(clustered.legend).toEqual(["Second", "First"]);
+        // A stacked one keeps the series order in the legend; a column chart too.
+        expect(drawn({ barDir: "bar", barGrouping: "stacked" }).legend).toEqual(["First", "Second"]);
+        expect(drawn({ barDir: "col" }).legend).toEqual(["First", "Second"]);
+    });
+
     test("draws outside major tick marks on the category axis, as PptxGenJS writes them", () => {
         // PptxGenJS 4.0.1: `<c:majorTickMark val="${catAxisMajorTickMark || 'out'}"/>` on every category axis but scatter's.
         expect(normalizeChart("bar", categoricalData).categoryMajorTickMark).toBe("outside");

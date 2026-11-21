@@ -205,6 +205,8 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelFormatCode", // common single-section numeric formats
     "valAxisMajorTickMark",
     "valAxisMinorTickMark", // `cross` remains explicit unsupported
+    "layout", // not drawn on pie, doughnut, radar or bar3D charts (#445)
+    "plotArea", // not drawn on pie, doughnut, radar or bar3D charts (#445)
 ]);
 // Declared in IChartOpts but read by no chart writer in PptxGenJS 4.0.1.
 const IGNORED_CHART_OPTIONS = new Set<string>(["fontFace", "fontSize"]);

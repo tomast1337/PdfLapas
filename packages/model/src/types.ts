@@ -386,8 +386,21 @@ export type NormalizedChart = {
     lineSymbol: "circle" | "dash" | "diamond" | "dot" | "none" | "square" | "triangle";
     lineSymbolSize: number;
     lineSize: number;
+    plotArea: NormalizedChartPlotArea;
+    /** The inner plot rectangle as fractions of the chart frame; absent for the automatic layout. */
+    plotLayout?: NormalizedChartLayout;
     altText: string;
 };
+
+export type NormalizedChartPlotArea = {
+    fill: NormalizedFill;
+    borderVisible: boolean;
+    borderColor: CssColor;
+    /** Points. */
+    borderWidth: number;
+};
+
+export type NormalizedChartLayout = { x: number; y: number; w: number; h: number };
 
 /**
  * One slide object as recorded by the PptxGenJS-compatible API, after option

@@ -530,12 +530,14 @@ const MASTER_CASES = [
     { page: MASTER_PAGE + 1, name: "master-own-background-content", x: 0.5, y: 1.2, w: 9, h: 3.2 },
     { page: MASTER_PAGE + 1, name: "master-footer-slide-number-2", x: 0.05, y: 4.9, w: 9.9, h: 0.65 },
     // Text filling the master's placeholders (#465): the title's 44pt centered titleStyle, the body placeholder's own
-    // 20pt over the text's 30pt, and the bodyStyle's 32pt with 20% space before; all top-anchored.
+    // 20pt over the text's 30pt, and the bodyStyle's 32pt with 20% space before; all top-anchored. The next slide's
+    // paragraphs of other sizes each take the 20% of their own largest run (#493).
     { page: MASTER_PAGE + 2, name: "master-placeholder-title", x: 0.45, y: 0.25, w: 9.1, h: 1.1 },
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-own-size", x: 0.45, y: 1.45, w: 4.4, h: 3.6 },
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-style", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
+    { page: MASTER_PAGE + 3, name: "master-placeholder-body-mixed-sizes", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
     // The built-in "DEFAULT" master (#475): the slide starts with the slideNumber a slide's setter wrote last.
-    { page: MASTER_PAGE + 3, name: "master-default-slide-number", x: 7.4, y: 4.5, w: 2.2, h: 1 },
+    { page: MASTER_PAGE + 4, name: "master-default-slide-number", x: 7.4, y: 4.5, w: 2.2, h: 1 },
 ] as const;
 
 // These tight crops include the stroke but exclude labels and unused slide area.
@@ -2232,7 +2234,7 @@ export function populateParityFixture(presentation: Presentation): void {
 }
 
 /**
- * The parity fixture's placeholder slide (MASTER_CASES), also the WASM backend's placeholder deck: the master's prompt
+ * The parity fixture's placeholder slides (MASTER_CASES), also the WASM backend's placeholder deck: the master's prompt
  * text draws nothing, and the text filling a placeholder takes its options and inherits the rest from the master's
  * titleStyle or bodyStyle.
  */
@@ -2254,6 +2256,18 @@ export function populatePlaceholderFixture(presentation: Presentation): void {
     filled.addText("Placeholder title", { placeholder: "title" });
     filled.addText("Body placeholder text at its own 20pt, lorem ipsum dolor sit amet, consectetur adipiscing elit", { placeholder: "body", fontSize: 30 });
     filled.addText("Body style 32pt\nSecond paragraph", { placeholder: "side", fontFace: "Arial" });
+
+    // Each paragraph's 20% space before is of its own largest run (#493): 8pt over the mixed one, 2.4pt over the 12pt ones.
+    presentation.addSlide({ masterName: "PARITY_PLACEHOLDERS" }).addText(
+        [
+            { text: "Body style 32pt", options: { breakLine: true } },
+            { text: "12pt then ", options: { fontSize: 12 } },
+            { text: "40pt", options: { fontSize: 40, breakLine: true } },
+            { text: "A 12pt paragraph", options: { fontSize: 12, breakLine: true } },
+            { text: "Another 12pt paragraph", options: { fontSize: 12 } },
+        ],
+        { placeholder: "side", fontFace: "Arial" },
+    );
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */

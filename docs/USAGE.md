@@ -328,7 +328,8 @@ slide.addText("Drawn on top of the master's objects", { x: 0.5, y: 1.2, w: 9, h:
   `addText(text, { placeholder: name })` fills it as PptxGenJS does: the placeholder's options (its
   `x`, `y`, `w`, `h` and text style) win over the text's own, and what neither sets comes from the
   master's text styles: a `title` placeholder is 44pt and centered in `theme.headFontFace`, any other
-  type 32pt and left-aligned with 20% space before; both are top-anchored and black.
+  type 32pt and left-aligned with 20% space before, of each paragraph's largest run, unless a
+  `paraSpaceBefore` above 0 sets it; both are top-anchored and black.
   `addImage({ placeholder: name })` moves the picture to the placeholder's `x` and `y`. A name the
   master does not have draws the object from its own options and adds a `warnings()` line.
 - An unknown `masterName` adds a slide without a master, as PptxGenJS does, and logs a warning.

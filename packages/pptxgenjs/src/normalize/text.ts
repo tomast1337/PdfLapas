@@ -3,7 +3,7 @@ import { type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
 import { builtInFontMetrics } from "#src/fontMetrics";
 import type { NormalizedTextBox, NormalizedTextBullet, NormalizedTextParagraph, NormalizedTextRun } from "@pdflapas/model";
-import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
+import { inchesToPixels, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
 import { inch2EmuToPixels } from "#src/units";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, type GridSpacing, runPieces, wordAfter } from "./advanceGrid";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "./eastAsianLineBreak";
@@ -435,6 +435,11 @@ export type RunWriting = {
     readonly shared?: SharedRunOptions;
     /** A table cell's text, which no addTextDefinition cleans. */
     readonly cell?: boolean;
+    /**
+     * Text filling a master placeholder: its titleStyle's or bodyStyle's space before (`<a:spcBef><a:spcPct>`) as a
+     * ratio of the size, which a paragraph PptxGenJS writes no `<a:spcBef>` for (no `paraSpaceBefore` above 0) takes.
+     */
+    readonly placeholderSpaceBeforeRatio?: number;
 };
 
 /** A run options record of one box: the options it started from and the copy this box's writes go to. */
@@ -837,6 +842,12 @@ export function normalizeText(
             lists = [...shallower, { level, numberType: bullet.numberType, start: bullet.start, next }];
         }
 
+        // genXmlParagraphProps writes `<a:spcBef>` only for a paraSpaceBefore above 0; a placeholder's paragraph without one
+        // takes the master's percentage, which LibreOffice's oox import (TextParagraph::insertAt) takes of the paragraph's
+        // largest run: in a synthetic deck (Arial, a 12pt run then a 40pt one, and the reverse), both 40pt lines start
+        // where a paragraph of 40pt alone does, 8pt below the 12pt line above.
+        const ownSpaceBefore = first.paraSpaceBefore ?? 0;
+        const spaceBeforePoints = writing.placeholderSpaceBeforeRatio !== undefined && !(ownSpaceBefore > 0) ? pixelsToPoints(largestSize) * writing.placeholderSpaceBeforeRatio : ownSpaceBefore;
         // shortcut: PowerPoint's dropped first space before was measured on top-anchored text boxes only; middle and
         // bottom anchors and table cells follow the same rule until a measurement says otherwise.
         const firstSpace = index === 0 && !spacesFirstParagraph ? { spaceBefore: 0 } : {};
@@ -850,7 +861,7 @@ export function normalizeText(
             ...(align === "justify" && RENDERING_TARGETS[target].justifiesAtSpaces ? { textJustify: "inter-word" as const } : {}),
             rtl: first.rtlMode ?? PPTX_DEFAULTS.text.rtlMode,
             lineBox: group.endsParagraph ? lineBox : feedLineBox,
-            spaceBefore: pointsToPixels(spacingPoints(first.paraSpaceBefore ?? 0, target)),
+            spaceBefore: pointsToPixels(spacingPoints(spaceBeforePoints, target)),
             spaceAfter: pointsToPixels(spacingPoints(first.paraSpaceAfter ?? 0, target)),
             tabStops,
             defaultTabStop: inchesToPixels(PPTX_DEFAULTS.text.defaultTabStopIn),

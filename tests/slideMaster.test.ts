@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import JSZip from "jszip";
 import pptxgen from "pptxgenjs";
 import type PptxGenJS from "pptxgenjs";
-import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
+import { inchesToPixels, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
 import type { NormalizedSlide, NormalizedSlideObject, NormalizedTextRun } from "../packages/model/src/index";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 
@@ -377,6 +377,37 @@ describe("addText and addImage({ placeholder })", () => {
         expect(filled).toEqual(plain);
         // LibreOffice spaces the first paragraph of a plain text box only (editeng's ULSPACEFIRSTPARA), not a placeholder's.
         expect(text?.kind === "text" ? text.text.paragraphs.map(paragraph => paragraph.spaceBefore) : []).toEqual([0, pointsToPixels(6.4)]);
+    });
+
+    test("each body placeholder paragraph PptxGenJS writes no spcBef for takes 20% of its own largest run", async () => {
+        const runs: PptxGenJS.TextProps[] = [
+            { text: "Small", options: { fontSize: 12, breakLine: true } },
+            { text: "Small", options: { fontSize: 12 } },
+            { text: "Big", options: { fontSize: 40, breakLine: true } },
+            { text: "Zero", options: { fontSize: 12, paraSpaceBefore: 0, breakLine: true } },
+            { text: "Own", options: { fontSize: 12, paraSpaceBefore: 3 } },
+        ];
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+        reference.addSlide({ masterName: "PH" }).addText(structuredClone(runs), { placeholder: "side" });
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+        const slideXml = (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+        const masterXml = (await zip.file("ppt/slideMasters/slideMaster1.xml")?.async("string")) ?? "";
+
+        // Only the last paragraph writes its own space before; the others take the bodyStyle's percentage.
+        expect(slideXml.match(/<a:spcBef>.*?<\/a:spcBef>/g)).toEqual(['<a:spcBef><a:spcPts val="300"/></a:spcBef>']);
+        expect(masterXml).toMatch(/<p:bodyStyle>\s*<a:lvl1pPr[^>]*><a:spcBef><a:spcPct val="20000"\/><\/a:spcBef>/);
+
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(PLACEHOLDER_MASTER);
+        pres.addSlide({ masterName: "PH" }).addText(runs, { placeholder: "side" });
+        const text = pres.getModel().slides[0]?.objects[1];
+
+        // LibreOffice takes the percentage of the paragraph's largest run, not its first or the box's 32pt.
+        expect(text?.kind === "text" ? text.text.paragraphs.map(paragraph => Math.round(pixelsToPoints(paragraph.spaceBefore) * 100) / 100) : []).toEqual([0, 8, 2.4, 3]);
     });
 
     test("an unknown name draws from the object's own options, top-anchored as PptxGenJS writes it, and adds a warnings() line", () => {

@@ -174,14 +174,14 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
         pages: 2,
         crop: isText,
     },
-    // placeholders: the shared fixture's slide master placeholder slide (#465); every filled placeholder gets a crop.
+    // placeholders: the shared fixture's slide master placeholder slides (#465, #493); every filled placeholder gets a crop.
     placeholders: {
         populate: presentation => {
             populatePlaceholderFixture(presentation);
 
             return presentation;
         },
-        pages: 1,
+        pages: 2,
         crop: isText,
     },
     // options: the shared fixture's text-option slides; each case box (named after its parity crop) gets a crop, its label does not.

@@ -340,6 +340,7 @@ export class PuppeteerSlide implements PptxSlide {
     addText(text: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
         let textOptions = options ?? {};
         let fillsPlaceholder = false;
+        let placeholderSpaceBefore = {};
 
         // PptxGenJS 4.0.1 addTextDefinition (A.3): text that names one of its master's placeholders takes the
         // placeholder's options over its own, and slideObjectToXml writes it with no anchor and, for a string, no
@@ -356,17 +357,17 @@ export class PuppeteerSlide implements PptxSlide {
             const typeStyle = placeholder?.title ? PPTX_DEFAULTS.placeholder.title : PPTX_DEFAULTS.placeholder.body;
             const fontSize = merged.fontSize ?? typeStyle.fontSizePt;
 
+            // Each paragraph takes the style's space before from the size of its own runs (normalizeText).
+            placeholderSpaceBefore = placeholder ? { placeholderSpaceBeforeRatio: typeStyle.spaceBeforeFontRatio } : {};
+
             textOptions = {
                 ...merged,
                 valign: merged.valign ?? PPTX_DEFAULTS.placeholder.valign,
                 ...(typeof text === "string" && !merged.color ? { color: PPTX_DEFAULTS.placeholder.color } : {}),
-                // shortcut: the bodyStyle's 20% space before is of the box's size, where LibreOffice takes each
-                // paragraph's; measure runs of another size against the reference when a deck needs them (#493).
                 ...(placeholder
                     ? {
                           fontSize,
                           align: merged.align ?? typeStyle.align,
-                          paraSpaceBefore: merged.paraSpaceBefore ?? fontSize * typeStyle.spaceBeforeFontRatio,
                           // shortcut: resolved when the text is added, and the theme setter only throws for a late
                           // bodyFontFace; make it throw for headFontFace too once title placeholder text is tracked (#494).
                           ...(placeholder.title && !merged.fontFace ? { fontFace: this.context.headFontFace() } : {}),
@@ -403,6 +404,7 @@ export class PuppeteerSlide implements PptxSlide {
             {
                 box,
                 shared: this.context.sharedRunOptions,
+                ...placeholderSpaceBefore,
             },
         );
         // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph

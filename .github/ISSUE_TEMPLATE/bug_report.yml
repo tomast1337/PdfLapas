@@ -57,3 +57,20 @@ body:
         - OS:
     validations:
       required: true
+  - type: dropdown
+    id: ai-use
+    attributes:
+      label: AI use
+      description: Did you use AI tools to write this issue or find what it reports? Either answer is fine; it helps reviewers.
+      options:
+        - No AI
+        - AI helped (suggestions, editing, investigation); I wrote and checked it
+        - AI wrote most of it; I reviewed and checked it
+        - An AI agent wrote and filed it
+    validations:
+      required: true
+  - type: input
+    id: ai-tools
+    attributes:
+      label: AI tools used
+      description: Optional. Which tools, and for what.

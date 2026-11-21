@@ -495,10 +495,18 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const valueAxisOptions = options.valAxes ?? [];
     const normalizedType: NormalizedChartType = mixed ? "mixed" : (type as NormalizedChartType);
     const palette = options.chartColors?.length ? options.chartColors : normalizedType === "pie" || normalizedType === "doughnut" ? PPTX_DEFAULTS.chart.colors.pie : PPTX_DEFAULTS.chart.colors.bar;
+    // PptxGenJS 4.0.1 writes a `c:dPt` per point of a bar chart's only series, filled with `chartColors[index]`, when the
+    // caller's chartColors has more than one entry, unless `lineSize` is 0 (the c:dPt then has no fill); PowerPoint and
+    // LibreOffice draw each bar in its own color and key the legend entry with the series color (#473).
+    const colorsEachBar = (options.chartColors?.length ?? 0) > 1 && options.lineSize !== 0;
     let series: NormalizedChartSeries[];
 
     if (!Array.isArray(type)) {
         series = normalizeSeries(normalizedType, data);
+
+        if (normalizedType === "bar" && colorsEachBar && series.length === 1 && series[0]) {
+            series[0] = { ...series[0], varyColors: true };
+        }
     } else {
         series = [];
 
@@ -507,7 +515,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
                 series.push({
                     ...item,
                     // PptxGenJS restarts colors within each mixed chart-type group.
-                    varyColors: chart.type === "bar" && chart.data.length === 1,
+                    varyColors: chart.type === "bar" && chart.data.length === 1 && colorsEachBar,
                     valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const),
                 });
             }

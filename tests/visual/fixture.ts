@@ -2226,6 +2226,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartPlotAreaFixture(presentation);
     populateChartMarkerFixture(presentation);
     populateChartScatterFixture(presentation);
+    populateChartBarColorFixture(presentation);
 }
 
 /**
@@ -2867,4 +2868,20 @@ export function populateChartScatterFixture(presentation: Presentation): void {
 
     slide.addChart("scatter", data, { ...shared, x: 0.4 });
     slide.addChart("scatter", data, { ...shared, x: 5.2, lineSize: 3 });
+}
+
+/**
+ * Single-series bar colors (#473): with more than one chartColors entry each bar takes its own, a column chart's and a
+ * half-transparent horizontal bar chart's, and the legend keys the series in the first. A parity slide after the
+ * others (no page number moves) and the WASM chartBarColors deck, which crops each chart.
+ */
+export function populateChartBarColorFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Single-series bar colors", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [4, 2, 3, 1] }];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, showLegend: true, legendPos: "b" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, chartColors: ["4472C4", "ED7D31"] });
+    slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "bar", chartColors: ["4472C4", "ED7D31", "A5A5A5"], chartColorsOpacity: 50 });
 }

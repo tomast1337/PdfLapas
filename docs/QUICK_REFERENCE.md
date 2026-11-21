@@ -69,6 +69,15 @@ slide.addText(
     ],
     { x: 1, y: 1 },
 );
+
+// Numbered list: the number type goes in `style`. PptxGenJS 4.0.1 ignores `numberType`, and so does PdfLapas.
+slide.addText(
+    [
+        { text: "First", options: { bullet: { type: "number", style: "romanUcPeriod" }, breakLine: true } },
+        { text: "Second", options: { bullet: { type: "number", style: "romanUcPeriod" } } },
+    ],
+    { x: 1, y: 2, w: 6, h: 1 },
+);
 ```
 
 ## Add Table

@@ -22,5 +22,6 @@
   "chartScatter": "66f5d5b7455c260643f51419dfbf0e8e81eabe7e94f61ec2c7e5f4a51cf1b4ad",
   "chartBarColors": "7247d288e6109a6f718d87dee8deeef359f068f85a7f3d61323088ac04305935",
   "chartPie": "75b3f0f3ade459b44c57088a789a6a8ce53238e92f3cf67a6372e1309c08886d",
-  "chartBarOrder": "c66703cd1ca8ae5e60b3629ef0b2cecccaf8b9deae03b161825bec68fa7e0481"
+  "chartBarOrder": "c66703cd1ca8ae5e60b3629ef0b2cecccaf8b9deae03b161825bec68fa7e0481",
+  "chartLegendOrder": "bd9030ca60aa30ac1b8002aeabba68cdea91f294ef68453511c065a9fd019e25"
 }

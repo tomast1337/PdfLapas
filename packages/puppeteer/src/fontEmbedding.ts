@@ -21,12 +21,13 @@ const SUBSET_TAG = /^[A-Z]{6}\+/;
 const SFNT_TABLE_COUNT = 4;
 const SFNT_TABLE_RECORDS = 12;
 const SFNT_TABLE_RECORD_SIZE = 16;
+const TTC_NUM_FONTS = 8;
 const TTC_FONT_OFFSETS = 12;
 const OS2_FS_TYPE = 8;
 const TAG_TTCF = 0x74746366; // "ttcf"
 const TAG_OS2 = 0x4f532f32; // "OS/2"
 
-/** What a face's OS/2 fsType says about embedding it; "unreadable" when the file is not an sfnt or has no readable OS/2 table. */
+/** What a face's OS/2 fsType says about embedding it; "unreadable" when the file is not an sfnt, has no such face or has no readable OS/2 table. */
 export type FsTypeEmbedding = { kind: "restricted" } | { kind: "embeddable" } | { kind: "unreadable" };
 
 /**
@@ -37,7 +38,15 @@ export function restrictedByFsType(bytes: Uint8Array, index = 0): FsTypeEmbeddin
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const u16 = (at: number) => (at + 2 <= view.byteLength ? view.getUint16(at) : undefined);
     const u32 = (at: number) => (at + 4 <= view.byteLength ? view.getUint32(at) : undefined);
-    const font = u32(0) === TAG_TTCF ? u32(TTC_FONT_OFFSETS + 4 * index) : 0;
+    const collection = u32(0) === TAG_TTCF;
+    // A single font holds face 0 only; a collection holds numFonts faces.
+    const faces = collection ? (u32(TTC_NUM_FONTS) ?? 0) : 1;
+
+    if (!Number.isInteger(index) || index < 0 || index >= faces) {
+        return { kind: "unreadable" };
+    }
+
+    const font = collection ? u32(TTC_FONT_OFFSETS + 4 * index) : 0;
 
     if (font === undefined) {
         return { kind: "unreadable" };
@@ -47,8 +56,13 @@ export function restrictedByFsType(bytes: Uint8Array, index = 0): FsTypeEmbeddin
 
     for (let table = 0; table < tables; table++) {
         const record = font + SFNT_TABLE_RECORDS + table * SFNT_TABLE_RECORD_SIZE;
+        const tag = u32(record);
 
-        if (u32(record) !== TAG_OS2) {
+        if (tag === undefined) {
+            return { kind: "unreadable" }; // The table directory is cut short.
+        }
+
+        if (tag !== TAG_OS2) {
             continue;
         }
 

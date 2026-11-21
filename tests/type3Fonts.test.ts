@@ -165,6 +165,23 @@ describe("font embedding permission (OS/2 fsType)", () => {
         expect(restrictedByFsType(sfntWithFsType(0x0002).subarray(0, 30))).toEqual({ kind: "unreadable" });
     });
 
+    test("answers unreadable for a face the file does not hold or a table directory cut short (untrusted bytes)", () => {
+        const collection = sfntWithFsType(0x0002, true);
+        // The collection claims one face: its second offset is still there but is past numFonts.
+        const oneFace = collection.slice();
+
+        new DataView(oneFace.buffer).setUint32(8, 1);
+
+        expect(restrictedByFsType(oneFace, 1)).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(collection, 2)).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(collection, -1)).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(collection, 0.5)).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(sfntWithFsType(0x0002), 1)).toEqual({ kind: "unreadable" });
+        // A TTC header cut inside its offset table, and a face whose table directory is cut before its first record.
+        expect(restrictedByFsType(collection.subarray(0, 18), 1)).toEqual({ kind: "unreadable" });
+        expect(restrictedByFsType(collection.subarray(0, 20 + 14), 1)).toEqual({ kind: "unreadable" });
+    });
+
     test("finds the face by its PostScript name through fontconfig; an unknown face is not restricted", async () => {
         expect(await restrictedFonts(["CCCCCC+NoSuchFont-Regular"])).toEqual(new Set());
         if (CFF_FACE === "URW Gothic") {

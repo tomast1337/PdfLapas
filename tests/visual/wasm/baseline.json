@@ -490,5 +490,9 @@
   "chartLabels": {
     "p1-Chart0": 0.109,
     "p1-Chart1": 0.1101
+  },
+  "chartAxis": {
+    "p1-Chart0": 0.1117,
+    "p1-Chart1": 0.1257
   }
 }

@@ -296,10 +296,15 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const gap = height * PPTX_DEFAULTS.chart.plotAreaGapRatio;
     const horizontal = chart.type === "bar" && chart.barDirection === "bar";
     const valueLabelPx = pointsToPixels(chart.valueAxes[0]?.labelFontSize ?? chart.fontSize);
-    const bottomLabelPx = horizontal ? valueLabelPx : pointsToPixels(chart.fontSize);
-    const sideLabelPx = horizontal ? pointsToPixels(chart.fontSize) : valueLabelPx;
+    const categoryAxisModel = chart.categoryAxis;
+    const categoryLabelPx = pointsToPixels(categoryAxisModel.labelFontSize);
+    const bottomLabelPx = horizontal ? valueLabelPx : categoryLabelPx;
+    const sideLabelPx = horizontal ? categoryLabelPx : valueLabelPx;
     const lineEm = PPTX_DEFAULTS.text.singleLineEm;
     const legendBand = chart.showLegend && chart.legendPosition === "b" ? pointsToPixels(chart.legendFontSize) * lineEm + gap : 0;
+    // A bottom category-axis title gets its band below the labels, as LibreOffice lays it out; a left one (a horizontal
+    // bar chart's) is moved clear of the labels by ECharts (nameMoveOverlap) and kept in the frame by the outer bounds.
+    const categoryTitleBand = categoryAxisModel.showTitle && !horizontal ? 2 * gap + pointsToPixels(categoryAxisModel.titleFontSize) * PPTX_DEFAULTS.chart.categoryAxis.titleBandEm : 0;
     // The value axis gutter: room for its labels and title.
     const firstAxis = chart.valueAxes[0];
     let gutter: number | string;
@@ -327,7 +332,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         left: gutter,
         right: chart.valueAxes.length > 1 ? "14%" : "2%",
         top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
-        bottom: gap + legendBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
+        bottom: gap + legendBand + categoryTitleBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
         outerBoundsMode: "auto",
         outerBounds: { left: labelBound, right: labelBound, top: 0, bottom: 0 },
     } as const;
@@ -441,7 +446,38 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         };
     } else {
         const categories = chart.series[0]?.labels ?? [];
-        const categoryAxis = { type: "category", data: categories, ...axisStyle, axisTick: tickOption(chart.categoryMajorTickMark, chart.gridLineColor, chart.gridLineWidth) } as const;
+        const categoryAxis = {
+            type: "category",
+            data: categories,
+            ...axisStyle,
+            axisLabel: {
+                color: categoryAxisModel.labelColor,
+                fontFamily: categoryAxisModel.labelFontFace,
+                fontSize: categoryLabelPx,
+                ...(categoryAxisModel.labelBold ? { fontWeight: "bold" } : {}),
+                ...(categoryAxisModel.labelItalic ? { fontStyle: "italic" } : {}),
+            },
+            axisTick: tickOption(chart.categoryMajorTickMark, chart.gridLineColor, chart.gridLineWidth),
+            name: categoryAxisModel.showTitle ? categoryAxisModel.title : undefined,
+            nameLocation: "middle",
+            nameGap: horizontal ? AXIS_LABEL_MARGIN : TICK_LENGTH + AXIS_LABEL_MARGIN + categoryLabelPx * lineEm + gap,
+            nameRotate: categoryAxisModel.titleRotate,
+            nameTextStyle: {
+                color: categoryAxisModel.titleColor,
+                fontFamily: categoryAxisModel.titleFontFace,
+                fontSize: pointsToPixels(categoryAxisModel.titleFontSize),
+            },
+            // Category gridlines run through the ticks, between the categories, as Office draws them.
+            splitLine: {
+                show: categoryAxisModel.gridLineStyle !== "none",
+                lineStyle: {
+                    color: categoryAxisModel.gridLineColor,
+                    width: pointsToPixels(categoryAxisModel.gridLineWidth),
+                    type: categoryAxisModel.gridLineStyle === "none" ? "solid" : lineType(categoryAxisModel.gridLineStyle),
+                    cap: categoryAxisModel.gridLineCap === "flat" ? "butt" : categoryAxisModel.gridLineCap,
+                },
+            },
+        } as const;
         const valueAxes = [];
 
         for (const [index, axis] of chart.valueAxes.entries()) {

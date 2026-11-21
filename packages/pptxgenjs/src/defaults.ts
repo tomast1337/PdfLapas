@@ -371,6 +371,22 @@ export const PPTX_DEFAULTS = Object.freeze({
             majorTickMark: "outside" as const,
             minorTickMark: "none" as const,
         }),
+        // PptxGenJS makeCatAxis: `catAxisTitle || 'Axis Title'`, the title written without `sz` unless
+        // catAxisTitleFontSize is set (Office's 10pt axis-title default), `catAxisLabelFontSize || 12`,
+        // `catAxisLabelColor || '000000'`, and no gridlines unless catGridLine is set (scatter aside).
+        categoryAxis: Object.freeze({
+            title: "Axis Title",
+            titleColor: "000000",
+            titleFontSizePt: 10,
+            labelColor: "000000",
+            labelFontSizePt: 12,
+            labelBold: false,
+            labelItalic: false,
+            gridLineStyle: "none" as const,
+            // LibreOffice lowers the plot area by two plot-area gaps and 1.71 title font sizes for a bottom axis title
+            // (measured on PptxGenJS column charts 4.1in high: 39px for a 10pt title, 71px for 24pt).
+            titleBandEm: 1.71,
+        }),
         secondaryCategoryAxis: false,
         secondaryValueAxis: false,
         v3DPerspective: 30,

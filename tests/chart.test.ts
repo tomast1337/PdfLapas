@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { format } from "echarts/core";
-import { inchesToPixels } from "@pdflapas/model";
+import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
 import { JSDOM } from "jsdom";
 import { renderedPage } from "./renderedPage";
 import type PptxGenJS from "pptxgenjs";
@@ -278,6 +278,116 @@ describe("chart normalization and rendering", () => {
         expect(texts(2)).toEqual(expect.arrayContaining(["1,200", "3,400"]));
         // Each field on its own line: ECharts writes one text element per line.
         expect(texts(3)).toEqual(["Lorem", "25%", "Ipsum", "75%"]);
+    });
+
+    test("normalizes the category axis from PptxGenJS's makeCatAxis defaults", () => {
+        // PptxGenJS 4.0.1: catAxisLabelFontSize || 12, catAxisLabelColor || '000000', catAxisLabelFontFace || 'Arial',
+        // catAxisTitle || 'Axis Title' with no sz (Office's 10pt), and catGridLine { style: 'none' } unless set.
+        const chart = normalizeChart("bar", categoricalData);
+
+        expect(chart.categoryAxis).toEqual({
+            showTitle: false,
+            title: "Axis Title",
+            titleColor: "#000000" as typeof chart.categoryAxis.titleColor,
+            titleFontFace: "Arial",
+            titleFontSize: 10,
+            titleRotate: undefined,
+            labelColor: "#000000" as typeof chart.categoryAxis.labelColor,
+            labelFontFace: "Arial",
+            labelFontSize: 12,
+            labelBold: false,
+            labelItalic: false,
+            gridLineColor: "#888888" as typeof chart.categoryAxis.gridLineColor,
+            gridLineWidth: 1,
+            gridLineStyle: "none",
+            gridLineCap: "flat",
+        });
+
+        const styled = normalizeChart("line", categoricalData, {
+            showCatAxisTitle: true,
+            catAxisTitle: "Quarter",
+            catAxisTitleColor: "17365D",
+            catAxisTitleFontFace: "Courier New",
+            catAxisTitleFontSize: 14,
+            catAxisTitleRotate: 10,
+            catAxisLabelColor: "C00000",
+            catAxisLabelFontFace: "Verdana",
+            catAxisLabelFontSize: 9,
+            catAxisLabelFontBold: true,
+            catAxisLabelFontItalic: true,
+            catGridLine: { color: "A5A5A5", size: 2, style: "dash", cap: "round" },
+        });
+
+        expect(styled.categoryAxis).toMatchObject({
+            showTitle: true,
+            title: "Quarter",
+            titleFontFace: "Courier New",
+            titleFontSize: 14,
+            titleRotate: 10,
+            labelFontFace: "Verdana",
+            labelFontSize: 9,
+            labelBold: true,
+            labelItalic: true,
+            gridLineWidth: 2,
+            gridLineStyle: "dash",
+            gridLineCap: "round",
+        });
+        expect([styled.categoryAxis.titleColor, styled.categoryAxis.labelColor, styled.categoryAxis.gridLineColor]).toEqual(["#17365D", "#C00000", "#A5A5A5"] as (typeof styled.categoryAxis.titleColor)[]);
+        // A catGridLine without a style is solid (createGridLineElement: `style || 'solid'`).
+        expect(normalizeChart("bar", categoricalData, { catGridLine: { color: "FF0000" } }).categoryAxis.gridLineStyle).toBe("solid");
+        // A pie or doughnut has no axes in PptxGenJS's output: the options draw nothing there.
+        expect(normalizeChart("pie", [categoricalData[0]!], { catAxisLabelColor: "FF0000" }).categoryAxis.labelColor).toBe("#FF0000" as typeof chart.categoryAxis.labelColor);
+    });
+
+    test("rejects category-axis options on chart types whose category axis it does not draw", () => {
+        expect(() => normalizeChart("bar3D", categoricalData, { catAxisLabelColor: "FF0000" })).toThrow("catAxisLabelColor[bar3D]");
+        expect(() => normalizeChart("radar", categoricalData, { showCatAxisTitle: true })).toThrow("showCatAxisTitle[radar]");
+        expect(() => normalizeChart("bar", categoricalData, { catGridLine: { color: "FF0000", width: 2 } as PptxGenJS.OptsChartGridLine })).toThrow("catGridLine.width");
+        expect(() => normalizeChart("bar", categoricalData, { catAxisLabelFontSize: -1 })).toThrow("catAxisLabelFontSize");
+    });
+
+    test("draws the category labels, title and gridlines in their own style and lowers the plot for the title", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const options = { y: 0, w: 4, h: 3 } as const;
+
+        slide.addChart("bar", categoricalData, { ...options, x: 0 });
+        slide.addChart("bar", categoricalData, {
+            ...options,
+            x: 4,
+            catAxisLabelColor: "C00000",
+            catAxisLabelFontSize: 14,
+            showCatAxisTitle: true,
+            catAxisTitle: "Quarter",
+            catAxisTitleColor: "17365D",
+            catGridLine: { color: "A5A5A5", style: "dash" },
+        });
+        const [plain, styled] = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+        const text = (svg: Element | undefined, content: string) => Array.from(svg?.querySelectorAll("text") ?? []).find(element => element.textContent === content);
+
+        expect(text(styled, "A")?.getAttribute("fill")).toBe("#C00000");
+        expect(text(styled, "A")?.getAttribute("style")).toContain(`${pointsToPixels(14)}px`);
+        expect(text(styled, "Quarter")?.getAttribute("fill")).toBe("#17365D");
+        expect(text(plain, "Axis Title")).toBeUndefined();
+        // The category labels sit higher, above the title's band.
+        expect(
+            Number(
+                text(styled, "A")
+                    ?.getAttribute("transform")
+                    ?.match(/translate\([-\d.]+[ ,]([-\d.]+)/)?.[1],
+            ),
+        ).toBeLessThan(
+            Number(
+                text(plain, "A")
+                    ?.getAttribute("transform")
+                    ?.match(/translate\([-\d.]+[ ,]([-\d.]+)/)?.[1],
+            ),
+        );
+        // One dashed vertical gridline per category boundary, in the gridline color.
+        const dashed = Array.from(styled?.querySelectorAll("path") ?? []).filter(path => path.getAttribute("stroke") === "#A5A5A5" && path.hasAttribute("stroke-dasharray"));
+
+        expect(dashed.length).toBeGreaterThanOrEqual(3);
+        expect(Array.from(plain?.querySelectorAll("path") ?? []).filter(path => path.hasAttribute("stroke-dasharray"))).toHaveLength(0);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {

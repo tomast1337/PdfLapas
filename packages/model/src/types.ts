@@ -362,6 +362,25 @@ export type NormalizedChartDataLabels = {
     italic: boolean;
 };
 
+/** The category axis of a bar, line or area chart: its labels, title and gridlines. */
+export type NormalizedChartCatAxis = {
+    showTitle: boolean;
+    title: string;
+    titleColor: CssColor;
+    titleFontFace: string;
+    titleFontSize: number;
+    titleRotate?: number;
+    labelColor: CssColor;
+    labelFontFace: string;
+    labelFontSize: number;
+    labelBold: boolean;
+    labelItalic: boolean;
+    gridLineColor: CssColor;
+    gridLineWidth: number;
+    gridLineStyle: "solid" | "dash" | "dot" | "none";
+    gridLineCap: "flat" | "round" | "square";
+};
+
 export type NormalizedChart = {
     type: NormalizedChartType;
     series: NormalizedChartSeries[];
@@ -396,6 +415,7 @@ export type NormalizedChart = {
     valueAxisMinimum: number;
     valueAxisMaximum: number;
     valueAxes: NormalizedChartValueAxis[];
+    categoryAxis: NormalizedChartCatAxis;
     doughnutHoleSize: number;
     firstSliceAngle: number;
     radarStyle: "standard" | "marker" | "filled";

@@ -20,7 +20,8 @@ const COVERAGE: Readonly<Record<string, string>> = {
     SimSun: "够这是ㄅ䶶，",
 };
 const advances = (characters: string): GlyphAdvances => ({ unitsPerEm: 1000, advances: new Map([...characters].map(character => [character.codePointAt(0) ?? 0, 1000])) });
-const FONTS: FontMetricsLookup = Object.assign(() => undefined, { glyphAdvances: (face: string) => (Object.hasOwn(COVERAGE, face) ? advances(COVERAGE[face] ?? "") : undefined) });
+const UNKNOWN = { kind: "unknown" } as const;
+const FONTS: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: (face: string) => (Object.hasOwn(COVERAGE, face) ? ({ kind: "advances", advances: advances(COVERAGE[face] ?? "") } as const) : UNKNOWN) });
 
 /** The faces a renderer draws `text` in, in order: per character, the first of the run's face and its stretch's chain that has it. */
 function drawn(text: string, fontFace = "Arial"): [string, string][] {
@@ -113,7 +114,7 @@ describe("the PowerPoint target's fallback faces", () => {
     });
 
     test("leaves the text whole when a face's characters are unknown, and on the LibreOffice target", () => {
-        const unknown: FontMetricsLookup = Object.assign(() => undefined, { glyphAdvances: () => undefined });
+        const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: () => UNKNOWN });
 
         expect(fallbackSegments("够这", "Arial", false, false, "powerpoint", unknown)).toEqual([{ text: "够这", fallbackFaces: fallbackChain("Arial", "powerpoint") }]);
         expect(fallbackSegments("够这", "Arial", false, false, "libreoffice", FONTS)).toEqual([{ text: "够这", fallbackFaces: [] }]);

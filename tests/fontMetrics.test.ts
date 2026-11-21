@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type PptxGenJS from "pptxgenjs";
 import { existsSync, readFileSync } from "node:fs";
 import { FontFileError, PuppeteerGen, PuppeteerGenLibreOffice, PuppeteerGenPowerPoint, readFontWinMetrics } from "../packages/pptxgenjs/src/index";
-import { FONT_WIN_METRICS, type FontMetricsLookup, type FontWinMetrics } from "../packages/pptxgenjs/src/defaults";
+import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsResult, type FontWinMetrics } from "../packages/pptxgenjs/src/defaults";
 import { normalizeText } from "../packages/pptxgenjs/src/normalize/text";
 import { fontMetricsLookup } from "../packages/pptxgenjs/src/fontMetrics";
 import { resolveInstalledFontMetrics, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
@@ -188,12 +188,14 @@ describe("fontMetrics option", () => {
     test("looks the caller's faces up over FONT_WIN_METRICS, case-insensitively, frozen", () => {
         const lookup = fontMetricsLookup({ "My Brand Sans": BRAND, ARIAL: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } }, null);
 
-        expect(lookup("my brand sans")).toEqual(BRAND);
-        expect(lookup("Arial")).toEqual({ unitsPerEm: 1000, winAscent: 800, winDescent: 200 });
-        expect(lookup("Calibri")).toBe(FONT_WIN_METRICS.calibri!);
-        expect(Object.isFrozen(lookup("My Brand Sans"))).toBe(true);
-        expect(lookup("constructor")).toBeUndefined();
-        expect(fontMetricsLookup(undefined, undefined)("ARIAL")).toBe(FONT_WIN_METRICS.arial!);
+        expect(lookup("my brand sans")).toEqual({ kind: "metrics", metrics: BRAND });
+        expect(lookup("Arial")).toEqual({ kind: "metrics", metrics: { unitsPerEm: 1000, winAscent: 800, winDescent: 200 } });
+        expect(lookup("Calibri")).toEqual({ kind: "metrics", metrics: FONT_WIN_METRICS.calibri! });
+        const brand = lookup("My Brand Sans");
+
+        expect(brand.kind === "metrics" && Object.isFrozen(brand.metrics)).toBe(true);
+        expect(lookup("constructor")).toEqual({ kind: "unknown" });
+        expect(fontMetricsLookup(undefined, undefined)("ARIAL")).toEqual({ kind: "metrics", metrics: FONT_WIN_METRICS.arial! });
     });
 
     // 18pt = 24px on a 28.8px line: the baseline is the line's winAscent share, on the PowerPoint target's 1/600 in grid.
@@ -359,7 +361,7 @@ describe("resolveFontMetrics option", () => {
     // 18pt = 24px on a 28.8px line: caller 22.8 (950/1200), resolver 21.6 (1500/2000), Calibri 22.464 (1950/2500), else 24;
     // on the 1/600 in baseline grid 22.72, 21.6, 22.4 and 24.
     test("the caller's fontMetrics come before the resolver, the resolver before FONT_WIN_METRICS, which comes before 1em", async () => {
-        const resolveFontMetrics = (face: string) => (["My Brand Sans", "My Brand Serif", "Arial"].includes(face) ? INSTALLED : undefined);
+        const resolveFontMetrics = (face: string): FontMetricsResult => (["My Brand Sans", "My Brand Serif", "Arial"].includes(face) ? { kind: "metrics", metrics: INSTALLED } : { kind: "unknown" });
         const presentation = new PuppeteerGenPowerPoint(undefined, { fontMetrics: { "My Brand Sans": BRAND }, resolveFontMetrics });
 
         expect(await baselines(presentation, ["My Brand Sans", "My Brand Serif", "Arial", "Calibri", "No Such Font 123"])).toEqual([22.72, 21.6, 21.6, 22.4, 24]);
@@ -367,7 +369,7 @@ describe("resolveFontMetrics option", () => {
 
     test("is called once per face per presentation, only for faces fontMetrics does not list, and never for the LibreOffice target", async () => {
         const calls: string[] = [];
-        const resolveFontMetrics = (face: string) => (calls.push(face), INSTALLED);
+        const resolveFontMetrics = (face: string) => (calls.push(face), { kind: "metrics", metrics: INSTALLED } as const);
 
         await baselines(new PuppeteerGenPowerPoint(undefined, { fontMetrics: { "My Brand Sans": BRAND }, resolveFontMetrics }), ["My Brand Serif", "my brand serif", "My Brand Sans", "My Brand Serif"]);
         // The paragraph mark is set in the theme font, Calibri, which is looked up as well.
@@ -380,9 +382,15 @@ describe("resolveFontMetrics option", () => {
 
     test("null turns the lookup off; the result is checked and an invalid one throws naming the face", async () => {
         expect(await baselines(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: null }), ["Arial", "My Brand Sans"])).toEqual([23.36, 24]);
-        const broken = () => ({ unitsPerEm: 0, winAscent: 1, winDescent: 1 });
+        const broken = () => ({ kind: "metrics", metrics: { unitsPerEm: 0, winAscent: 1, winDescent: 1 } }) as const;
 
         await expect(baselines(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: broken }), ["My Brand Sans"])).rejects.toThrow('`resolveFontMetrics` returned invalid metrics for "My Brand Sans": unitsPerEm must be a positive integer');
+        // A resolver written for the result before #425 (bare metrics, or undefined) is named, with the shape to return.
+        const bare = () => INSTALLED as unknown as FontMetricsResult;
+
+        await expect(baselines(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: bare }), ["My Brand Sans"])).rejects.toThrow(
+            '`resolveFontMetrics` returned invalid metrics for "My Brand Sans": must be { kind: "metrics", metrics } or { kind: "unknown" }. Return { kind: "unknown" } for a face it cannot find, or { kind: "metrics", metrics: readFontWinMetrics(fontBytes) }.',
+        );
         // `as`: the option arrives unchecked from JavaScript callers.
         expect(() => new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: "fc-match" as unknown as null })).toThrow("`resolveFontMetrics` must be a function, or null to turn the lookup off");
     });
@@ -393,21 +401,21 @@ describe("resolveInstalledFontMetrics (the Node entry's default)", () => {
 
     test.skipIf(liberationSans.kind === "missing" || !liberationSans.file.endsWith("LiberationSans-Regular.ttf"))("reads the installed Liberation Sans through fontconfig, case-insensitively", () => {
         // Liberation Sans carries a version 0 kern table, as Arial does.
-        expect(resolveInstalledFontMetrics("Liberation Sans")).toEqual({ unitsPerEm: 2048, winAscent: 1854, winDescent: 434, pairKerning: true });
-        expect(resolveInstalledFontMetrics("LIBERATION SANS")).toEqual({ unitsPerEm: 2048, winAscent: 1854, winDescent: 434, pairKerning: true });
+        expect(resolveInstalledFontMetrics("Liberation Sans")).toEqual({ kind: "metrics", metrics: { unitsPerEm: 2048, winAscent: 1854, winDescent: 434, pairKerning: true } });
+        expect(resolveInstalledFontMetrics("LIBERATION SANS")).toEqual({ kind: "metrics", metrics: { unitsPerEm: 2048, winAscent: 1854, winDescent: 434, pairKerning: true } });
     });
 
     const liberationMono = installedFont("Liberation Mono");
 
     test.skipIf(liberationMono.kind === "missing" || !liberationMono.file.endsWith("LiberationMono-Regular.ttf"))("reports a font with a GPOS table and no kern table as not pair-kerned", () => {
-        expect(resolveInstalledFontMetrics("Liberation Mono")?.pairKerning).toBe(false);
+        expect(resolveInstalledFontMetrics("Liberation Mono")).toMatchObject({ kind: "metrics", metrics: { pairKerning: false } });
     });
 
     test("does not take the substitute fontconfig answers with for a face that is not installed", () => {
-        expect(resolveInstalledFontMetrics("No Such Font 123")).toBeUndefined();
+        expect(resolveInstalledFontMetrics("No Such Font 123")).toEqual({ kind: "unknown" });
         // fontconfig pattern syntax in a name stays part of the name.
-        expect(resolveInstalledFontMetrics("Liberation Sans:weight=200")).toBeUndefined();
-        expect(resolveInstalledFontMetrics("Liberation Sans-12")).toBeUndefined();
+        expect(resolveInstalledFontMetrics("Liberation Sans:weight=200")).toEqual({ kind: "unknown" });
+        expect(resolveInstalledFontMetrics("Liberation Sans-12")).toEqual({ kind: "unknown" });
     });
 
     // Each lookup used to spawn fc-match synchronously: 300 made-up names blocked the event loop for about 7 s.
@@ -416,8 +424,8 @@ describe("resolveInstalledFontMetrics (the Node entry's default)", () => {
         const start = performance.now();
 
         for (let index = 0; index < 300; index++) {
-            expect(resolveInstalledFontMetrics(`Made Up Face ${index}`)).toBeUndefined();
-            expect(resolveInstalledGlyphAdvances(`Made Up Face ${index}`, true, false)).toBeUndefined();
+            expect(resolveInstalledFontMetrics(`Made Up Face ${index}`)).toEqual({ kind: "unknown" });
+            expect(resolveInstalledGlyphAdvances(`Made Up Face ${index}`, true, false)).toEqual({ kind: "unknown" });
         }
 
         expect(performance.now() - start).toBeLessThan(100);
@@ -426,7 +434,8 @@ describe("resolveInstalledFontMetrics (the Node entry's default)", () => {
 
 describe("pair kerning on the PowerPoint target", () => {
     const UNKERNED = { ...BRAND, pairKerning: false };
-    const run = (fontSize: number, target: "libreoffice" | "powerpoint", metrics: FontWinMetrics | undefined) => normalizeText("AV", { fontFace: "My Brand Sans", fontSize }, target, () => metrics).paragraphs[0]?.runs[0];
+    const run = (fontSize: number, target: "libreoffice" | "powerpoint", metrics: FontWinMetrics | undefined) =>
+        normalizeText("AV", { fontFace: "My Brand Sans", fontSize }, target, () => (metrics === undefined ? { kind: "unknown" } : { kind: "metrics", metrics })).paragraphs[0]?.runs[0];
 
     test("kerns from 12pt only a face whose pairKerning is not false; LibreOffice kerns every run", () => {
         for (const metrics of [undefined, BRAND, { ...BRAND, pairKerning: true }]) {
@@ -457,7 +466,7 @@ describe("pair kerning on the PowerPoint target", () => {
     };
 
     test("a resolver reporting no pair kerning leaves the face unkerned in text boxes, table cells and shapes", async () => {
-        const resolveFontMetrics = (face: string) => (face === "My Brand Sans" ? UNKERNED : undefined);
+        const resolveFontMetrics = (face: string): FontMetricsResult => (face === "My Brand Sans" ? { kind: "metrics", metrics: UNKERNED } : { kind: "unknown" });
 
         expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics }))).toEqual([true, false, true, true]);
         expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { fontMetrics: { "My Brand Sans": { ...BRAND, pairKerning: true } }, resolveFontMetrics }))).toEqual([false, false, false, false]);

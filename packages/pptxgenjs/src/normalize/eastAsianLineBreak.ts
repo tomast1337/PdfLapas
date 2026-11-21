@@ -1,7 +1,7 @@
 // How the PowerPoint target breaks Han text where UAX #14 (Chromium, pdf-core) does not: by the run's language, a
 // closing mark that hangs past the line's end (RENDERING_TARGETS.hangingMarks), and the breaks around punctuation
 // next to Han characters (RENDERING_TARGETS.breaksAroundHanPunctuation). Measurements in target/powerpoint.ts.
-import type { GlyphAdvances } from "#src/defaults";
+import type { GlyphAdvancesResult } from "#src/defaults";
 import type { NormalizedTextRun } from "@pdflapas/model";
 
 /** U+3000 IDEOGRAPHIC SPACE: preserved white space that hangs at a line's end in Chromium and pdf-core (parley). */
@@ -83,13 +83,13 @@ export function hangingSegments(text: string, next: string | undefined, marks: s
  * shortcut: a narrow mark (ASCII ")") hangs only with its face's advances (resolveGlyphAdvances); take its width
  * from the renderer's font when a deck shows one without.
  */
-export function hangingMarkRuns(mark: NormalizedTextRun, font: GlyphAdvances | undefined): NormalizedTextRun[] {
+export function hangingMarkRuns(mark: NormalizedTextRun, font: GlyphAdvancesResult): NormalizedTextRun[] {
     const advance = (character: string) => {
         const codePoint = character.codePointAt(0) ?? 0;
-        const units = font?.advances.get(codePoint);
+        const units = font.kind === "advances" ? font.advances.advances.get(codePoint) : undefined;
 
-        if (units !== undefined && font) {
-            return (units * mark.fontSize) / font.unitsPerEm;
+        if (units !== undefined && font.kind === "advances") {
+            return (units * mark.fontSize) / font.advances.unitsPerEm;
         }
 
         return codePoint >= FULL_WIDTH_FROM ? mark.fontSize : undefined;

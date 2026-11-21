@@ -6,7 +6,7 @@ import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PuppeteerPdfRenderer } from "@pdflapas/puppeteer";
 import { JSDOM } from "jsdom";
-import type { FontWinMetrics, GlyphAdvances } from "./defaults";
+import type { FontMetricsResult, GlyphAdvancesResult } from "./defaults";
 import { readFontWinMetrics, readGlyphAdvances } from "./fontMetrics";
 import { dataUri, IMAGE_SOURCE_LIMITS, type ImageSourceOptions, imageResolver, imageTooLargeError, MIME_TYPES, resolveRemoteImageSource } from "./normalize/image";
 import { resolveFileName } from "./output";
@@ -147,19 +147,19 @@ function isInstalledFamily(fontFace: string): boolean {
 }
 
 /**
- * Installed fonts' metrics by lower-case face name, undefined when the face is not installed. Global because the
+ * Installed fonts' metrics by lower-case face name, unknown when the face is not installed or its file cannot be read. Global because the
  * installed fonts are the process's environment, not a deck's, and each lookup spawns fc-match and reads a font file:
  * every presentation in the process shares it. Owned by resolveInstalledFontMetrics(); never released, and bounded by
  * the installed families: only a face fc-list names gets an entry. A font installed later is seen by a new process.
  */
-const installedFontMetrics = new Map<string, FontWinMetrics | undefined>();
+const installedFontMetrics = new Map<string, FontMetricsResult>();
 
 /**
- * Installed fonts' advances by weight, style and lower-case face name, undefined when the face is not installed. Global
+ * Installed fonts' advances by weight, style and lower-case face name, unknown when the face is not installed or its file cannot be read. Global
  * for the reasons installedFontMetrics is, owned by resolveInstalledGlyphAdvances(); never released (one entry of a few
  * thousand advances per installed face, weight and style the process has used).
  */
-const installedGlyphAdvances = new Map<string, GlyphAdvances | undefined>();
+const installedGlyphAdvances = new Map<string, GlyphAdvancesResult>();
 
 /**
  * The font fontconfig resolves `fontFace` to, in the weight and style `properties` asks for (`:bold:italic`), when its
@@ -192,27 +192,28 @@ function installedFontFile(fontFace: string, properties = ""): { kind: "installe
 
 /**
  * The default `resolveFontMetrics` of the Node entry: head.unitsPerEm and OS/2 usWinAscent and usWinDescent of the
- * regular font fontconfig resolves `fontFace` to, as Chromium does on Linux. Undefined when fontconfig is missing or has
+ * regular font fontconfig resolves `fontFace` to, as Chromium does on Linux. Unknown when fontconfig is missing or has
  * no font of that family (a substitute does not count), or the font file cannot be read (with a warning). Cached per process.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function resolveInstalledFontMetrics(fontFace: string): FontWinMetrics | undefined {
+export function resolveInstalledFontMetrics(fontFace: string): FontMetricsResult {
     const key = fontFace.toLowerCase();
 
     if (!isInstalledFamily(fontFace)) {
-        return undefined;
+        return { kind: "unknown" };
     }
 
-    if (installedFontMetrics.has(key)) {
-        return installedFontMetrics.get(key);
+    const cached = installedFontMetrics.get(key);
+
+    if (cached !== undefined) {
+        return cached;
     }
 
     const font = installedFontFile(fontFace);
-    let metrics: FontWinMetrics | undefined;
+    let metrics: FontMetricsResult = { kind: "unknown" };
 
     if (font.kind === "installed") {
         try {
-            metrics = readFontWinMetrics(readFileSync(font.file), font.index);
+            metrics = { kind: "metrics", metrics: readFontWinMetrics(readFileSync(font.file), font.index) };
         } catch (error) {
             console.warn(
                 `PdfLapas: cannot read the metrics of ${JSON.stringify(fontFace)} from ${font.file} (${error instanceof Error ? error.message : String(error)}); the PowerPoint target uses FONT_WIN_METRICS or the font-independent baseline for it.`,
@@ -227,28 +228,29 @@ export function resolveInstalledFontMetrics(fontFace: string): FontWinMetrics | 
 
 /**
  * The default `resolveGlyphAdvances` of the Node entry: the advances of the font fontconfig resolves `fontFace` to in
- * that weight and style, the font Chromium draws it with on Linux. Undefined when fontconfig is missing or has no font
+ * that weight and style, the font Chromium draws it with on Linux. Unknown when fontconfig is missing or has no font
  * of that family, or the font file cannot be read (with a warning). Cached per process.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function resolveInstalledGlyphAdvances(fontFace: string, bold: boolean, italic: boolean): GlyphAdvances | undefined {
+export function resolveInstalledGlyphAdvances(fontFace: string, bold: boolean, italic: boolean): GlyphAdvancesResult {
     const properties = `${bold ? ":bold" : ""}${italic ? ":italic" : ""}`;
     const key = `${properties}:${fontFace.toLowerCase()}`;
 
     if (!isInstalledFamily(fontFace)) {
-        return undefined;
+        return { kind: "unknown" };
     }
 
-    if (installedGlyphAdvances.has(key)) {
-        return installedGlyphAdvances.get(key);
+    const cached = installedGlyphAdvances.get(key);
+
+    if (cached !== undefined) {
+        return cached;
     }
 
     const font = installedFontFile(fontFace, properties);
-    let advances: GlyphAdvances | undefined;
+    let advances: GlyphAdvancesResult = { kind: "unknown" };
 
     if (font.kind === "installed") {
         try {
-            advances = readGlyphAdvances(readFileSync(font.file), font.index);
+            advances = { kind: "advances", advances: readGlyphAdvances(readFileSync(font.file), font.index) };
         } catch (error) {
             console.warn(`PdfLapas: cannot read the advances of ${JSON.stringify(fontFace)}${properties} from ${font.file} (${error instanceof Error ? error.message : String(error)}); the PowerPoint target keeps its natural advances.`);
         }

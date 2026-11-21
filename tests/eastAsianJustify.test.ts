@@ -2,7 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PuppeteerGenLibreOffice, PuppeteerGenPowerPoint, resolveInstalledGlyphAdvances } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
+import { installedAdvances } from "./installedFonts";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
 import { createWasmRenderer, loadSystemFonts } from "../packages/wasm/src/node";
 
@@ -70,7 +71,7 @@ describe("justification on the PowerPoint target", () => {
 
 describe("the measured justified boxes, in both renderers", () => {
     const pdftotext = Bun.which("pdftotext");
-    const ready = pdftotext !== null && ["SimSun", "Arial"].every(face => resolveInstalledGlyphAdvances(face, false, false) !== undefined);
+    const ready = pdftotext !== null && ["SimSun", "Arial"].every(face => installedAdvances(face, false, false) !== undefined);
     const deck = (presentation: PuppeteerGenPowerPoint) => {
         for (const { runs } of CASES) {
             presentation.addSlide().addText(
@@ -157,7 +158,7 @@ describe("the measured justified boxes, in both renderers", () => {
 
 describe("the spacing pass moves no line break", () => {
     const pdftotext = Bun.which("pdftotext");
-    const ready = pdftotext !== null && ["Calibri", "Microsoft JhengHei"].every(face => resolveInstalledGlyphAdvances(face, false, false) !== undefined);
+    const ready = pdftotext !== null && ["Calibri", "Microsoft JhengHei"].every(face => installedAdvances(face, false, false) !== undefined);
     // Placeholder phrases: Han with 。 and full-width brackets, and runs of two or three English words.
     const HAN_PHRASES = ["這是用於測量", "文字間距的範例", "內容我們需要", "足夠長的一行", "來讀出每個字元的寬度", "以及整行比較。", "範例（內容）", "測量。"];
     const LATIN_PHRASES = ["Alpha Beta", "Gamma Delta Omega", "Sample Text", "Open Source Tool", "Test Case Value"];

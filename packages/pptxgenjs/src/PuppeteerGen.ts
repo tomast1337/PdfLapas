@@ -17,7 +17,7 @@ import type { PageSize, PageSizeInput } from "./pageLayouts";
 import { checkedPageSize, DEFAULT_PAGE_SIZE, PPTX_LAYOUT_PAGE_SIZES } from "./pageLayouts";
 import type { PptxAddSlideProps, PptxGenJSLike, PptxSectionProps, PptxSlideMasterProps, PptxTableToSlidesProps, PptxWriteBaseProps, PptxWriteFileProps, PptxWriteProps } from "./pptx";
 import { PuppeteerSlide } from "./PuppeteerSlide";
-import type { SlideContext, SlideMaster } from "./slideContext";
+import type { MasterPlaceholder, SlideContext, SlideMaster } from "./slideContext";
 import { type HtmlPresentationDocument, lazyDocument, type PresentationRenderer, trustedModelToHtml } from "./render/document";
 import { createBrowserDocument } from "./render/slide";
 
@@ -450,6 +450,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             slideIndex,
             components: this.components,
             bodyFontFace: () => this.bodyFontFace(),
+            headFontFace: () => this.themeProps?.headFontFace || PPTX_DEFAULTS.theme.headFontFace,
+            warn: message => this.warningLines.add(message),
             target: this.target,
             fontMetrics: this.fontMetrics,
             sharedRunOptions: this.sharedRunOptions,
@@ -532,6 +534,11 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             layer.background = master.background ?? {};
         }
 
+        const placeholders = new Map<string, MasterPlaceholder>();
+        // createSlideMaster names a placeholder without `objectName` after the text objects before it, which in
+        // PptxGenJS include shapes (addShapeDefinition's type is text).
+        let textObjects = 0;
+
         // createSlideMaster (step 2) adds each object by its first key, in order; PptxGenJS skips any other key.
         for (const [index, object] of (Array.isArray(master.objects) ? master.objects : []).entries()) {
             const key = Object.keys(object)[0];
@@ -545,21 +552,50 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
                 layer.addImage(object.image);
             } else if ("line" in object && key === "line") {
                 layer.addShape("line", object.line);
+                textObjects += 1;
             } else if ("rect" in object && key === "rect") {
                 layer.addShape("rect", object.rect);
+                textObjects += 1;
             } else if ("text" in object && key === "text") {
                 // createSlideMaster writes `text` as one run without options.
                 layer.addText([{ text: object.text.text ?? "" }], object.text.options);
-            } else if (!("placeholder" in object && key === "placeholder")) {
+                textObjects += 1;
+            } else if ("placeholder" in object && key === "placeholder") {
+                // A placeholder draws nothing: a layout's prompt text is not shown on its slides (LibreOffice export
+                // checked). Text that fills it takes its options.
+                const options: unknown = object.placeholder.options;
+
+                if (typeof options !== "object" || options === null || !("name" in options) || typeof options.name !== "string") {
+                    throw new TypeError(`defineSlideMaster({ title: ${JSON.stringify(master.title)} }) objects[${index}].placeholder needs \`options: { name, type, x, y, w, h }\`, the name addText(text, { placeholder: name }) fills it by.`);
+                }
+
+                // `as`: the clone of the caller's PlaceholderProps, whose `name` was checked above; PptxGenJS also reads
+                // the text options its declaration leaves out.
+                const { name, type, ...style } = options as PptxGenJS.PlaceholderProps & Pick<PptxGenJS.TextPropsOptions, "objectName" | "lineSpacing" | "lineSpacingMultiple">;
+
+                if (!placeholders.has(name)) {
+                    // addTextDefinition (cleanOpts) writes these onto the placeholder's options, so they replace the
+                    // filling text's: no bullet and no line spacing unless the placeholder has them.
+                    placeholders.set(name, {
+                        title: type === "title",
+                        options: {
+                            ...style,
+                            objectName: style.objectName ?? `Text ${textObjects}`,
+                            bullet: style.bullet || false,
+                            lineSpacing: style.lineSpacing || undefined,
+                            lineSpacingMultiple: style.lineSpacingMultiple || undefined,
+                        },
+                    });
+                }
+            } else {
                 console.warn(`defineSlideMaster: objects[${index}] has key ${JSON.stringify(key)}, which PptxGenJS ignores, so it draws nothing. Use chart, image, line, rect, text or placeholder.`);
             }
-            // A placeholder draws nothing: a layout's prompt text is not shown on its slides (LibreOffice export checked).
         }
 
         // PptxGenJS pushes every master and finds the first one with a title (`slideLayouts.filter(...)[0]`).
         // `as`: `margin` was checked above to be a number or four numbers.
         if (!this.masters.has(master.title)) {
-            this.masters.set(master.title, { layer, slideNumber: master.slideNumber ?? null, margin: margin as PptxGenJS.Margin });
+            this.masters.set(master.title, { layer, slideNumber: master.slideNumber ?? null, margin: margin as PptxGenJS.Margin, placeholders });
         }
 
         // defineSlideMaster (step 4): the deck's master takes the first master's slide number while it has none.

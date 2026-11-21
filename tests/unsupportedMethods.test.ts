@@ -24,22 +24,6 @@ describe("PptxGenJS methods without a PDF rendering", () => {
         expect((error as Error).message).toBe("addMedia() is not supported by PuppeteerGen yet. A PDF cannot play audio or video; add a poster frame with addImage() and link the media through its `hyperlink` option.");
     });
 
-    // Filling a slide master's placeholder is not drawn yet (#465); the option throws instead of drawing a plain object.
-    test("placeholder throws an UnsupportedFeatureError naming the option and leaves the deck unchanged", () => {
-        const pres = new PuppeteerGen();
-
-        pres.defineSlideMaster({ title: "MASTER", objects: [{ placeholder: { options: { name: "body", type: "body", x: 1, y: 1, w: 8, h: 3 } } }] });
-        const slide = pres.addSlide({ masterName: "MASTER" });
-        const text = errorFrom(() => slide.addText("Title", { placeholder: "body" }));
-
-        expect(text).toBeInstanceOf(UnsupportedFeatureError);
-        expect(text).toMatchObject({ feature: "addText({ placeholder })" });
-        expect((text as Error).message).toBe("addText({ placeholder }) is not supported by PuppeteerGen yet. Filling a slide master's placeholder is not drawn yet (#465). Remove `placeholder` and give the object the placeholder's x, y, w, h and style.");
-        expect(errorFrom(() => slide.addImage({ data: PNG, x: 1, y: 1, w: 1, h: 1, placeholder: "body" }))).toMatchObject({ feature: "addImage({ placeholder })" });
-        expect(pres.getModel().slides).toHaveLength(1);
-        expect(pres.getModel().slides[0]?.objects).toEqual([]);
-    });
-
     // genTableToSlides: the built-in layout's 0.5in margins replace slideMargin.
     test("tableToSlides masterSlideName DEFAULT takes the built-in layout's margins over slideMargin", () => {
         const html = '<table style="width:600px"><tr><td>A</td></tr></table>';

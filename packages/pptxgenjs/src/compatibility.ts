@@ -312,8 +312,9 @@ export const COMPATIBILITY = Object.freeze({
             outline: "implemented",
             paraSpaceAfter: "implemented",
             paraSpaceBefore: "implemented",
-            // Throws UnsupportedFeatureError: filling a slide master's placeholder is not drawn yet (#465).
-            placeholder: "unsupported",
+            // Takes the master placeholder's options over its own and inherits its titleStyle or bodyStyle (size, align,
+            // space before, head font); an unknown name draws from its own options and adds a warnings() line.
+            placeholder: "implemented",
             // rectRadius: the roundRect geometry's corner in inches, as PptxGenJS writes it; the text box stays square.
             rectRadius: "implemented",
             rotate: "implemented",
@@ -364,8 +365,9 @@ export const COMPATIBILITY = Object.freeze({
             flipH: "verified",
             flipV: "verified",
             hyperlink: "implemented",
-            // Throws UnsupportedFeatureError: filling a slide master's placeholder is not drawn yet (#465).
-            placeholder: "unsupported",
+            // Moves the picture to the master placeholder's x and y, its w and h the `sizing` box, as slideObjectToXml
+            // writes it; an unknown name adds a warnings() line.
+            placeholder: "implemented",
             rotate: "verified",
             rounding: "verified",
             // An inner shadow is drawn over the picture for the PowerPoint target; LibreOffice draws none, nor does
@@ -631,7 +633,7 @@ export const API_COMPATIBILITY = Object.freeze({
         addSection: { status: "implemented", note: "sections draw nothing; PptxGenJS's input warnings are kept" },
         addSlide: { status: "implemented", note: "masterName (or the deprecated string argument) adds the slide on a defineSlideMaster() master; an unknown name adds it without one, as PptxGenJS does, with a console warning" },
         defineLayout: { status: "implemented", note: "also applies the size at once" },
-        defineSlideMaster: { status: "implemented", note: "background, objects (drawn under each slide's own), slideNumber and margin; placeholders draw nothing and filling one throws (#465)" },
+        defineSlideMaster: { status: "implemented", note: "background, objects (drawn under each slide's own), slideNumber and margin; placeholders draw nothing until addText or addImage fills one" },
         tableToSlides: { status: "implemented", note: "finds the table id in the global document, as PptxGenJS; also takes the <table> element or its HTML" },
         stream: { status: "implemented", note: "the PDF as a Node Buffer; `compression` is accepted and has no effect (it only packs the PPTX zip)" },
         write: { status: "implemented", note: "the PDF in the requested outputType; `compression` is accepted and has no effect (it only packs the PPTX zip)" },

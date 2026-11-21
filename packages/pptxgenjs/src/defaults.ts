@@ -424,6 +424,16 @@ export const PPTX_DEFAULTS = Object.freeze({
         fontSizePt: 12,
         objectName: "Slide Number",
     }),
+    // Text that fills a master placeholder (`addText(text, { placeholder })`): PptxGenJS 4.0.1 writes no anchor and,
+    // for a string, no color, so the text inherits from slideMaster1.xml: top-anchored (LibreOffice 26.2 checked),
+    // theme tx1 (dk1, black), and the master's txStyles by placeholder type: `title` the titleStyle (44pt, centered,
+    // +mj-lt, i.e. theme.headFontFace), any other type the bodyStyle's first level (32pt, left, spcBef 20% of the size).
+    placeholder: Object.freeze({
+        valign: "top" as const,
+        color: "000000",
+        title: Object.freeze({ fontSizePt: 44, align: "center" as const, spaceBeforeFontRatio: 0 }),
+        body: Object.freeze({ fontSizePt: 32, align: "left" as const, spaceBeforeFontRatio: 0.2 }),
+    }),
     // A background picture (`slide.background = { path | data }`) is stretched over the whole slide (PptxGenJS writes
     // `<a:stretch><a:fillRect/>` in `<p:bg>`); it is drawn as the slide's first object under this name.
     backgroundImage: Object.freeze({

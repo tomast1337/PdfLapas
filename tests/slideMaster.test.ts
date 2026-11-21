@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import pptxgen from "pptxgenjs";
 import type PptxGenJS from "pptxgenjs";
-import { inchesToPixels } from "@pdflapas/model";
+import { inchesToPixels, pointsToPixels } from "@pdflapas/model";
 import type { NormalizedSlide, NormalizedSlideObject, NormalizedTextRun } from "../packages/model/src/index";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 
@@ -276,5 +276,161 @@ describe("a master's margin", () => {
 
         expect(tableX("M")).toEqual({ order: ["shape:Shape 0", "table:Table 0"], x: withMargin(1) });
         expect(Number(tableX().x)).toBe(Number(withMargin(0.25)));
+    });
+});
+
+describe("addText and addImage({ placeholder })", () => {
+    const PLACEHOLDER_MASTER: PptxGenJS.SlideMasterProps = {
+        title: "PH",
+        objects: [
+            { rect: { x: 0, y: 0, w: "100%", h: 0.2, fill: { color: "1F3A5F" } } },
+            { placeholder: { options: { name: "title", type: "title", x: 0.5, y: 0.3, w: 9, h: 1 }, text: "Title prompt" } },
+            { placeholder: { options: { name: "body", type: "body", x: 0.5, y: 1.5, w: 4.3, h: 3.5, fontSize: 20, fontFace: "Arial" }, text: "Body prompt" } },
+            { placeholder: { options: { name: "side", type: "body", x: 5, y: 1.5, w: 4, h: 3 } } },
+            // A second placeholder under a name: PptxGenJS fills the first.
+            { placeholder: { options: { name: "side", type: "title", x: 0, y: 0, w: 1, h: 1 } } },
+        ],
+    };
+
+    /**
+     * The objects `fill` draws on a slide on PLACEHOLDER_MASTER (its rect left out), beside those `plain` draws on a plain
+     * slide, whose text has no space before its first paragraph, as a filled placeholder's has none.
+     */
+    function filledAndPlain(fill: (slide: PptxGenJS.Slide) => void, plain: (slide: PptxGenJS.Slide) => void, theme?: PptxGenJS.ThemeProps) {
+        const filled = new PuppeteerGen();
+        const explicit = new PuppeteerGen();
+
+        if (theme) {
+            filled.theme = theme;
+            explicit.theme = theme;
+        }
+
+        filled.defineSlideMaster(PLACEHOLDER_MASTER);
+        fill(filled.addSlide({ masterName: "PH" }));
+        plain(explicit.addSlide());
+
+        const plainObjects: NormalizedSlideObject[] = [];
+
+        for (const object of explicit.getModel().slides[0]?.objects ?? []) {
+            const [first, ...later] = object.kind === "text" ? object.text.paragraphs : [];
+
+            plainObjects.push(object.kind === "text" && first ? { ...object, text: { ...object.text, paragraphs: [{ ...first, spaceBefore: 0 }, ...later] } } : object);
+        }
+
+        return { filled: filled.getModel().slides[0]?.objects.slice(1) ?? [], plain: plainObjects, warnings: filled.warnings() };
+    }
+
+    test("the placeholder's options win over the text's, as PptxGenJS's runtime merges them", () => {
+        const reference = new pptxgen();
+        const options: PptxGenJS.TextPropsOptions = { placeholder: "body", fontSize: 30, bold: true, x: 0, y: 0, w: 1, h: 1, bullet: true, lineSpacing: 30 };
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+        const slide = reference.addSlide({ masterName: "PH" });
+
+        slide.addText("Body", structuredClone(options));
+        // `as`: _slideObjects is PptxGenJS's internal list of the slide's objects, which its declaration leaves out.
+        const [written] = (slide as unknown as { _slideObjects: Array<{ options: PptxGenJS.TextPropsOptions }> })._slideObjects;
+
+        expect(written?.options).toMatchObject({ fontSize: 20, bold: true, x: 0.5, y: 1.5, w: 4.3, h: 3.5, bullet: false, lineSpacing: null, objectName: "Text 1" });
+
+        const { filled, plain, warnings } = filledAndPlain(
+            target => target.addText("Body", options),
+            target => target.addText("Body", { x: 0.5, y: 1.5, w: 4.3, h: 3.5, fontSize: 20, fontFace: "Arial", bold: true, valign: "top", color: "000000", paraSpaceBefore: 4, objectName: "Text 1" }),
+        );
+
+        expect(filled).toEqual(plain);
+        expect(warnings).toEqual([]);
+    });
+
+    test("what neither sets comes from the master's titleStyle, top-anchored and black whatever the slide's color", () => {
+        const { filled, plain } = filledAndPlain(
+            target => {
+                target.color = "FF0000";
+                target.addText("Title", { placeholder: "title" });
+            },
+            target => target.addText("Title", { x: 0.5, y: 0.3, w: 9, h: 1, fontSize: 44, align: "center", valign: "top", fontFace: "Arial Black", color: "000000", paraSpaceBefore: 0, objectName: "Text 1" }),
+            { headFontFace: "Arial Black", bodyFontFace: "Arial" },
+        );
+
+        expect(filled).toEqual(plain);
+    });
+
+    test("a body placeholder without a size takes the bodyStyle's 32pt with 20% space before after its first paragraph; a run array keeps each run's color", () => {
+        const runs: PptxGenJS.TextProps[] = [
+            { text: "A", options: { breakLine: true } },
+            { text: "B", options: { color: "00AA00" } },
+        ];
+        const { filled, plain } = filledAndPlain(
+            target => {
+                target.color = "FF0000";
+                // cleanOpts gives each run its own color, else the box's, else the slide's.
+                target.addText(runs, { placeholder: "side" });
+            },
+            target => {
+                target.color = "FF0000";
+                target.addText(runs, { x: 5, y: 1.5, w: 4, h: 3, fontSize: 32, valign: "top", paraSpaceBefore: 6.4, objectName: "Text 1" });
+            },
+        );
+        const [text] = filled;
+
+        expect(filled).toEqual(plain);
+        // LibreOffice spaces the first paragraph of a plain text box only (editeng's ULSPACEFIRSTPARA), not a placeholder's.
+        expect(text?.kind === "text" ? text.text.paragraphs.map(paragraph => paragraph.spaceBefore) : []).toEqual([0, pointsToPixels(6.4)]);
+    });
+
+    test("an unknown name draws from the object's own options, top-anchored as PptxGenJS writes it, and adds a warnings() line", () => {
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+        expect(() => reference.addSlide({ masterName: "PH" }).addText("Lost", { placeholder: "nope", x: 1, y: 4, w: 3, h: 0.5 })).not.toThrow();
+        expect(() => reference.addSlide().addText("Lost", { placeholder: "nope", x: 1, y: 4, w: 3, h: 0.5 })).not.toThrow();
+
+        const { filled, plain, warnings } = filledAndPlain(
+            target => {
+                target.addText("Lost", { placeholder: "nope", x: 1, y: 4, w: 3, h: 0.5 });
+                target.addImage({ data: PNG, placeholder: "nope", x: 1, y: 1, w: 1, h: 1 });
+            },
+            target => {
+                target.addText("Lost", { x: 1, y: 4, w: 3, h: 0.5, valign: "top", color: "000000" });
+                target.addImage({ data: PNG, x: 1, y: 1, w: 1, h: 1 });
+            },
+        );
+
+        expect(filled).toEqual(plain);
+        expect(warnings).toEqual([
+            'addText({ placeholder: "nope" }): the slide\'s master has no placeholder of that name, so the object is drawn from its own options, as PptxGenJS does. Name a placeholder of the master in addSlide({ masterName }), or remove `placeholder`.',
+            'addImage({ placeholder: "nope" }): the slide\'s master has no placeholder of that name, so the object is drawn from its own options, as PptxGenJS does. Name a placeholder of the master in addSlide({ masterName }), or remove `placeholder`.',
+        ]);
+        const withoutMaster = new PuppeteerGen();
+
+        withoutMaster.addSlide().addText("Lost", { placeholder: "nope", x: 1, y: 4, w: 3, h: 0.5 });
+        expect(withoutMaster.warnings()[0]).toContain("the slide was added without a master");
+    });
+
+    test("a picture moves to the placeholder's x and y and keeps its own size, as slideObjectToXml writes it", () => {
+        const { filled, plain } = filledAndPlain(
+            target => target.addImage({ data: PNG, placeholder: "body", x: 0, y: 0, w: 2, h: 1 }),
+            target => target.addImage({ data: PNG, x: 0.5, y: 1.5, w: 2, h: 1 }),
+        );
+
+        expect(filled).toEqual(plain);
+    });
+
+    test("throws on a placeholder without a name, which no text could fill", () => {
+        const pres = new PuppeteerGen();
+
+        expect(() => pres.defineSlideMaster({ title: "M", objects: [{ placeholder: {} as { options: PptxGenJS.PlaceholderProps } }] })).toThrow("objects[0].placeholder needs `options: { name, type, x, y, w, h }`");
+    });
+
+    test("toHtml() writes the filled placeholder as an ordinary text element, and the master's prompt text nowhere", async () => {
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(PLACEHOLDER_MASTER);
+        pres.addSlide({ masterName: "PH" }).addText("Filled title", { placeholder: "title" });
+        const { html } = await pres.toHtml();
+
+        expect(html).toContain(">Filled title<");
+        expect(html).not.toContain("Title prompt");
+        expect(html).toContain('data-object-name="Text 1"');
     });
 });

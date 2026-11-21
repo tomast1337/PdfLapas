@@ -229,7 +229,9 @@ describe("compatibility manifest", () => {
         // tests/slideMaster.test.ts covers both master-name options.
         expect(API_COMPATIBILITY.presentation.addSlide?.note).toContain("masterName");
         expect(API_COMPATIBILITY.presentation.defineSlideMaster?.status).toBe("implemented");
-        expect(API_COMPATIBILITY.presentation.defineSlideMaster?.note).toContain("#465");
+        expect(API_COMPATIBILITY.presentation.defineSlideMaster?.note).toContain("addText or addImage fills one");
+        expect(COMPATIBILITY.text.options.placeholder).toBe("implemented");
+        expect(COMPATIBILITY.image.options.placeholder).toBe("implemented");
     });
 
     test("names `compression` as accepted without effect on every output method (#456)", () => {

@@ -2200,6 +2200,7 @@ export function populateParityFixture(presentation: Presentation): void {
 
     populateChartAxisLabelFixture(presentation);
     populateChartDataLabelFixture(presentation);
+    populateChartCategoryAxisFixture(presentation);
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */
@@ -2618,6 +2619,25 @@ export function populateChartDataLabelFixture(presentation: Presentation): void 
 
     slide.addChart("bar", data, { ...shared, x: 0.4, dataLabelFormatCode: "$#,##0", dataLabelColor: "404040" });
     slide.addChart("line", data, { ...shared, x: 5.2, dataLabelPosition: "t", dataLabelFontBold: true });
+}
+
+/**
+ * Category-axis styling (#445): label size and color, dashed and solid category gridlines (between the categories),
+ * a named title and the default "Axis Title" at its own size. A parity slide after the others (no page number moves)
+ * and the WASM chartAxis deck, which crops each chart.
+ */
+export function populateChartCategoryAxisFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Category axis styling", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", showCatAxisTitle: true };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, catAxisLabelFontSize: 14, catAxisLabelColor: "C00000", catGridLine: { color: "A5A5A5", size: 1, style: "dash" }, catAxisTitle: "Quarter", catAxisTitleColor: "17365D" });
+    slide.addChart("line", data, { ...shared, x: 5.2, catAxisLabelFontSize: 9, catAxisLabelColor: "548235", catGridLine: { color: "D9D9D9", size: 1 }, catAxisTitleFontSize: 14 });
 }
 
 export function populateComponentFixture(presentation: Presentation): void {

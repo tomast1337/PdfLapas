@@ -10,6 +10,21 @@ const SUPPORTED_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "b
 
 const MIXED_CHART_TYPES = new Set<PptxGenJS.CHART_NAME>(["area", "bar", "line"]);
 
+export const CATEGORY_AXIS_OPTIONS = [
+    "catAxisLabelColor",
+    "catAxisLabelFontBold",
+    "catAxisLabelFontFace",
+    "catAxisLabelFontItalic",
+    "catAxisLabelFontSize",
+    "catAxisTitle",
+    "catAxisTitleColor",
+    "catAxisTitleFontFace",
+    "catAxisTitleFontSize",
+    "catAxisTitleRotate",
+    "catGridLine",
+    "showCatAxisTitle",
+] as const;
+
 /** Options rendered by the initial SVG backend. Everything else is rejected explicitly. */
 export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "x",
@@ -87,6 +102,7 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "dataLabelFontFace",
     "dataLabelFontItalic",
     "dataLabelFontSize",
+    ...CATEGORY_AXIS_OPTIONS,
 ] as const);
 
 const SUPPORTED_CHART_OPTION_SET = new Set<string>(SUPPORTED_CHART_OPTIONS);
@@ -120,6 +136,7 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "valAxisTitleRotate",
     "valGridLine",
 ]);
+const CATEGORY_AXIS_UNDRAWN_TYPES = new Set<NormalizedChartType>(["bar3D", "bubble", "radar", "scatter"]);
 const SUPPORTED_GRID_LINE_OPTIONS = new Set(["cap", "color", "size", "style"]);
 const BAR_3D_SHAPES = new Set(["box", "cylinder", "cone", "coneToMax", "pyramid", "pyramidToMax"]);
 const DATA_LABEL_CHART_TYPES = new Set<NormalizedChartType>(["bar", "doughnut", "line", "pie"]);
@@ -400,6 +417,22 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
+    for (const key of Object.keys(options.catGridLine ?? {})) {
+        if (!SUPPORTED_GRID_LINE_OPTIONS.has(key)) {
+            unsupportedAxisOptions.push(`catGridLine.${key}`);
+        }
+    }
+
+    // PptxGenJS writes no axes on a pie or doughnut, so the category-axis options draw nothing there; on the other
+    // chart types without a 2D category axis (bar3D, radar, scatter, bubble) they are not drawn yet.
+    if (!mixed && CATEGORY_AXIS_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
+        for (const key of CATEGORY_AXIS_OPTIONS) {
+            if (options[key] !== undefined) {
+                unsupportedAxisOptions.push(`${key}[${String(type)}]`);
+            }
+        }
+    }
+
     if (unsupportedAxisOptions.length) {
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: unsupportedAxisOptions.sort() });
     }
@@ -539,6 +572,25 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const axisSeries = (axisIndex: 0 | 1) => series.filter(item => item.valueAxisIndex === axisIndex);
     const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0), normalizedGrouping);
     const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1), normalizedGrouping) : undefined;
+    const catDefaults = PPTX_DEFAULTS.chart.categoryAxis;
+    const catGridLine = options.catGridLine;
+    const categoryAxis: NormalizedChart["categoryAxis"] = {
+        showTitle: options.showCatAxisTitle ?? false,
+        title: options.catAxisTitle || catDefaults.title,
+        titleColor: normalizeColor(options.catAxisTitleColor || catDefaults.titleColor),
+        titleFontFace: options.catAxisTitleFontFace || PPTX_DEFAULTS.chart.fontFace,
+        titleFontSize: positiveNumber(options.catAxisTitleFontSize, "catAxisTitleFontSize", catDefaults.titleFontSizePt),
+        titleRotate: options.catAxisTitleRotate === undefined ? undefined : finiteNumber(options.catAxisTitleRotate, "catAxisTitleRotate", 0),
+        labelColor: normalizeColor(options.catAxisLabelColor || catDefaults.labelColor),
+        labelFontFace: options.catAxisLabelFontFace || PPTX_DEFAULTS.chart.fontFace,
+        labelFontSize: positiveNumber(options.catAxisLabelFontSize, "catAxisLabelFontSize", catDefaults.labelFontSizePt),
+        labelBold: options.catAxisLabelFontBold ?? catDefaults.labelBold,
+        labelItalic: options.catAxisLabelFontItalic ?? catDefaults.labelItalic,
+        gridLineColor: normalizeColor(catGridLine?.color ?? PPTX_DEFAULTS.chart.gridLine.color),
+        gridLineWidth: positiveNumber(catGridLine?.size, "catGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
+        gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
+        gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
+    };
     const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, automaticPrimary, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes);
     const valueAxes = [primaryAxis];
 
@@ -595,5 +647,6 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         valueAxisMinimum: primaryAxis.minimum,
         valueAxisMaximum: primaryAxis.maximum,
         valueAxes,
+        categoryAxis,
     };
 }

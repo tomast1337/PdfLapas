@@ -1,4 +1,4 @@
-import { SUPPORTED_CHART_OPTIONS } from "./normalize/chart";
+import { CATEGORY_AXIS_OPTIONS, SUPPORTED_CHART_OPTIONS } from "./normalize/chart";
 import { CORE_SVG_SHAPES } from "./normalize/shape";
 
 /** `ignored`: accepted and without effect, because PptxGenJS ignores it too. */
@@ -209,6 +209,7 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "dataLabelPosition", // a pie's inEnd and outEnd remain explicit unsupported
     "showValue", // bar, line, pie and doughnut; other chart types remain explicit unsupported
     "showLabel", // pie and doughnut; scatter's custom labels remain explicit unsupported
+    ...CATEGORY_AXIS_OPTIONS, // not drawn on bar3D, bubble, radar or scatter charts (#445)
 ]);
 // Declared in IChartOpts but read by no chart writer in PptxGenJS 4.0.1.
 const IGNORED_CHART_OPTIONS = new Set<string>(["fontFace", "fontSize"]);

@@ -5,6 +5,7 @@ import type { PuppeteerGen } from "../../../packages/pptxgenjs/src/node";
 import {
     populateChartAxisLabelFixture,
     populateChartDataLabelFixture,
+    populateChartCategoryAxisFixture,
     populateChartFixture,
     populateComponentFixture,
     populateImageFixture,
@@ -68,6 +69,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartLabels: {
         populate: presentation => {
             populateChartDataLabelFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartAxis: the shared fixture's category-axis slide (#445); every chart gets a crop.
+    chartAxis: {
+        populate: presentation => {
+            populateChartCategoryAxisFixture(presentation);
 
             return presentation;
         },

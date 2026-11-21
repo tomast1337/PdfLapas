@@ -90,6 +90,8 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "radarStyle",
     "lineSmooth",
     "lineDataSymbol",
+    "lineDataSymbolLineColor",
+    "lineDataSymbolLineSize",
     "lineDataSymbolSize",
     "lineSize",
     "showValue",
@@ -702,6 +704,9 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         lineSmooth: options.lineSmooth ?? PPTX_DEFAULTS.chart.lineSmooth,
         lineSymbol: options.lineDataSymbol ?? PPTX_DEFAULTS.chart.lineDataSymbol,
         lineSymbolSize: checkedSize(options.lineDataSymbolSize ?? PPTX_DEFAULTS.chart.lineDataSymbolSize, "lineDataSymbolSize", PPTX_DEFAULTS.limits.chartMarkerSizePt),
+        // PptxGenJS: `<a:ln w="${lineDataSymbolLineSize || 0.75}"><a:solidFill>${lineDataSymbolLineColor || seriesColor}`.
+        ...(options.lineDataSymbolLineColor ? { lineSymbolLineColor: normalizeColor(options.lineDataSymbolLineColor) } : {}),
+        lineSymbolLineSize: checkedSize(options.lineDataSymbolLineSize || PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt, "lineDataSymbolLineSize", PPTX_DEFAULTS.limits.lineWidthPt),
         lineSize: checkedSize(options.lineSize ?? PPTX_DEFAULTS.chart.lineSizePt, "lineSize", PPTX_DEFAULTS.limits.lineWidthPt),
         dataLabels,
         plotArea,

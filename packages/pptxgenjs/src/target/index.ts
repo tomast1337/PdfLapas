@@ -138,6 +138,11 @@ export type RenderingTargetProfile = {
      */
     readonly drawsPictureInnerShadow: boolean;
     /**
+     * Whether it draws the outline PptxGenJS writes around each line, radar and scatter marker (`<a:ln>` in
+     * `<c:marker><c:spPr>`, `lineDataSymbolLineSize` in `lineDataSymbolLineColor`), or the marker without it.
+     */
+    readonly drawsChartMarkerOutline: boolean;
+    /**
      * Whether it draws an underline as the face's `post` table band (underlineThickness tall, its top
      * underlinePosition below the baseline) unbroken under descenders (`NormalizedTextDecoration.underlineFromFont`),
      * with PowerPoint's double, wavy and heavy shapes around it and one band per line (docs/HTML_PROFILE.md), or the

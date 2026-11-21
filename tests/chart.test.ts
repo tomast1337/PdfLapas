@@ -574,23 +574,37 @@ describe("chart normalization and rendering", () => {
         }
     });
 
-    test("draws a point marker as PptxGenJS's c:marker writes it: size in points, 0.75pt outline, none on area series", () => {
-        const markers = (type: "area" | "line" | "radar" | "scatter", options: PptxGenJS.IChartOpts = {}) => {
-            const presentation = new PuppeteerGen();
+    test("draws a point marker as PptxGenJS's c:marker writes it: size in points, its outline, none on area series", () => {
+        const markers = (type: "area" | "line" | "radar" | "scatter", options: PptxGenJS.IChartOpts = {}, target: "libreoffice" | "powerpoint" = "libreoffice") => {
+            const presentation = new PuppeteerGen(undefined, { target });
 
             presentation.addSlide().addChart(type, categoricalData, { x: 0, y: 0, w: 5, h: 3, ...options });
 
             return Array.from(renderedPage(presentation).querySelectorAll('.slide-chart path[ecmeta_ssr_type="chart"][ecmeta_data_index]'));
         };
-        const lineMarkers = markers("line");
+        const lineMarkers = markers("line", {}, "powerpoint");
         // The default 6pt circle: a unit circle scaled to a 4px radius (8px across).
         const scale = pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolSize) / 2;
 
         expect(lineMarkers).toHaveLength(6);
         expect(lineMarkers[0]?.getAttribute("transform")).toStartWith(`matrix(${scale},0,0,${scale},`);
+        // PptxGenJS: `<a:ln w="${lineDataSymbolLineSize || 0.75}"><a:solidFill>${lineDataSymbolLineColor || seriesColor}`.
         expect(lineMarkers[0]?.getAttribute("stroke")).toBe(lineMarkers[0]?.getAttribute("fill") ?? "fill");
         // ECharts writes the stroke inside the scaled transform.
         expect(Number(lineMarkers[0]?.getAttribute("stroke-width")) * scale).toBe(pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt));
+        expect(normalizeChart("line", categoricalData, { lineDataSymbolLineSize: 0 }).lineSymbolLineSize).toBe(PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt);
+
+        const outlined = markers("line", { lineDataSymbolLineColor: "000000", lineDataSymbolLineSize: 1.5 }, "powerpoint");
+
+        expect(outlined[0]?.getAttribute("stroke")).toBe("#000000");
+        expect(Number(outlined[0]?.getAttribute("stroke-width")) * scale).toBe(pointsToPixels(1.5));
+        expect(markers("scatter", { lineDataSymbolLineColor: "000000" }, "powerpoint")[0]?.getAttribute("stroke")).toBe("#000000");
+        expect(markers("radar", { radarStyle: "marker", lineDataSymbolLineColor: "000000" }, "powerpoint")[0]?.getAttribute("stroke")).toBe("#000000");
+        // LibreOffice draws no marker outline (drawsChartMarkerOutline).
+        expect(markers("line", { lineDataSymbolLineColor: "000000", lineDataSymbolLineSize: 1.5 })[0]?.getAttribute("stroke-width")).toBe("0");
+        // LibreOffice's shapes: `dot` a right-pointing triangle, `dash` a bar 0.2 of the marker size tall.
+        expect(markers("line", { lineDataSymbol: "dot" })[0]?.getAttribute("d")).toBe("M-1 -1L1 0L-1 1Z");
+        expect(markers("line", { lineDataSymbol: "dash" })[0]?.getAttribute("transform")).toStartWith(`matrix(${scale},0,0,${scale * 0.2},`);
         expect(markers("line", { lineDataSymbol: "square" })).toHaveLength(6);
         expect(markers("line", { lineDataSymbol: "none" })).toHaveLength(0);
         expect(markers("area")).toHaveLength(0);

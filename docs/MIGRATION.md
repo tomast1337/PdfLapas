@@ -87,10 +87,10 @@ returns a `.pptx`:
 master does not have is drawn from the object's own options, as PptxGenJS does, and listed in
 `warnings()`. An inner shadow on a shape or text box (`addShape` or `addText`) throws `UnsupportedFeatureError`
 where it is added (PptxGenJS writes it as malformed XML, and LibreOffice then draws none of the slide);
-an image's inner shadow is drawn for the PowerPoint target and left out for the LibreOffice one, as each draws it; a chart type or option it cannot draw throws `UnsupportedChartError`. An unknown `outputType`
+an image's inner shadow and a chart marker's outline are drawn for the PowerPoint target and left out for the LibreOffice one, as each draws them; a chart type or option it cannot draw throws `UnsupportedChartError`. An unknown `outputType`
 throws before rendering. A size in points that PptxGenJS writes unchecked throws a `RangeError` naming the option where
 it is added when it is negative, not finite, or past its OOXML or PowerPoint maximum: `fontSize` (and a chart's
-`titleFontSize` and `legendFontSize`) up to 4000, `outline.size`, `line.width`, `lineSize` and a border's `pt` up to
+`titleFontSize` and `legendFontSize`) up to 4000, `outline.size`, `line.width`, `lineSize`, `lineDataSymbolLineSize` and a border's `pt` up to
 1584, `glow.size` up to 150, `shadow.blur` up to 100, `shadow.offset` up to 200 and `lineDataSymbolSize` up to 72. A
 `resolveImage` option must return the image as a
 `data:image/<type>;base64,<data>` URI: `toHtml()` throws `UnresolvedImageError` for anything else, such

@@ -2224,6 +2224,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartDataLabelFixture(presentation);
     populateChartCategoryAxisFixture(presentation);
     populateChartPlotAreaFixture(presentation);
+    populateChartMarkerFixture(presentation);
 }
 
 /**
@@ -2822,4 +2823,23 @@ export function populateChartPlotAreaFixture(presentation: Presentation): void {
 
     slide.addChart("bar", data, { ...shared, x: 0.4, plotArea: { fill: { color: "F2F2F2" }, border: { pt: 1, color: "7F7F7F" } } });
     slide.addChart("line", data, { ...shared, x: 5.2, layout: { x: 0.15, y: 0.1, w: 0.8, h: 0.6 }, plotArea: { fill: { color: "DEEBF7", transparency: 50 } } });
+}
+
+/**
+ * Line markers (#484): `dash` and `dot` symbols at 12pt, the first with a black 2pt outline that the LibreOffice target
+ * leaves out, as LibreOffice does (drawsChartMarkerOutline). A parity slide after the others (no page number moves)
+ * and the WASM chartMarker deck, which crops each chart.
+ */
+export function populateChartMarkerFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Chart markers", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", lineDataSymbolSize: 12 };
+
+    slide.addChart("line", data, { ...shared, x: 0.4, lineDataSymbol: "dash", lineDataSymbolLineColor: "000000", lineDataSymbolLineSize: 2 });
+    slide.addChart("line", data, { ...shared, x: 5.2, lineDataSymbol: "dot" });
 }

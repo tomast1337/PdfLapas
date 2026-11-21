@@ -440,6 +440,9 @@ contract includes:
   set one is 1pt solid 888888 with flat caps unless given), and a hidden title "Axis Title" at
   Office's 10pt. A bottom title lowers the plot by two plot-area gaps and 1.71 title font sizes, as
   LibreOffice lays it out.
+- Scatter gridlines: 1pt solid D9D9D9 on both axes when `catGridLine` or `valGridLine` is unset, as
+  PptxGenJS writes them; a set `valGridLine` replaces the default whole (a missing color is 888888).
+  A bubble chart keeps the other charts' defaults: no x gridlines and 888888 y gridlines.
 - Plot area: no fill and no border; a `plotArea.border` without `pt` or `color` is 1pt 363636, and a
   `plotArea.fill` without a color is no fill. `layout` places the inner plot rectangle with `x || 0`,
   `y || 0`, `w || 1`, `h || 1` of the chart frame; a value outside 0..1 is dropped with a warning.

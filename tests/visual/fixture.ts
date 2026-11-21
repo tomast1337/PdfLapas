@@ -2869,9 +2869,8 @@ export function populateChartMarkerFixture(presentation: Presentation): void {
  * 3pt `lineSize`; without markers (`lineDataSymbol: "none"`) the lines must remain. No markers and no legend, whose
  * keys draw the marker: the line chart slides and tests/chart.test.ts cover them, and #484 changes their outline. A
  * parity slide after the others (no page number moves) and the WASM chartScatter deck, which crops each chart. The
- * data keeps both axes off a tick (x to 7.6, y to 6.4), where LibreOffice and ECharts round them to the same 8 and 7,
- * and the charts are small: the scatter gridlines are drawn 888888 where LibreOffice draws PptxGenJS's D9D9D9 (#502),
- * which alone puts a 4.4 x 4.1in pair near the page limit.
+ * data keeps both axes off a tick (x to 7.6, y to 6.4), where LibreOffice and ECharts round them to the same 8 and 7.
+ * The gridlines are PptxGenJS's scatter default, D9D9D9 on both axes (#502).
  */
 export function populateChartScatterFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -2882,10 +2881,10 @@ export function populateChartScatterFixture(presentation: Presentation): void {
         { name: "Lorem", values: [3, 5, 4, 6.4, 5.5] },
         { name: "Ipsum", values: [4.5, 1.5, 5.5, 3.5, 0.5] },
     ];
-    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 2.6, h: 2.6, chartColors: ["4472C4", "ED7D31"], lineDataSymbol: "none" };
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], lineDataSymbol: "none" };
 
     slide.addChart("scatter", data, { ...shared, x: 0.4 });
-    slide.addChart("scatter", data, { ...shared, x: 5.2, lineSize: 3 });
+    slide.addChart("scatter", data, { ...shared, x: 5.2, lineSize: 3, valGridLine: { color: "A5A5A5", size: 1 } });
 }
 
 /**

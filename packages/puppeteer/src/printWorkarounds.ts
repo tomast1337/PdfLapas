@@ -182,7 +182,9 @@ export function printHtml(html: string): string {
         } else if (hasClass(element, "text-run") || hasClass(element, "text-bullet")) {
             // text-shadow has no inset form either: Chromium would draw a run's inner shadow outside its glyphs.
             if (attribute(element, "data-shadow-inset") !== undefined) {
-                throw new Error(`Cannot print '${objectName(element)}': a .text-run has data-shadow-inset, and the profile draws an inner shadow only on a .slide-image (text-shadow has no inset form); remove data-shadow-inset or the run's shadow (PdfLapas HTML profile)`);
+                throw new Error(
+                    `Cannot print '${objectName(element)}': a .text-run has data-shadow-inset, and the profile draws an inner shadow only on a .slide-image (text-shadow has no inset form); remove data-shadow-inset or the run's shadow (PdfLapas HTML profile)`,
+                );
             }
 
             // Font fallback: Chromium does not apply LibreOffice's Microsoft-font substitutions to an unknown
@@ -245,7 +247,9 @@ export function printHtml(html: string): string {
             // drop-shadow() has no inset form, so Chromium would draw an inner shadow outside the shape. addShape rejects
             // one, so only hand-written HTML gets here: fail, as the WASM renderer does by default ("inner shadow not rendered").
             if (attribute(element, "data-shadow-inset") !== undefined) {
-                throw new Error(`Cannot print '${objectName(element)}': its .shape-svg has data-shadow-inset, and Puppeteer cannot draw an inner shadow on a shape (drop-shadow() has no inset form); remove data-shadow-inset or the shadow (PdfLapas HTML profile)`);
+                throw new Error(
+                    `Cannot print '${objectName(element)}': its .shape-svg has data-shadow-inset, and Puppeteer cannot draw an inner shadow on a shape (drop-shadow() has no inset form); remove data-shadow-inset or the shadow (PdfLapas HTML profile)`,
+                );
             }
 
             // Print snap: Chromium paints an SVG root from a whole device px, 1 / PRINT_ZOOM CSS px under the print

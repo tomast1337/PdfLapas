@@ -29,7 +29,19 @@ const IMPLIED_END: Readonly<Record<string, { readonly closes: ReadonlySet<string
     const section = rule(["tbody", "thead", "tfoot"], ["table"]);
     const definition = rule(["dt", "dd"], ["dl"]);
 
-    return { td: cell, th: cell, tr: rule(["tr"], ["table", "tbody", "thead", "tfoot"]), tbody: section, thead: section, tfoot: section, li: rule(["li"], ["ul", "ol"]), dt: definition, dd: definition, option: rule(["option"], ["select", "optgroup"]), p: rule(["p"], ["td", "th", "li", "table"]) };
+    return {
+        td: cell,
+        th: cell,
+        tr: rule(["tr"], ["table", "tbody", "thead", "tfoot"]),
+        tbody: section,
+        thead: section,
+        tfoot: section,
+        li: rule(["li"], ["ul", "ol"]),
+        dt: definition,
+        dd: definition,
+        option: rule(["option"], ["select", "optgroup"]),
+        p: rule(["p"], ["td", "th", "li", "table"]),
+    };
 })();
 
 function checkLimit(name: keyof TableHtmlLimits, value: unknown): number {

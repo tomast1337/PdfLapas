@@ -36,7 +36,9 @@ describe("htmlDocument() from @pdflapas/model", () => {
         expect(() => htmlDocument(head(`<style>@page { size: A4 }</style>`))).toThrow("write the page size in inches");
         expect(() => htmlDocument("  ")).toThrow("expected a non-empty HTML string, got an empty string");
         expect(() => htmlDocument("<p>Hi</p>")).toThrow('not a PdfLapas profile document: add <meta name="pdflapas-profile" content="2"> to <head>');
-        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="3">`)).toThrow(`profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`);
+        expect(() => htmlDocument(`<meta name="pdflapas-profile" content="3">`)).toThrow(
+            `profile version '3' in <meta name="pdflapas-profile"> is not supported (this library reads <meta name="pdfdeck-profile" content="1"> and <meta name="pdflapas-profile" content="2">)`,
+        );
     });
 
     test("reads only real tags and stylesheets: not inside comments, raw text, CDATA or CSS comments", () => {
@@ -45,7 +47,14 @@ describe("htmlDocument() from @pdflapas/model", () => {
         const hidden = `<meta name="pdflapas-page-size" content="Hidden"><style>@page { size: 9in 9in }</style>`;
         const read = (html: string) => htmlDocument(html).pageSize;
 
-        for (const wrap of [(x: string) => `<!-- ${x} -->`, (x: string) => `<!-- ${x} --!>`, (x: string) => `<script>const s = '${x}';</script>`, (x: string) => `<textarea>${x}</textarea>`, (x: string) => `<title>${x}</title>`, (x: string) => `<svg><![CDATA[${x}]]></svg>`]) {
+        for (const wrap of [
+            (x: string) => `<!-- ${x} -->`,
+            (x: string) => `<!-- ${x} --!>`,
+            (x: string) => `<script>const s = '${x}';</script>`,
+            (x: string) => `<textarea>${x}</textarea>`,
+            (x: string) => `<title>${x}</title>`,
+            (x: string) => `<svg><![CDATA[${x}]]></svg>`,
+        ]) {
             expect(read(`${wrap(hidden)}${profile}${page}`)).toEqual(pageSize(4, 3, "Custom"));
         }
 

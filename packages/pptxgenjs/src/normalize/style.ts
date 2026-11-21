@@ -202,7 +202,9 @@ export function normalizeLine(value?: PptxGenJS.ShapeLineProps, straightLength?:
     const endArrow = value.endArrowType ?? "none";
     const pattern = width > 0 ? PPTX_DEFAULTS.shape.dashPatterns[dash]?.map(part => part * width) : undefined;
     const trimmed = straightLength !== undefined && (beginArrow !== "none" || endArrow !== "none");
-    const dashArray = trimmed ? shaftDashes(pattern ?? [straightLength, straightLength], arrowShaftStart(beginArrow, width), straightLength - arrowShaftStart(endArrow, width), straightLength) : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
+    const dashArray = trimmed
+        ? shaftDashes(pattern ?? [straightLength, straightLength], arrowShaftStart(beginArrow, width), straightLength - arrowShaftStart(endArrow, width), straightLength)
+        : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
 
     return {
         visible: true,

@@ -1729,7 +1729,9 @@ export function eastAsianBreakCases(): EastAsianBreakCase[] {
             return entry[2].map((widthEm, box) => ({ label: `${lang} ${index + 1}${"abc"[box] ?? ""}`, lang, text, split: undefined, align: "left" as const, sizePt: SIZE_PT, widthEm, lines: entry[3][box] ?? [] }));
         }),
     );
-    const languages = LANGUAGE_CASES.flatMap(([lang, text, widths, lines, split], index) => widths.map((widthEm, box) => ({ label: `${lang ?? "no lang"} ${index + 1}${"abc"[box] ?? ""}`, lang, text, split, align: "left" as const, sizePt: SIZE_PT, widthEm, lines: lines[box] ?? [] })));
+    const languages = LANGUAGE_CASES.flatMap(([lang, text, widths, lines, split], index) =>
+        widths.map((widthEm, box) => ({ label: `${lang ?? "no lang"} ${index + 1}${"abc"[box] ?? ""}`, lang, text, split, align: "left" as const, sizePt: SIZE_PT, widthEm, lines: lines[box] ?? [] })),
+    );
     const alignments = ALIGNMENT_CASES.flatMap(([align, sizePt, text, widths, lines, secondLine], index) =>
         widths.map((widthEm, box) => ({ label: `${align} ${sizePt}pt ${index + 1}${"abc"[box] ?? ""}`, lang: undefined, text: `${secondLine ? "甲".repeat(widthEm) : ""}${text}`, split: undefined, align, sizePt, widthEm, lines: lines[box] ?? [] })),
     );

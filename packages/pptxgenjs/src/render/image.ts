@@ -67,5 +67,18 @@ export function renderImage(image: NormalizedImage, style: NormalizedObjectStyle
 
     const link = image.link;
 
-    return element(link ? "a" : "div", [["class", "slide-element slide-image"], ...objectAttributes, ["href", link?.href], ["title", link?.tooltip || undefined], ["data-slide", link?.slide ? String(link.slide) : undefined], ["role", "img"], ["aria-label", image.altText], styleAttribute(outerCss)], frame);
+    return element(
+        link ? "a" : "div",
+        [
+            ["class", "slide-element slide-image"],
+            ...objectAttributes,
+            ["href", link?.href],
+            ["title", link?.tooltip || undefined],
+            ["data-slide", link?.slide ? String(link.slide) : undefined],
+            ["role", "img"],
+            ["aria-label", image.altText],
+            styleAttribute(outerCss),
+        ],
+        frame,
+    );
 }

@@ -93,7 +93,9 @@ export function findHtmlTable(source: string | HTMLTableElement, createDocument:
         const document = createDocument();
 
         if (!document.defaultView) {
-            throw new Error("tableToSlides: parsing an HTML string needs a document with a window to read computed styles, and createDocument() made one without (a browser's createHTMLDocument()); insert the table into the page and pass the element or its id, or pass a createDocument option");
+            throw new Error(
+                "tableToSlides: parsing an HTML string needs a document with a window to read computed styles, and createDocument() made one without (a browser's createHTMLDocument()); insert the table into the page and pass the element or its id, or pass a createDocument option",
+            );
         }
 
         document.body.innerHTML = source;

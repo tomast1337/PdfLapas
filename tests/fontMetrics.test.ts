@@ -149,7 +149,8 @@ describe("fontMetrics option", () => {
     test("an entry's underline replaces the face's post band on the PowerPoint target only, in em in the model and the HTML (#391)", async () => {
         const underline = { position: -45, thickness: 72 };
         const lookup = fontMetricsLookup({ "My Brand Sans": { ...BRAND, underline }, "My Brand Serif": BRAND }, null);
-        const decoration = (fontFace: string, target: "powerpoint" | "libreoffice" = "powerpoint", options: PptxGenJS.TextPropsOptions = { underline: { style: "sng" } }) => normalizeText("Line", { fontFace, fontSize: 18, ...options }, target, lookup).paragraphs[0]?.runs[0]?.decoration;
+        const decoration = (fontFace: string, target: "powerpoint" | "libreoffice" = "powerpoint", options: PptxGenJS.TextPropsOptions = { underline: { style: "sng" } }) =>
+            normalizeText("Line", { fontFace, fontSize: 18, ...options }, target, lookup).paragraphs[0]?.runs[0]?.decoration;
 
         expect(decoration("My Brand Sans")).toMatchObject({ underlineFromFont: true, underlineBand: { position: -0.045, thickness: 0.072 } });
         // Without one, the post band; not underlined, or on the LibreOffice target, no band at all.

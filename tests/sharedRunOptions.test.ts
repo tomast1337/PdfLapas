@@ -238,7 +238,9 @@ describe("run options shared between boxes take what PptxGenJS 4.0.1 wrote onto 
         const pres = new PuppeteerGen();
 
         deck(pres);
-        const sizes = pres.getModel().slides.flatMap(slide => slide.objects.flatMap(object => (object.kind === "text" ? [object.text.paragraphs.length] : object.kind === "table" ? object.table.rows.flatMap(row => row.cells.map(cell => cell.text.paragraphs.length)) : [])));
+        const sizes = pres
+            .getModel()
+            .slides.flatMap(slide => slide.objects.flatMap(object => (object.kind === "text" ? [object.text.paragraphs.length] : object.kind === "table" ? object.table.rows.flatMap(row => row.cells.map(cell => cell.text.paragraphs.length)) : [])));
 
         expect(comparable(modelParagraphs(deck), sizes)).toEqual(comparable(written, sizes));
     });

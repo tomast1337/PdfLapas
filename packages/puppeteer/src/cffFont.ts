@@ -71,7 +71,17 @@ export function cffFont(fontName: string, glyphs: readonly CffGlyph[], bbox: rea
 }
 
 function topDict(bbox: readonly number[], [charset, charStrings, privateSize, privateOffset]: readonly number[]): number[] {
-    return [...bbox.flatMap(value => dictInteger(Math.round(value))), DICT.FontBBox, ...dictInteger(charset ?? 0), DICT.charset, ...dictInteger(charStrings ?? 0), DICT.CharStrings, ...dictInteger(privateSize ?? 0), ...dictInteger(privateOffset ?? 0), DICT.Private];
+    return [
+        ...bbox.flatMap(value => dictInteger(Math.round(value))),
+        DICT.FontBBox,
+        ...dictInteger(charset ?? 0),
+        DICT.charset,
+        ...dictInteger(charStrings ?? 0),
+        DICT.CharStrings,
+        ...dictInteger(privateSize ?? 0),
+        ...dictInteger(privateOffset ?? 0),
+        DICT.Private,
+    ];
 }
 
 /** A Type 2 charstring operand (#5177 3.2): the shortest integer form, or 16.16 fixed. */

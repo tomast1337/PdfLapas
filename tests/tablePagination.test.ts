@@ -156,7 +156,9 @@ describe("table auto-pagination", () => {
 
         presentation.addSlide().addTable(input, { autoPage: true, autoPageRepeatHeader, y: 1, w: 8, fontSize: 10 });
 
-        const sizes = presentation.getModel().slides.flatMap(slide => slide.objects.flatMap(object => (object.kind === "table" ? object.table.rows.flatMap(row => row.cells.flatMap(cell => cell.text.paragraphs.flatMap(paragraph => paragraph.runs.map(run => run.fontSize)))) : [])));
+        const sizes = presentation
+            .getModel()
+            .slides.flatMap(slide => slide.objects.flatMap(object => (object.kind === "table" ? object.table.rows.flatMap(row => row.cells.flatMap(cell => cell.text.paragraphs.flatMap(paragraph => paragraph.runs.map(run => run.fontSize)))) : [])));
 
         expect(sizes.length).toBeGreaterThan(0);
         expect(new Set(sizes)).toEqual(new Set([pointsToPixels(10)]));

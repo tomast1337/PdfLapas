@@ -246,7 +246,16 @@ There is no media, notes or master element: the model has no such kinds.
 ```html
 <div class="slide-element slide-text" style="…box…; padding; align-items; white-space; overflow-wrap; direction" data-object-name="Text 1" data-text-fit="none" data-text-direction="horizontal">
     <div class="text-content" style="width: 100%">
-        <div class="text-paragraph" style="text-align; text-justify; direction; margin-top; margin-bottom; line-height; tab-size; padding-left; text-indent" data-line-baseline="14.4" data-tab-stops="96:left,192:right" data-bullet-level="0" data-bullet-type="bullet" data-bullet-indent="27" data-bullet-start="1">
+        <div
+            class="text-paragraph"
+            style="text-align; text-justify; direction; margin-top; margin-bottom; line-height; tab-size; padding-left; text-indent"
+            data-line-baseline="14.4"
+            data-tab-stops="96:left,192:right"
+            data-bullet-level="0"
+            data-bullet-type="bullet"
+            data-bullet-indent="27"
+            data-bullet-start="1"
+        >
             <span class="text-bullet" style="display: inline-block; width; font-family; font-size; color">•&nbsp;</span>
             <span class="text-run" lang="en-US" style="font-family; font-size; color; font-weight; font-style; text-decoration-*; …">text</span>
             <br /><a class="text-run" href="…" title="…" data-slide="2" data-soft-break-before="" style="…">linked text</a>

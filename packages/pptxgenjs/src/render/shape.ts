@@ -162,7 +162,15 @@ export function renderShape(shape: NormalizedShape, style: NormalizedObjectStyle
 
     return element(
         link ? "a" : "div",
-        [["class", "slide-element slide-shape"], styleAttribute(css), ["data-object-name", style.objectName], ["data-shape", shape.name], ["href", link?.href], ["title", link?.tooltip || undefined], ["data-slide", link?.slide ? String(link.slide) : undefined]],
+        [
+            ["class", "slide-element slide-shape"],
+            styleAttribute(css),
+            ["data-object-name", style.objectName],
+            ["data-shape", shape.name],
+            ["href", link?.href],
+            ["title", link?.tooltip || undefined],
+            ["data-slide", link?.slide ? String(link.slide) : undefined],
+        ],
         renderShapeSvg(shape, style),
     );
 }

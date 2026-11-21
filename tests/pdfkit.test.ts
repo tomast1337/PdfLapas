@@ -123,7 +123,9 @@ describe("PDFKit renderer", () => {
     test("throws on what it cannot draw, or lists it in warnings() under onUnsupported: warn", async () => {
         const populate = (pres: PuppeteerGen) => pres.addSlide().addTable([[{ text: "cell", options: { textDirection: "vert" } }]], { x: 1, y: 1, w: 2 });
 
-        await expect(render(await createPdfkitRenderer({ fonts: systemFonts }), populate)).rejects.toThrow(/The PDFKit renderer cannot draw everything in this presentation \(pass \{ onUnsupported: "warn" \} to render anyway\):\n- slide 1: object 'Table 0': vertical text is not drawn/);
+        await expect(render(await createPdfkitRenderer({ fonts: systemFonts }), populate)).rejects.toThrow(
+            /The PDFKit renderer cannot draw everything in this presentation \(pass \{ onUnsupported: "warn" \} to render anyway\):\n- slide 1: object 'Table 0': vertical text is not drawn/,
+        );
         const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
         const pdf = await render(renderer, populate);
 
@@ -161,7 +163,11 @@ describe("PDFKit renderer", () => {
                     { ...grid, border: none },
                 ),
             );
-            const strokes = [...(pageContents(pdf)[0] ?? "").matchAll(/([\d.]+) w\n(\d+) J\n(?:\[[^\]]*\] [\d.]+ d\n)?([\d.]+) ([\d.]+) m\n([\d.]+) ([\d.]+) l\nS/g)].map(([, width, cap, ...points]) => ({ width: Number(width), cap: Number(cap), points: points.map(Number) }));
+            const strokes = [...(pageContents(pdf)[0] ?? "").matchAll(/([\d.]+) w\n(\d+) J\n(?:\[[^\]]*\] [\d.]+ d\n)?([\d.]+) ([\d.]+) m\n([\d.]+) ([\d.]+) l\nS/g)].map(([, width, cap, ...points]) => ({
+                width: Number(width),
+                cap: Number(cap),
+                points: points.map(Number),
+            }));
 
             // 3 pt = 4 px: the two top sides are one square-capped line across both columns; the dashed left side of the
             // second row's second cell is the shared vertical edge at x 192, butt-capped.
@@ -225,7 +231,9 @@ describe("PDFKit renderer", () => {
             const gif = Buffer.concat([Buffer.from("GIF89a\x02\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\xff", "latin1"), Buffer.from([0x2c, 1, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x0a, 0, 0x3b])]);
             const renderer = await createPdfkitRenderer({ fonts: systemFonts });
 
-            await expect(render(renderer, pres => pres.addSlide().addImage({ data: `data:image/gif;base64,${gif.toString("base64")}`, x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("the GIF's first frame (1x1 at 1,0) does not fill its 2x1 screen; save it with a full first frame");
+            await expect(render(renderer, pres => pres.addSlide().addImage({ data: `data:image/gif;base64,${gif.toString("base64")}`, x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow(
+                "the GIF's first frame (1x1 at 1,0) does not fill its 2x1 screen; save it with a full first frame",
+            );
         });
 
         test("draws an SVG picture as vector paths and reports what is outside the SVG subset", async () => {

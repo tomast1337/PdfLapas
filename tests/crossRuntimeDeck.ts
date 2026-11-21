@@ -22,7 +22,16 @@ export function buildCrossRuntimeDeck(Gen: typeof CorePuppeteerGen, png: string)
         { x: 0.15, y: 0.35, w: 3.33, h: 1.1, margin: 0, fill: { color: "F2F2F2" }, line: { color: "A6A6A6", width: 0.75 }, shadow: { type: "outer", blur: 3, offset: 2, angle: 45, color: "000000", opacity: 0.4 } },
     );
     slide.addText("Vertical", { x: 4.15, y: 0.35, w: 1, h: 2, vert: "vert270", fit: "resize" });
-    slide.addShape("roundRect", { x: 5.15, y: 0.35, w: 1.33, h: 0.77, fill: { color: "4472C4", transparency: 25 }, line: { color: "000000", width: 1.5, dashType: "sysDot", endArrowType: "triangle" }, rotate: 33.3, shadow: { type: "outer", blur: 2, offset: 1, angle: 90, color: "333333" } });
+    slide.addShape("roundRect", {
+        x: 5.15,
+        y: 0.35,
+        w: 1.33,
+        h: 0.77,
+        fill: { color: "4472C4", transparency: 25 },
+        line: { color: "000000", width: 1.5, dashType: "sysDot", endArrowType: "triangle" },
+        rotate: 33.3,
+        shadow: { type: "outer", blur: 2, offset: 1, angle: 90, color: "333333" },
+    });
     slide.addImage({ data: png, x: 7.15, y: 0.35, w: 1.1, h: 0.9, sizing: { type: "contain", w: 1.1, h: 0.7 }, transparency: 10 });
     slide.addTable(
         [

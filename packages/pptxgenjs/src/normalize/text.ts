@@ -130,7 +130,13 @@ export function normalizeTextRun(text: string, options: PptxGenJS.TextPropsOptio
     // wins over super/subscript. LibreOffice draws a custom one as a superscript or subscript: measured in its PDF
     // export, baseline 600, -600, 200 and -1000 move the run 30%, -30%, 10% and -50% of its full size at 20pt and 40pt,
     // drawn at 58% of it (escapementSizeRatio); one that rounds to baseline="0" keeps the full size and the baseline.
-    const escapement = options.baseline ? Math.round(options.baseline * PPTX_DEFAULTS.text.customBaselineScale) / OOXML_PERCENT || undefined : options.subscript ? PPTX_DEFAULTS.text.subscriptBaseline : options.superscript ? PPTX_DEFAULTS.text.superscriptBaseline : undefined;
+    const escapement = options.baseline
+        ? Math.round(options.baseline * PPTX_DEFAULTS.text.customBaselineScale) / OOXML_PERCENT || undefined
+        : options.subscript
+          ? PPTX_DEFAULTS.text.subscriptBaseline
+          : options.superscript
+            ? PPTX_DEFAULTS.text.superscriptBaseline
+            : undefined;
     const link = normalizeHyperlink(options.hyperlink);
     const defaultColor = link && options.color === undefined ? PPTX_DEFAULTS.theme.colors.hyperlink : PPTX_DEFAULTS.text.color;
     const bold = options.bold ?? PPTX_DEFAULTS.text.bold;
@@ -889,7 +895,14 @@ type LineBoxInput = Pick<NormalizedTextParagraph, "runs"> & { readonly spacing?:
  * (RENDERING_TARGETS.escapementGrowsLine). Each baseline then goes on the target's grid
  * (RENDERING_TARGETS.baselineGridPerInch).
  */
-export function paragraphLineBox(paragraph: LineBoxInput, target: RenderingTarget = DEFAULT_RENDERING_TARGET, fontMetrics: FontMetricsLookup = builtInFontMetrics, themeFontFace: string = PPTX_DEFAULTS.theme.bodyFontFace, markFontFace: string = themeFontFace, markFontSize?: number): NormalizedTextParagraph["lineBox"] {
+export function paragraphLineBox(
+    paragraph: LineBoxInput,
+    target: RenderingTarget = DEFAULT_RENDERING_TARGET,
+    fontMetrics: FontMetricsLookup = builtInFontMetrics,
+    themeFontFace: string = PPTX_DEFAULTS.theme.bodyFontFace,
+    markFontFace: string = themeFontFace,
+    markFontSize?: number,
+): NormalizedTextParagraph["lineBox"] {
     // The line box before the baseline grid.
     // shortcut: one line box per paragraph, so a full-size mark sets the height of every line, not only the last; split
     // it per line when the model gets a line box per line.

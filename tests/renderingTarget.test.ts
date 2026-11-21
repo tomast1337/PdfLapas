@@ -112,7 +112,8 @@ describe("rendering targets", () => {
     // Measured against PowerPoint's PDF export: 18pt Arial with paraSpaceBefore 6 and paraSpaceAfter 18 has a
     // 45.6pt pitch (21.6 + 6 + 18), where collapsing CSS margins gave 39.6pt (21.6 + 18).
     test("the PowerPoint target adds a paragraph's space after to the next one's space before; LibreOffice keeps both", async () => {
-        const spacing = (target?: Parameters<typeof normalizeText>[2]) => normalizeText("Para one\nPara two\nPara three", { fontSize: 18, paraSpaceBefore: 6, paraSpaceAfter: 18 }, target).paragraphs.map(({ spaceBefore, spaceAfter }) => [spaceBefore, spaceAfter]);
+        const spacing = (target?: Parameters<typeof normalizeText>[2]) =>
+            normalizeText("Para one\nPara two\nPara three", { fontSize: 18, paraSpaceBefore: 6, paraSpaceAfter: 18 }, target).paragraphs.map(({ spaceBefore, spaceAfter }) => [spaceBefore, spaceAfter]);
 
         // The first paragraph's space before is dropped too (next test).
         expect(spacing("powerpoint")).toEqual([
@@ -140,7 +141,8 @@ describe("rendering targets", () => {
     // Measured against PowerPoint's PDF export: 18pt Arial with paraSpaceBefore 12 has its first baseline 17.05pt
     // below the top inset, as without it, where PdfLapas drew it 29.95pt below; the next ones stay 33.6pt apart.
     test("the PowerPoint target drops the first paragraph's space before, whatever the anchor; LibreOffice keeps it", async () => {
-        const before = (valign: "top" | "middle" | "bottom", target?: Parameters<typeof normalizeText>[2]) => normalizeText("Para one\nPara two\nPara three", { fontSize: 18, paraSpaceBefore: 12, valign }, target).paragraphs.map(paragraph => paragraph.spaceBefore);
+        const before = (valign: "top" | "middle" | "bottom", target?: Parameters<typeof normalizeText>[2]) =>
+            normalizeText("Para one\nPara two\nPara three", { fontSize: 18, paraSpaceBefore: 12, valign }, target).paragraphs.map(paragraph => paragraph.spaceBefore);
 
         for (const valign of ["top", "middle", "bottom"] as const) {
             expect(before(valign, "powerpoint")).toEqual([0, 16, 16]);
@@ -405,7 +407,8 @@ describe("rendering targets", () => {
         type Input = Parameters<typeof normalizeText>[0];
         type Options = Parameters<typeof normalizeText>[1];
         const pt = (px: number | undefined) => (px === undefined ? undefined : Math.round(px * 0.75 * 1000) / 1000);
-        const boxes = (input: Input, options: Options, target: "libreoffice" | "powerpoint" = "powerpoint", themeFontFace?: string) => normalizeText(input, options, target, undefined, themeFontFace).paragraphs.map(({ lineBox }) => [pt(lineBox.baseline), pt(lineBox.markBaseline), pt(lineBox.breakBaseline)]);
+        const boxes = (input: Input, options: Options, target: "libreoffice" | "powerpoint" = "powerpoint", themeFontFace?: string) =>
+            normalizeText(input, options, target, undefined, themeFontFace).paragraphs.map(({ lineBox }) => [pt(lineBox.baseline), pt(lineBox.markBaseline), pt(lineBox.breakBaseline)]);
 
         // 21.6 x 17.503 / (17.503 + 4.752) = 16.988: Arial's ascent and the Calibri mark's descent scaled back into the
         // line. Every baseline below is the rule's on the 0.12pt grid (the rule's in the comments): 17.503 and 16.988 here.
@@ -517,7 +520,15 @@ describe("rendering targets", () => {
         const [before = 0, , after = 0] = baselines(alone, "powerpoint");
 
         expect(after - before).toBeCloseTo(43.2, 1);
-        const labels: Input = [{ text: "Label: ", options: { bold: true, paraSpaceAfter: 0.5 } }, { text: "value" }, { text: "3\n", options: { superscript: true } }, { text: "Label two", options: { bold: true } }, { text: "value" }, { text: "3\n", options: { superscript: true, breakLine: true } }, { text: "Next" }];
+        const labels: Input = [
+            { text: "Label: ", options: { bold: true, paraSpaceAfter: 0.5 } },
+            { text: "value" },
+            { text: "3\n", options: { superscript: true } },
+            { text: "Label two", options: { bold: true } },
+            { text: "value" },
+            { text: "3\n", options: { superscript: true, breakLine: true } },
+            { text: "Next" },
+        ];
         const lines = baselines(labels, "powerpoint");
 
         expect(lines).toHaveLength(4);
@@ -579,7 +590,9 @@ describe("rendering targets", () => {
         expect(growth({ baseline: -1000 }, "libreoffice", { lineSpacing: 50 })).toEqual({ above: 0, below: 0 });
         expect(growth({ baseline: -1000 }, "libreoffice", { lineSpacingMultiple: 1.5 }).below).toBeCloseTo(16.64, 2);
         // An empty raised run draws nothing and grows nothing.
-        expect(normalizeText([{ text: "", options: { baseline: -2000 } }], { fontSize: 40 }, "libreoffice").paragraphs[0]!.lineBox).toEqual(normalizeText([{ text: "", options: { superscript: true } }], { fontSize: 40 }, "libreoffice").paragraphs[0]!.lineBox);
+        expect(normalizeText([{ text: "", options: { baseline: -2000 } }], { fontSize: 40 }, "libreoffice").paragraphs[0]!.lineBox).toEqual(
+            normalizeText([{ text: "", options: { superscript: true } }], { fontSize: 40 }, "libreoffice").paragraphs[0]!.lineBox,
+        );
 
         // The HTML says it: line-height and data-line-baseline, the run moved by its relative top on both targets.
         const html = async (presentation: PuppeteerGen) => {

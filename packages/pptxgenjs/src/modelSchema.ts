@@ -179,7 +179,11 @@ const table = z.strictObject({
 });
 
 const imageCommon = {
-    sizing: z.discriminatedUnion("type", [z.strictObject({ type: z.literal("stretch") }), z.strictObject({ type: z.enum(["contain", "cover"]), x: pxValue, y: pxValue, width: pxValue, height: pxValue }), z.strictObject({ type: z.literal("crop"), offsetX: pxValue, offsetY: pxValue, width: pxValue, height: pxValue })]),
+    sizing: z.discriminatedUnion("type", [
+        z.strictObject({ type: z.literal("stretch") }),
+        z.strictObject({ type: z.enum(["contain", "cover"]), x: pxValue, y: pxValue, width: pxValue, height: pxValue }),
+        z.strictObject({ type: z.literal("crop"), offsetX: pxValue, offsetY: pxValue, width: pxValue, height: pxValue }),
+    ]),
     rounding: z.boolean(),
     opacity: z.number().min(0).max(1),
     altText: z.string(),

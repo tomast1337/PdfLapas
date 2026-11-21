@@ -188,7 +188,14 @@ export type TableRunWriting = {
     readonly shared?: SharedRunOptions;
 };
 
-export function normalizeTable(tableRows: PptxGenJS.TableRow[], options: PptxGenJS.TableProps, pageSize: PageSize, target: RenderingTarget = DEFAULT_RENDERING_TARGET, fontMetrics: FontMetricsLookup = builtInFontMetrics, writing: TableRunWriting = {}): NormalizedTable {
+export function normalizeTable(
+    tableRows: PptxGenJS.TableRow[],
+    options: PptxGenJS.TableProps,
+    pageSize: PageSize,
+    target: RenderingTarget = DEFAULT_RENDERING_TARGET,
+    fontMetrics: FontMetricsLookup = builtInFontMetrics,
+    writing: TableRunWriting = {},
+): NormalizedTable {
     if (!Array.isArray(tableRows) || tableRows.length === 0) {
         throw new Error("addTable: tableRows must be a non-empty array");
     }

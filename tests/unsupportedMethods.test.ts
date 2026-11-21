@@ -41,7 +41,9 @@ describe("PptxGenJS methods without a PDF rendering", () => {
 
         expect(text).toBeInstanceOf(UnsupportedFeatureError);
         expect(text).toMatchObject({ feature: "addText({ placeholder })" });
-        expect((text as Error).message).toBe("addText({ placeholder }) is not supported by PuppeteerGen yet. Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.");
+        expect((text as Error).message).toBe(
+            "addText({ placeholder }) is not supported by PuppeteerGen yet. Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.",
+        );
         expect(errorFrom(() => slide.addImage({ data: PNG, x: 1, y: 1, w: 1, h: 1, placeholder: "body" }))).toMatchObject({ feature: "addImage({ placeholder })" });
         const table = errorFrom(() => pres.tableToSlides("<table><tr><td>A</td></tr></table>", { masterSlideName: "MASTER" }));
 

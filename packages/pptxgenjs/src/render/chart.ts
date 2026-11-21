@@ -245,6 +245,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // A clustered horizontal bar chart runs its series bottom-up in each category band, as its categories run, and lists
     // them in the legend from the last; a stacked one keeps the series order in both (LibreOffice and PowerPoint, #472).
     const reversedSeries = horizontal && !stacked;
+    // A vertical legend lists a stacked column or area chart from the last series, as its stack runs bottom-up; a
+    // horizontal legend keeps the series order (LibreOffice 26.2, #508).
+    const verticalLegend = chart.legendPosition === "l" || chart.legendPosition === "r" || chart.legendPosition === "tr";
+    const reversedLegend = reversedSeries || (verticalLegend && stacked && (chart.type === "area" || (chart.type === "bar" && !horizontal)));
     // Office keys a bar, area or pie entry with a filled square and a line entry with its line and marker.
     let legendData: { name: string; icon?: string }[] | undefined;
 
@@ -255,7 +259,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     } else if (chart.type !== "radar" && chart.type !== "scatter" && chart.type !== "bubble") {
         legendData = chart.series.map(series => (series.type === "line" ? { name: series.name } : { name: series.name, icon: LEGEND_SQUARE_ICON }));
 
-        if (reversedSeries) {
+        if (reversedLegend) {
             legendData.reverse();
         }
     }

@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import PDFDocument from "pdfkit";
 import type PptxGenJS from "pptxgenjs";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/html";
+import { PuppeteerGen as NodePuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { createPdfkitRenderer as createBrowserPdfkitRenderer, loadSystemFonts as browserLoadSystemFonts, type PdfkitRenderer } from "../packages/pdfkit/src/browser";
 import { createPdfkitRenderer, loadSystemFonts } from "../packages/pdfkit/src/node";
@@ -12,6 +13,7 @@ import { boxRadii, dilate, gaussianBlur } from "../packages/pdfkit/src/effect/fi
 import { composite } from "../packages/pdfkit/src/effect/raster";
 import { breakOpportunities } from "../packages/pdfkit/src/lineBreak";
 import { record } from "../packages/pdfkit/src/path";
+import { populateWebpDeck } from "./visual/wasm/format-deck";
 
 const PAGE = PAGE_SIZES.SCREEN_16X9.landscape;
 /** The page height in points: PDFKit flips each text object about it, so a baseline `y` px from the top is written as `PAGE_HEIGHT_PT - y`. */
@@ -224,6 +226,19 @@ describe("PDFKit renderer", () => {
             ]);
             expect(pageContents(pdf).every(content => /\/I\d+ Do/.test(content))).toBe(true);
             expect(renderer.warnings()).toEqual([]);
+        });
+
+        test("writes the same bytes for the same deck: pictures are embedded in drawing order (#424)", async () => {
+            // The WebP deck's pictures go to PDFKit as PNGs with alpha, whose embedding PDFKit finishes after an
+            // asynchronous inflate: unordered, the object numbers followed whichever inflate ended first.
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+            // The Node entry reads the deck's picture files.
+            const html = await populateWebpDeck(new NodePuppeteerGen()).toHtml();
+            const first = await renderer.render(html);
+            const second = await renderer.render(html);
+
+            expect(imageObjects(first).length).toBeGreaterThan(2);
+            expect(Buffer.from(second).equals(Buffer.from(first))).toBe(true);
         });
 
         test("refuses a GIF whose first frame does not fill its screen, as pdf-core does", async () => {

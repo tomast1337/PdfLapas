@@ -6,6 +6,7 @@ import { attribute, children, descendants, hasAttribute, hasClass, parseDocument
 import type { Face } from "./fonts";
 import { drawSlide } from "./slide";
 import { Effects } from "./effect/index";
+import { embedImagesInOrder } from "./internals";
 import { createShaper } from "./text/shaper";
 
 export type RenderResult = {
@@ -99,6 +100,8 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     if (!info.CreationDate) {
         Object.defineProperty(doc.info, "CreationDate", { value: FIXED_DATE, enumerable: false });
     }
+
+    embedImagesInOrder(doc);
 
     const warnings = new Set<string>();
     const missing = new Map<string, { objects: Set<string>; used: string | undefined }>();

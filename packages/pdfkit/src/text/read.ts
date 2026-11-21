@@ -143,7 +143,25 @@ export function reportUnread(element: Element, style: Style, read: readonly stri
 }
 
 /** `value`, which a missing or unreadable input gives as NaN. */
-function required(value: number, what: string): number {
+/** A `<n>px` property the profile requires: missing or unreadable is an invalid document. */
+function requiredPx(style: Style, property: string, what: string): number {
+    const length = px(take(style, property, ""));
+
+    if (length.kind === "invalid" || !Number.isFinite(length.value)) {
+        throw new Error(`invalid PdfLapas HTML: ${what} is missing or not a number`);
+    }
+
+    return length.value;
+}
+
+/** A numeric attribute the profile requires: missing or unreadable is an invalid document. */
+function requiredNumber(element: Element, name: string, what: string): number {
+    if (!hasAttribute(element, name)) {
+        throw new Error(`invalid PdfLapas HTML: ${what} is missing or not a number`);
+    }
+
+    const value = Number(attribute(element, name, ""));
+
     if (!Number.isFinite(value)) {
         throw new Error(`invalid PdfLapas HTML: ${what} is missing or not a number`);
     }
@@ -241,9 +259,9 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
         }
 
         const rtl = paragraphDirection === "rtl";
-        const lineHeight = required(takePx(paragraphStyle, "line-height", Number.NaN), "a paragraph's line-height");
-        const baseline = required(hasAttribute(paragraphElement, "data-line-baseline") ? Number(attribute(paragraphElement, "data-line-baseline", "")) : Number.NaN, "a paragraph's data-line-baseline");
-        const optionalBaseline = (name: string) => (hasAttribute(paragraphElement, name) ? required(Number(attribute(paragraphElement, name, "")), `a paragraph's ${name}`) : baseline);
+        const lineHeight = requiredPx(paragraphStyle, "line-height", "a paragraph's line-height");
+        const baseline = requiredNumber(paragraphElement, "data-line-baseline", "a paragraph's data-line-baseline");
+        const optionalBaseline = (name: string) => (hasAttribute(paragraphElement, name) ? requiredNumber(paragraphElement, name, `a paragraph's ${name}`) : baseline);
         const parts = children(paragraphElement);
         const bulletElement = parts.find(child => hasClass(child, "text-bullet"));
         const runs: Run[] = [];
@@ -316,7 +334,7 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             }
 
             const face = readFace(child, runStyle);
-            const size = required(takePx(runStyle, "font-size", Number.NaN), "a run's font-size");
+            const size = requiredPx(runStyle, "font-size", "a run's font-size");
             const kerning = take(runStyle, "font-kerning", "") !== "none";
             // The run's underline and strikethrough.
             const decorationLines = take(runStyle, "text-decoration-line", "").split(/\s+/);
@@ -532,7 +550,7 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             bullet = {
                 text: textContent(bulletElement),
                 face: readFace(bulletElement, bulletStyle),
-                size: required(takePx(bulletStyle, "font-size", Number.NaN), "a bullet's font-size"),
+                size: requiredPx(bulletStyle, "font-size", "a bullet's font-size"),
                 color: requiredColor(take(bulletStyle, "color", ""), "a bullet's color"),
             };
             reportUnread(bulletElement, bulletStyle, [], report, LAYOUT_ONLY.bullet);
@@ -566,7 +584,7 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
     if (fitValue !== "shrink") {
         fit = { kind: fitValue === "resize" ? "resize" : "none" };
     } else {
-        const number = (name: string) => required(hasAttribute(box, name) ? Number(attribute(box, name, "")) : Number.NaN, `a shrink box's ${name}`);
+        const number = (name: string) => requiredNumber(box, name, `a shrink box's ${name}`);
 
         fit = { kind: "shrink", step: number("data-text-fit-step"), maxSteps: number("data-text-fit-max-steps"), tolerance: number("data-text-fit-tolerance") };
     }

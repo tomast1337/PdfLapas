@@ -189,23 +189,3 @@ export function dash(doc: PDFKit.PDFDocument, lengths: readonly number[]): boole
 
     return true;
 }
-
-/** The box `transform` (rotation, flips) about the box centre, as CSS `transform-origin: center` applies it. */
-export function transformBox(doc: PDFKit.PDFDocument, box: { x: number; y: number; width: number; height: number }, rotation: number, flipH: boolean, flipV: boolean): void {
-    if (!rotation && !flipH && !flipV) {
-        return;
-    }
-
-    const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
-
-    doc.translate(cx, cy);
-    if (rotation) {
-        doc.rotate(rotation);
-    }
-
-    if (flipH || flipV) {
-        doc.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-    }
-
-    doc.translate(-cx, -cy);
-}

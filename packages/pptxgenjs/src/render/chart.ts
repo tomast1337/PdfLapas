@@ -453,14 +453,24 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const maxBubble = Math.max(1, ...bubbleSizes);
         const scatter: Record<string, unknown>[] = [];
 
-        for (const series of ySeries) {
+        for (const [seriesIndex, series] of ySeries.entries()) {
+            // PptxGenJS writes <c:scatterStyle val="lineMarker"/> and each series' <a:ln w="lineSize"> (<a:noFill/> at
+            // 0) and <c:smooth>, so Office joins the points in data order: an ECharts line series on a value x axis.
             scatter.push({
                 name: series.name,
-                type: "scatter",
                 data: series.values.map((value, index) => (chart.type === "bubble" ? [xValues[index], value, series.sizes?.[index] ?? 0] : [xValues[index], value])),
                 ...(chart.type === "bubble"
-                    ? { symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32, itemStyle: { opacity: chart.colorOpacity } }
-                    : { symbol: lineSymbol(chart.lineSymbol), symbolSize, itemStyle: { opacity: chart.colorOpacity, ...symbolBorder } }),
+                    ? { type: "scatter", symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32, itemStyle: { opacity: chart.colorOpacity } }
+                    : {
+                          type: "line",
+                          smooth: chart.lineSmooth,
+                          lineStyle: { width: pointsToPixels(chart.lineSize) },
+                          symbol: lineSymbol(chart.lineSymbol),
+                          symbolSize,
+                          // A line series' symbol has no stroke unless borderColor is set: the series color, as on a line chart, unless
+                          // lineDataSymbolLineColor sets its own.
+                          itemStyle: { opacity: chart.colorOpacity, borderColor: chart.colors[seriesIndex % chart.colors.length], ...symbolBorder },
+                      }),
             });
         }
 

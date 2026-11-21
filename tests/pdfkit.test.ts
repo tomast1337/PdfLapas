@@ -13,6 +13,8 @@ import { boxRadii, dilate, gaussianBlur } from "../packages/pdfkit/src/effect/fi
 import { composite } from "../packages/pdfkit/src/effect/raster";
 import { breakOpportunities } from "../packages/pdfkit/src/lineBreak";
 import { record } from "../packages/pdfkit/src/path";
+import { layoutText } from "../packages/pdfkit/src/text/layout";
+import { createShaper } from "../packages/pdfkit/src/text/shaper";
 import { populateWebpDeck } from "./visual/wasm/format-deck";
 
 const PAGE = PAGE_SIZES.SCREEN_16X9.landscape;
@@ -279,12 +281,56 @@ describe("PDFKit renderer", () => {
             expect(renderer.warnings()).toEqual([]);
         });
 
+        test("names the invalid opacity an SVG picture's style declares, not its attribute (#430)", async () => {
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red" fill-opacity="0.5" style="fill-opacity: half"/><rect width="5" height="5" style="stroke-opacity: none"/></svg>`;
+
+            await render(renderer, pres => pres.addSlide().addImage({ data: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`, x: 1, y: 1, w: 1, h: 1 }));
+            expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': fill-opacity 'half' in an SVG image is not a number; inherited instead", "slide 1: object 'Image 0': stroke-opacity 'none' in an SVG image is not a number; inherited instead"]);
+        });
+
         test("reports image formats it does not decode", async () => {
             const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
 
             await render(renderer, pres => pres.addSlide().addImage({ data: "data:image/bmp;base64,Qk0=", x: 1, y: 1, w: 1, h: 1 }));
             expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': image format 'image/bmp' is not drawn (not a PNG, JPEG, GIF, WebP or SVG image)"]);
         });
+    });
+
+    test("draws a strike in the text colour when the underline has its own (#430)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const pdf = await render(renderer, pres => pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1, fontFace: "Arial", color: "0000FF", underline: { style: "sng", color: "FF0000" }, strike: "sngStrike" }));
+
+        // The underline's band in its red, then the strike's in the run's blue, as PowerPoint and pdf-core draw them.
+        expect(pageContents(pdf)[0]).toMatch(/ re\n\/DeviceRGB cs\n1 0 0 scn\n\/Gs1 gs\nf\n[\d. ]+ re\n\/DeviceRGB cs\n0 0 1 scn\n\/Gs1 gs\nf\nQ\n$/);
+    });
+
+    test("reports a -webkit-text-stroke with a width or a colour alone, the profile's form being both (#430)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1, fontFace: "Arial", outline: { size: 1, color: "00FF00" } });
+        const document = await pres.toHtml();
+
+        for (const value of ["2px", "#00FF00"]) {
+            const pdf = await renderer.render({ ...document, html: document.html.replace(/-webkit-text-stroke: [^;"]*/, `-webkit-text-stroke: ${value}`) });
+
+            expect(pageContents(pdf)[0]).not.toContain("1 Tr");
+            expect(renderer.warnings()).toEqual([`slide 1: object 'Text 0': -webkit-text-stroke '${value}' is not drawn`]);
+        }
+    });
+
+    test("drops a tab no face draws, without counting it as text in a missing face (#430)", () => {
+        const color = { rgb: [0, 0, 0], alpha: 1 } as const;
+        const run = { text: "a\tb", face: { family: "Nothing", fallbacks: [], bold: false, italic: false }, size: 16, color, letterSpacing: 0, kerning: true, shift: 0, softBreakBefore: false, synthesis: { boldStroke: 0, italicShear: 0 } };
+        const paragraph = { runs: [run], align: "left", rtl: false, lineHeight: 19.2, baseline: 15, markBaseline: 15, breakBaseline: 15, spaceBefore: 0, spaceAfter: 0, tabSize: 48, tabStops: [], indent: 0, textIndent: 0 } as const;
+        const missing: string[] = [];
+        // No faces at all: the renderer refuses an empty font list, so only a direct call reaches an empty chain.
+        const layout = layoutText({ paragraphs: [paragraph], padding: [0, 0, 0, 0], anchor: "flex-start", wrap: true, fit: { kind: "none" } }, 200, 1, createShaper([]), missed => missing.push(missed.text));
+
+        expect(layout.lines.flatMap(line => line.fragments)).toEqual([]);
+        // "a" and "b" are text in a missing face; the tab between them is not.
+        expect(missing).toEqual(["a\tb", "a\tb"]);
     });
 
     test("records a quadratic as the cubic with its curve, not PDFKit's `v`", () => {

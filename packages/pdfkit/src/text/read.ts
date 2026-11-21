@@ -387,18 +387,18 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             const doubleStrike = hasAttribute(child, "data-double-strike");
             // A double strike takes text-decoration-style; the underline's own style is then in data-underline-style.
             const underlineStyle = doubleStrike ? attribute(child, "data-underline-style", "solid") : cssStyle;
-            const decoration = (kind: string, styleName: string): Decoration => {
-                if (DECORATION_STYLES.has(styleName)) {
-                    return { style: styleName as Decoration["style"], color: kind === "underline" ? decorationColor : runColor };
-                } // `as`: checked against DECORATION_STYLES
+            // `as`: checked against DECORATION_STYLES.
+            const drawnUnderlineStyle = DECORATION_STYLES.has(underlineStyle) ? (underlineStyle as Decoration["style"]) : "solid";
 
-                report(`${kind} style '${styleName}' is not drawn (drawn solid)`);
+            if (decorationLines.includes("underline") && drawnUnderlineStyle !== underlineStyle) {
+                report(`underline style '${underlineStyle}' is not drawn (drawn solid)`);
+            }
 
-                return { style: "solid", color: decorationColor };
-            };
+            // text-decoration-color is the underline's (docs/HTML_PROFILE.md): the strike is in the text colour, as
+            // PowerPoint and pdf-core draw it (OOXML gives a strike no colour of its own).
             const decorations: Pick<Run, "underline" | "strike"> = {
-                ...(decorationLines.includes("underline") ? { underline: { ...decoration("underline", underlineStyle), ...(fromFont ? { fromFont } : {}), ...(band ? { band } : {}), ...(heavy ? { heavy } : {}) } } : {}),
-                ...(decorationLines.includes("line-through") || doubleStrike ? { strike: decoration("strike", doubleStrike ? "double" : "solid") } : {}),
+                ...(decorationLines.includes("underline") ? { underline: { style: drawnUnderlineStyle, color: decorationColor, ...(fromFont ? { fromFont } : {}), ...(band ? { band } : {}), ...(heavy ? { heavy } : {}) } } : {}),
+                ...(decorationLines.includes("line-through") || doubleStrike ? { strike: { style: doubleStrike ? "double" : "solid", color: runColor } } : {}),
             };
             // `-webkit-text-stroke: <width>px <color>`; any other value is reported.
             const hasOutline = runStyle.has("-webkit-text-stroke");
@@ -406,9 +406,10 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             let outline: Run["outline"];
 
             if (hasOutline) {
+                // A value without a space (a width or a colour alone) is not the profile's form, as pdf-core refuses it.
                 const space = stroke.indexOf(" ");
-                const width = px(stroke.slice(0, space));
-                const outlineColor = color(stroke.slice(space + 1));
+                const width = px(space === -1 ? "" : stroke.slice(0, space));
+                const outlineColor = color(space === -1 ? "" : stroke.slice(space + 1));
 
                 if (width.kind === "invalid" || outlineColor.kind === "invalid") {
                     report(`-webkit-text-stroke '${stroke}' is not drawn`);

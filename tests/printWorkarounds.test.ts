@@ -129,6 +129,24 @@ describe("Puppeteer print workarounds", () => {
         expect(plain?.hasAttribute("stroke-dashoffset")).toBe(false);
     });
 
+    test("reads a dash pattern separated by commas and/or whitespace, as SVG allows", async () => {
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addShape("line", { x: 1, y: 1, w: 4, h: 0, line: { color: "ED7D31", width: 2.25, dashType: "dash", beginArrowType: "oval" } });
+        const { html } = await presentation.toHtml();
+        const dashes = html.match(/stroke-dasharray="([^"]+)"/)?.[1] ?? "";
+        const printed = printHtml(html);
+
+        expect(dashes).toStartWith("0 ");
+        expect(printed).toContain("stroke-dashoffset");
+
+        for (const separator of [",", ", ", " ,", "  ", " \t", ",\n"]) {
+            const written = dashes.split(" ").join(separator);
+
+            expect(printHtml(html.replace(`stroke-dasharray="${dashes}"`, `stroke-dasharray=" ${written} "`))).toBe(printed);
+        }
+    });
+
     test("draws a text box's line as an outline centred on its edge, which leaves the text where its inset puts it", async () => {
         const presentation = new PuppeteerGen();
         const slide = presentation.addSlide();

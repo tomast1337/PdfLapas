@@ -77,6 +77,16 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "lineDataSymbol",
     "lineDataSymbolSize",
     "lineSize",
+    "showValue",
+    "showLabel",
+    "showPercent",
+    "dataLabelPosition",
+    "dataLabelFormatCode",
+    "dataLabelColor",
+    "dataLabelFontBold",
+    "dataLabelFontFace",
+    "dataLabelFontItalic",
+    "dataLabelFontSize",
 ] as const);
 
 const SUPPORTED_CHART_OPTION_SET = new Set<string>(SUPPORTED_CHART_OPTIONS);
@@ -112,6 +122,14 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
 ]);
 const SUPPORTED_GRID_LINE_OPTIONS = new Set(["cap", "color", "size", "style"]);
 const BAR_3D_SHAPES = new Set(["box", "cylinder", "cone", "coneToMax", "pyramid", "pyramidToMax"]);
+const DATA_LABEL_CHART_TYPES = new Set<NormalizedChartType>(["bar", "doughnut", "line", "pie"]);
+// The dataLabelPosition values PptxGenJS 4.0.1 keeps; its option cleanup deletes any other (every one on a doughnut and,
+// a quirk, `outEnd` on a clustered bar), so the chart type's default position applies.
+const LINE_LABEL_POSITIONS = new Set(["b", "ctr", "l", "r", "t"]);
+const CLUSTERED_BAR_LABEL_POSITIONS = new Set(["ctr", "inBase", "inEnd"]);
+const STACKED_BAR_LABEL_POSITIONS = new Set(["ctr", "inBase", "inEnd", "outEnd"]);
+const PIE_LABEL_POSITIONS = new Set(["bestFit", "ctr", "inEnd", "outEnd"]);
+const NO_LABEL_POSITIONS = new Set<string>();
 
 function normalizeSeries(type: NormalizedChartType, data: readonly PptxGenJS.OptsChartData[]): NormalizedChartSeries[] {
     if (data.length === 0) {
@@ -460,6 +478,64 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         throw new UnsupportedChartError({ reason: "chart-combination", chartTypes, unsupportedOptions: ["valAxes[secondary-without-series]"] });
     }
 
+    // The data labels. PptxGenJS writes showCatName and showPercent only on pie and doughnut points (and custom labels
+    // for showLabel on scatter), so on a bar or line chart showLabel and showPercent draw nothing, as in PowerPoint.
+    const pieLike = normalizedType === "pie" || normalizedType === "doughnut";
+    const drawingLabelOptions: string[] = [];
+
+    if (options.showValue) {
+        drawingLabelOptions.push("showValue");
+    }
+
+    if (options.showLabel && (pieLike || normalizedType === "scatter")) {
+        drawingLabelOptions.push("showLabel");
+    }
+
+    if (options.showPercent && pieLike) {
+        drawingLabelOptions.push("showPercent");
+    }
+
+    if (drawingLabelOptions.length && !DATA_LABEL_CHART_TYPES.has(normalizedType)) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: drawingLabelOptions.map(option => `${option}[${normalizedType}]`) });
+    }
+
+    const stackedBars = normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked";
+    const defaultPositions = PPTX_DEFAULTS.chart.dataLabelPosition;
+    let labelPosition: NormalizedChart["dataLabels"]["position"] =
+        normalizedType === "line" ? defaultPositions.line : normalizedType === "pie" ? defaultPositions.pie : normalizedType === "doughnut" ? defaultPositions.doughnut : stackedBars ? defaultPositions.stacked : defaultPositions.clustered;
+    const keptPositions = normalizedType === "line" ? LINE_LABEL_POSITIONS : normalizedType === "pie" ? PIE_LABEL_POSITIONS : normalizedType !== "bar" ? NO_LABEL_POSITIONS : stackedBars ? STACKED_BAR_LABEL_POSITIONS : CLUSTERED_BAR_LABEL_POSITIONS;
+
+    if (options.dataLabelPosition !== undefined && keptPositions.has(options.dataLabelPosition)) {
+        labelPosition = options.dataLabelPosition;
+    }
+
+    if (normalizedType === "pie" && (labelPosition === "inEnd" || labelPosition === "outEnd") && drawingLabelOptions.length) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`dataLabelPosition[${labelPosition}]`] });
+    }
+
+    // PptxGenJS: `dataLabelFormatCode || (pie or doughnut: showPercent ? '0%' : 'General'; scatter: 'General') || '#,##0'`.
+    // On a pie LibreOffice applies it to the percentage when showPercent is set and draws the value in General (renders
+    // of PptxGenJS pies: `0.0` with showPercent draws 0.5; showValue with showPercent draws 50.25 and 50%).
+    const pieFormatCode = options.showPercent ? PPTX_DEFAULTS.chart.piePercentFormatCode : PPTX_DEFAULTS.chart.pieDataLabelFormatCode;
+    const labelFormatCode = options.dataLabelFormatCode || (pieLike ? pieFormatCode : normalizedType === "scatter" ? PPTX_DEFAULTS.chart.scatterDataLabelFormatCode : PPTX_DEFAULTS.chart.dataLabelFormatCode);
+
+    if (!isSupportedChartNumberFormat(labelFormatCode)) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["dataLabelFormatCode[format]"] });
+    }
+
+    const dataLabels: NormalizedChart["dataLabels"] = {
+        showValue: options.showValue ?? PPTX_DEFAULTS.chart.showValue,
+        showCategory: pieLike && (options.showLabel ?? PPTX_DEFAULTS.chart.showLabel),
+        showPercent: pieLike && (options.showPercent ?? PPTX_DEFAULTS.chart.showPercent),
+        position: labelPosition,
+        valueFormat: pieLike && options.showPercent ? PPTX_DEFAULTS.chart.pieDataLabelFormatCode : labelFormatCode,
+        percentFormat: labelFormatCode,
+        color: normalizeColor(options.dataLabelColor || PPTX_DEFAULTS.chart.dataLabelColor),
+        fontFace: options.dataLabelFontFace || PPTX_DEFAULTS.chart.fontFace,
+        fontSize: checkedSize(options.dataLabelFontSize || PPTX_DEFAULTS.chart.dataLabelFontSizePt, "dataLabelFontSize", PPTX_DEFAULTS.limits.fontSizePt),
+        bold: options.dataLabelFontBold ?? false,
+        italic: options.dataLabelFontItalic ?? false,
+    };
     const axisSeries = (axisIndex: 0 | 1) => series.filter(item => item.valueAxisIndex === axisIndex);
     const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0), normalizedGrouping);
     const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1), normalizedGrouping) : undefined;
@@ -509,6 +585,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         lineSymbol: options.lineDataSymbol ?? PPTX_DEFAULTS.chart.lineDataSymbol,
         lineSymbolSize: checkedSize(options.lineDataSymbolSize ?? PPTX_DEFAULTS.chart.lineDataSymbolSize, "lineDataSymbolSize", PPTX_DEFAULTS.limits.chartMarkerSizePt),
         lineSize: checkedSize(options.lineSize ?? PPTX_DEFAULTS.chart.lineSizePt, "lineSize", PPTX_DEFAULTS.limits.lineWidthPt),
+        dataLabels,
         altText: options.altText ?? "",
         grouping: normalizedGrouping,
         gridLineColor: normalizeColor(PPTX_DEFAULTS.chart.gridLine.color),

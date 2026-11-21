@@ -1041,3 +1041,15 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChart.lineSymbol`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSymbolSize`           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSize`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChart.dataLabels`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.showValue`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.showCategory`   | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.showPercent`    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.position`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.valueFormat`    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.percentFormat`  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.color`          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.fontFace`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.fontSize`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.bold`           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.italic`         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

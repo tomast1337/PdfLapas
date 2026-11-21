@@ -277,6 +277,19 @@ const chart = z.strictObject({
     lineSymbol: z.enum(["circle", "dash", "diamond", "dot", "none", "square", "triangle"]),
     lineSymbolSize: nonNegative,
     lineSize: nonNegative,
+    dataLabels: z.strictObject({
+        showValue: z.boolean(),
+        showCategory: z.boolean(),
+        showPercent: z.boolean(),
+        position: z.enum(["b", "bestFit", "ctr", "inBase", "inEnd", "l", "outEnd", "r", "t"]),
+        valueFormat: z.string(),
+        percentFormat: z.string(),
+        color: cssColor,
+        fontFace,
+        fontSize: nonNegative,
+        bold: z.boolean(),
+        italic: z.boolean(),
+    }),
     altText: z.string(),
 });
 

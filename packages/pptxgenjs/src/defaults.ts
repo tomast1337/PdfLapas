@@ -323,6 +323,17 @@ export const PPTX_DEFAULTS = Object.freeze({
         dataLabelFormatCode: "#,##0",
         scatterDataLabelFormatCode: "General",
         piePercentFormatCode: "0%",
+        // A pie or doughnut writes `General` unless showPercent is set (then piePercentFormatCode).
+        pieDataLabelFormatCode: "General",
+        // PptxGenJS writes `<a:defRPr sz="${(dataLabelFontSize || 12) * 100}">` and `dataLabelColor || '000000'`.
+        dataLabelFontSizePt: 12,
+        dataLabelColor: "000000",
+        // With no `<c:dLblPos>` (PptxGenJS writes one only for dataLabelPosition) LibreOffice places a clustered
+        // bar's label outside its end, a stacked bar's in its center, a line point's to its right and a slice's inside it
+        // (checked on LibreOffice renders of PptxGenJS output).
+        dataLabelPosition: Object.freeze({ clustered: "outEnd" as const, stacked: "ctr" as const, line: "r" as const, pie: "bestFit" as const, doughnut: "ctr" as const }),
+        // PptxGenJS writes no `<c:separator>`; LibreOffice puts each shown field (category, value, percent) on its own line.
+        dataLabelSeparator: "\n",
         scatterDataLabelFormat: "custom" as const,
         showLabel: false,
         showLeaderLines: false,

@@ -486,5 +486,9 @@
     "p1-Table3": 0.021,
     "p1-Table4": 0.0168,
     "p1-Table5": 0.0168
+  },
+  "chartLabels": {
+    "p1-Chart0": 0.109,
+    "p1-Chart1": 0.1101
   }
 }

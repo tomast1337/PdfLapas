@@ -205,6 +205,10 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelFormatCode", // common single-section numeric formats
     "valAxisMajorTickMark",
     "valAxisMinorTickMark", // `cross` remains explicit unsupported
+    "dataLabelFormatCode", // the same numeric formats as valAxisLabelFormatCode
+    "dataLabelPosition", // a pie's inEnd and outEnd remain explicit unsupported
+    "showValue", // bar, line, pie and doughnut; other chart types remain explicit unsupported
+    "showLabel", // pie and doughnut; scatter's custom labels remain explicit unsupported
 ]);
 // Declared in IChartOpts but read by no chart writer in PptxGenJS 4.0.1.
 const IGNORED_CHART_OPTIONS = new Set<string>(["fontFace", "fontSize"]);

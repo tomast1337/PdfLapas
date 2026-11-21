@@ -149,8 +149,8 @@ export class PuppeteerSlide implements PptxSlide {
     toModel(pageSize: PageSize, masterSlideNumber: PptxGenJS.SlideNumberProps | null): NormalizedSlide {
         const master = this.context.master;
         // The slide's own background replaces its master's, picture and color alike, as its <p:bg> replaces the layout's.
-        const background = master && !this.ownBackground ? master.layer.backgroundLayer(pageSize) : this.backgroundLayer(pageSize);
-        const masterObjects = master ? master.layer.model.objects : [];
+        const background = master?.layer && !this.ownBackground ? master.layer.backgroundLayer(pageSize) : this.backgroundLayer(pageSize);
+        const masterObjects = master?.layer ? master.layer.model.objects : [];
         // The slide's number placeholder inherits what its props leave out from its layout's, then from the master's.
         const inherited = { ...masterSlideNumber, ...master?.slideNumber };
         const slideNumber = this._slideNumber ? [normalizeSlideNumber(this._slideNumber, inherited, this.context.slideIndex + 1, this.pageSize, this.context.bodyFontFace(), this.context.target, this.context.fontMetrics)] : [];

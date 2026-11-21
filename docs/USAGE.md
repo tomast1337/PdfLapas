@@ -332,6 +332,8 @@ slide.addText("Drawn on top of the master's objects", { x: 0.5, y: 1.2, w: 9, h:
   `addImage({ placeholder: name })` moves the picture to the placeholder's `x` and `y`. A name the
   master does not have draws the object from its own options and adds a `warnings()` line.
 - An unknown `masterName` adds a slide without a master, as PptxGenJS does, and logs a warning.
+- PptxGenJS's built-in `masterName: "DEFAULT"` is a blank master: its slides start with the `slideNumber`
+  a slide set last, and autoPage tables on them keep 0.5in margins whatever their `slideMargin`.
 
 ## Custom Layouts
 

@@ -105,6 +105,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly pdfMetadata: PresentationMetadata;
     /** The `slideNumber` set last on any slide: PptxGenJS writes it to the master, which slide numbers inherit from. */
     private masterSlideNumber: PptxGenJS.SlideNumberProps | null = null;
+    /** The `slideNumber` set last on any slide, which PptxGenJS's setter also writes to its built-in "DEFAULT" layout. */
+    private defaultLayoutSlideNumber: PptxGenJS.SlideNumberProps | null = null;
     private readonly components = new ComponentRegistry();
     /** What PptxGenJS writes onto run options objects the deck shares between boxes, which its slides read and extend. */
     private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
@@ -210,7 +212,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
 
         const layers = [...this.slides, ...Array.from(this.masters.values(), master => master.layer)];
 
-        if (bodyFontFace !== this.bodyFontFace() && layers.some(slide => slide.model.objects.length > 0)) {
+        if (bodyFontFace !== this.bodyFontFace() && layers.some(slide => slide !== null && slide.model.objects.length > 0)) {
             throw new Error(
                 `pres.theme.bodyFontFace "${bodyFontFace}" was set after slide objects were added: PdfLapas resolves an object's default font when it is added, PptxGenJS when it writes the file. Set pres.theme before adding text, tables or charts.`,
             );
@@ -418,7 +420,19 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             console.warn(`addSlide: no slide master is named ${JSON.stringify(found.name)}, so the slide is added without one, as PptxGenJS does. Call pres.defineSlideMaster({ title: ${JSON.stringify(found.name)}, ... }) before adding slides on it.`);
         }
 
-        const master = found.kind === "master" ? found.master : null;
+        // The built-in "DEFAULT" layout has no objects or background, 0.5in margins and the slide number the setter
+        // wrote last, read when the slide is added (its Slide constructor copies it) and again when it is drawn.
+        const getDefaultSlideNumber = () => this.defaultLayoutSlideNumber;
+        const defaultMaster: SlideMaster = {
+            layer: null,
+            get slideNumber() {
+                return getDefaultSlideNumber();
+            },
+            margin: PPTX_DEFAULTS.slide.marginIn,
+            // The DEFAULT layout has no placeholders: a placeholder name on its slide is unknown, as in PptxGenJS.
+            placeholders: new Map(),
+        };
+        const master = found.kind === "master" ? found.master : found.kind === "default" ? defaultMaster : null;
         const slideIndex = this.slides.length;
         const slide = new PuppeteerSlide({
             ...this.slideContext(slideIndex, master),
@@ -427,7 +441,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
                 let continuation = this.slides[slideIndex + offset];
 
                 while (!continuation) {
-                    this.addSlide(found.kind === "master" ? { masterName: found.name } : undefined);
+                    this.addSlide(found.kind === "master" ? { masterName: found.name } : found.kind === "default" ? { masterName: PPTX_DEFAULTS.presentation.layoutName } : undefined);
                     continuation = this.slides[slideIndex + offset];
                 }
 
@@ -435,6 +449,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             },
             setMasterSlideNumber: props => {
                 this.masterSlideNumber = props;
+                this.defaultLayoutSlideNumber = props;
             },
         });
 

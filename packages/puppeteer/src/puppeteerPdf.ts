@@ -289,14 +289,13 @@ async function prepareForPrint(): Promise<string[]> {
                 if (child.tagName === "BR") {
                     segments.push([]);
                 } else if (child.classList.contains("text-run")) {
-                    // Its own text and its words' spans' (wordCharacterSpacing), in order.
+                    // Its own text and its words' spans' (wordCharacterSpacing), inside the print step's strike span or not, in order.
                     const segment = segments[segments.length - 1];
+                    const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
 
-                    for (const node of Array.from(child.childNodes)) {
-                        for (const text of node instanceof Element ? Array.from(node.childNodes) : [node]) {
-                            if (text instanceof Text && text.length > 0) {
-                                segment?.push(text);
-                            }
+                    for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+                        if (text instanceof Text && text.length > 0) {
+                            segment?.push(text);
                         }
                     }
                 }

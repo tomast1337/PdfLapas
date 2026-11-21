@@ -27,6 +27,10 @@ const INSET_SHADOW = /(?:^|; )box-shadow: inset ([^;]+);/;
 const TEXT_BORDER = /(?:^|; )border-color: ([^;]+); border-width: ([^;]+)px; border-style: ([^;]+);/;
 // The face and its fallback faces as the profile writes them: CSS strings, `\` and `"` escaped; group 2 is the face.
 const FONT_FAMILY = /((?:^|; )font-family: "((?:[^"\\]|\\.)*)"(?:, "(?:[^"\\]|\\.)*")*)/;
+// A run's underline and strike, its decoration style and thickness, as render/text.ts writes them.
+const UNDERLINE_AND_STRIKE = /(?:^|; )text-decoration-line: underline line-through;/;
+const DECORATION_STYLE = /((?:^|; )text-decoration-style: )[^;]+;/;
+const DECORATION_THICKNESS = /(?:^|; )text-decoration-thickness: ([^;]+);/;
 // U+2011 NON-BREAKING HYPHEN in a run's source text, literal or as a character reference.
 const NON_BREAKING_HYPHEN = /\u2011|&#(?:8209|x2011);/gi;
 // U+002D, which draws the face's hyphen, then U+2060 WORD JOINER, which keeps U+2011's no-break after it.
@@ -195,7 +199,7 @@ export function printHtml(html: string): string {
             // Font fallback: Chromium does not apply LibreOffice's Microsoft-font substitutions to an unknown
             // single-family declaration. Keep the face first, then the metric-compatible sans fallback the
             // fixtures use. Written into the document, so the font loading Puppeteer awaits sees the final families.
-            const style = attribute(element, "style") ?? "";
+            let style = attribute(element, "style") ?? "";
             const face = style.match(FONT_FAMILY)?.[2]?.toLowerCase();
 
             // A bullet takes its first run's font; one without runs has none.
@@ -205,6 +209,30 @@ export function printHtml(html: string): string {
 
             const substitute = metricSubstitute(face);
             const fallback = substitute.kind === "none" ? SANS_FALLBACK : substitute.face === "Carlito" ? CALIBRI_FALLBACK : CAMBRIA_FALLBACK;
+
+            // Underline and strike: CSS gives every line of one box its text-decoration-color, which the profile gives the
+            // underline alone; PowerPoint draws the strike in the text colour (OOXML's <a:uFill> is the underline's) and
+            // solid unless double. The strike moves to a span around the run's content, whose line-through takes
+            // currentColor, and the run keeps the underline in its own colour and style (#470).
+            if (UNDERLINE_AND_STRIKE.test(style)) {
+                const doubleStrike = attribute(element, "data-double-strike") !== undefined;
+                const underlineStyle = attribute(element, "data-underline-style");
+                const thickness = style.match(DECORATION_THICKNESS)?.[1];
+                const tag = element.sourceCodeLocation?.startTag;
+                const end = element.sourceCodeLocation?.endTag;
+
+                if (!tag || !end) {
+                    throw new Error(`Cannot print '${objectName(element)}': its .text-run must be written out with an end tag`);
+                }
+
+                const strike = `text-decoration-line: line-through; text-decoration-style: ${doubleStrike ? "double" : "solid"};${thickness ? ` text-decoration-thickness: ${thickness};` : ""}`;
+
+                style = style.replace("text-decoration-line: underline line-through;", "text-decoration-line: underline;");
+                // A double strike wrote `double` over the underline's style, which data-underline-style keeps.
+                style = doubleStrike && underlineStyle ? style.replace(DECORATION_STYLE, `$1${underlineStyle};`) : style;
+                // The start tag's closing `>`, not the content's first offset, so a hyphen edit there keeps its own start.
+                edits.push({ start: tag.endOffset - 1, end: tag.endOffset, text: `><span style="${strike}">` }, { start: end.startOffset, end: end.startOffset, text: "</span>" });
+            }
 
             edits.push(setAttribute(element, "style", style.replace(FONT_FAMILY, `$1, ${fallback}`)));
             // data-non-breaking-hyphen="hyphen-minus": Chromium picks a face by the character, so it draws U+2011 in a

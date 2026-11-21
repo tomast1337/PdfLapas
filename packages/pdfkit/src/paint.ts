@@ -2,7 +2,7 @@
 // page starts with a scale to points, so lengths from the HTML go to PDFKit unconverted.
 import type { Color } from "./css";
 import type { Effect, Effects } from "./effect/index";
-import type { Face } from "./fonts";
+import type { Face, FaceChain } from "./fonts";
 import { record, type Segment, type StrokeStyle } from "./path";
 import type { Report } from "./text/read";
 import type { Features, Shaper } from "./text/shaper";
@@ -12,8 +12,8 @@ export type Paint = {
     readonly doc: PDFKit.PDFDocument;
     readonly shaper: Shaper;
     readonly report: Report;
-    /** Records that a run asked for `face`, which no font provides; `used` is the face drawn instead. */
-    readonly missingFace: (face: string, used: string | undefined) => void;
+    /** Records that a run asked for `face`, which no font provides; `chain` holds the faces it is drawn in instead. */
+    readonly missingFace: (face: string, chain: FaceChain) => void;
     /** The object's `opacity`, multiplied into every fill and stroke alpha. */
     readonly opacity: number;
     /** Faces already registered with this document. */

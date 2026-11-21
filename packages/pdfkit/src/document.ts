@@ -2,7 +2,7 @@
 // renderer could not draw and the faces it had no font for.
 import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, checkProfileVersion, PROFILE_META_PREFIX } from "@pdflapas/model";
 import PDFDocument from "pdfkit";
-import { attribute, children, descendants, hasClass, parseDocument, textContent } from "./dom";
+import { attribute, children, descendants, hasAttribute, hasClass, parseDocument, textContent } from "./dom";
 import type { Face } from "./fonts";
 import { drawSlide } from "./slide";
 import { Effects } from "./effect/index";
@@ -28,20 +28,20 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const { pageSize } = htmlDocument(html);
     const root = parseDocument(html).find(element => element.tagName === "html");
     const [head, body] = [root && children(root).find(element => element.tagName === "head"), root && children(root).find(element => element.tagName === "body")];
-    const profile = head && children(head).find(element => element.tagName === "meta" && attribute(element, "name") === `${PROFILE_META_PREFIX}profile`);
-    const version = profile && attribute(profile, "content");
+    const profile = head && children(head).find(element => element.tagName === "meta" && attribute(element, "name", "") === `${PROFILE_META_PREFIX}profile`);
 
-    checkProfileVersion(version === undefined ? { kind: "none" } : { kind: "content", content: version });
+    checkProfileVersion(profile && hasAttribute(profile, "content") ? { kind: "content", content: attribute(profile, "content", "") } : { kind: "none" });
     const slides = body ? children(body).filter(element => hasClass(element, "slide-container")) : [];
     const size = [inchesToPoints(pageSize.width), inchesToPoints(pageSize.height)];
     // The document properties (docs/HTML_PROFILE.md "Document properties").
     let properties: PDFKit.DocumentInfo = {};
 
     if (head) {
+        // A meta's content; an absent one reads as empty, which states nothing either.
         const meta = (name: string) => {
-            const element = children(head).find(child => child.tagName === "meta" && attribute(child, "name") === name);
+            const element = children(head).find(child => child.tagName === "meta" && attribute(child, "name", "") === name);
 
-            return element && attribute(element, "content");
+            return element ? attribute(element, "content", "") : "";
         };
         const title = children(head).find(element => element.tagName === "title");
         const text = {
@@ -105,12 +105,12 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const shaper = createShaper(faces);
     const registered = new Set<string>();
     const effects = new Effects();
-    const numbers = slides.map((slide, index) => Number(SLIDE_ID.exec(attribute(slide, "id") ?? "")?.[1] ?? index + 1));
+    const numbers = slides.map((slide, index) => Number(SLIDE_ID.exec(attribute(slide, "id", ""))?.[1] ?? index + 1));
 
     for (const element of descendants(slides)) {
-        const target = attribute(element, "data-slide");
+        const target = attribute(element, "data-slide", "");
 
-        if (target !== undefined && !numbers.includes(Number(target))) {
+        if (hasAttribute(element, "data-slide") && !numbers.includes(Number(target))) {
             warnings.add(`a link to slide ${target}, which has no page, is not drawn`);
         }
     }
@@ -133,8 +133,9 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
                     registered,
                     effects,
                     report,
-                    missingFace: (face, used) => {
-                        const entry = missing.get(face) ?? { objects: new Set<string>(), used };
+                    missingFace: (face, chain) => {
+                        // The family the text was drawn in: the chain's first face, the first fallback family the caller supplied.
+                        const entry = missing.get(face) ?? { objects: new Set<string>(), used: chain.faces[0]?.font.familyName };
 
                         entry.objects.add(`slide ${number} '${object}'`);
                         missing.set(face, entry);

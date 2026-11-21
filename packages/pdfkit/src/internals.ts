@@ -53,12 +53,13 @@ export function opacityGroup(doc: PDFKit.PDFDocument, opacity: number, draw: () 
     const inverse = invert(currentTransform(doc));
 
     // Nothing drawn, or a degenerate transform that shows nothing.
-    if (!drawn.length || !inverse) {
+    if (!drawn.length || inverse.kind === "singular") {
         return;
     }
 
     // The group's box: the whole page, in the user space the group is painted in.
-    const corners = [apply(inverse, 0, 0), apply(inverse, pdf.page.width, 0), apply(inverse, 0, pdf.page.height), apply(inverse, pdf.page.width, pdf.page.height)];
+    const toUser = inverse.matrix;
+    const corners = [apply(toUser, 0, 0), apply(toUser, pdf.page.width, 0), apply(toUser, 0, pdf.page.height), apply(toUser, pdf.page.width, pdf.page.height)];
     const xs = corners.map(([x]) => x);
     const ys = corners.map(([, y]) => y);
     const form = pdf.ref({ Type: "XObject", Subtype: "Form", BBox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], Group: { Type: "Group", S: "Transparency" }, Resources: pdf.page.resources });

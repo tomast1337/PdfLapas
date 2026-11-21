@@ -2,7 +2,7 @@
 // profile's, not the fonts': every line is `line-height` tall with its baseline `data-line-baseline` below its top (the
 // last line at `data-mark-baseline`, a line before a soft break at `data-break-baseline`), as pdf-core's `stack_lines`
 // draws them, so only the breaks and the x positions are measured here.
-import { type Face, faceFor } from "#src/fonts";
+import type { Face } from "#src/fonts";
 import { breakOpportunities } from "#src/lineBreak";
 import type { Bullet, Run, TextBox } from "./read";
 import { type Features, features, type Shaper } from "./shaper";
@@ -169,7 +169,9 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
                     const faceRuns: { face: Face; text: string }[] = [];
 
                     for (const char of segment.text.replace(INVISIBLE, "")) {
-                        const face = faceFor(chain, char.codePointAt(0) ?? 0) ?? chain.faces[0];
+                        // The first face of the chain with a glyph for the character, else its first face.
+                        const codePoint = char.codePointAt(0) ?? 0;
+                        const face = chain.faces.find(candidate => candidate.font.hasGlyphForCodePoint(codePoint)) ?? chain.faces[0];
 
                         if (!face) {
                             continue;

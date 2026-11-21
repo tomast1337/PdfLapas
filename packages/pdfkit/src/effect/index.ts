@@ -45,51 +45,49 @@ export type Effect = {
 
 /** `<x>px <y>px <blur>px <color>`, the CSS shadow form the profile writes; invalid for anything else. */
 function readShadow(value: string): { kind: "shadow"; x: number; y: number; blur: number; color: Color } | { kind: "invalid" } {
-    const [, x, y, blur, shadowColor] = SHADOW.exec(value.trim()) ?? [];
+    const [, x = "", y = "", blur = "", shadowColor = ""] = SHADOW.exec(value.trim()) ?? [];
     const [dx, dy, radius, parsed] = [px(x), px(y), px(blur), parseColor(shadowColor)];
 
-    if (dx === undefined || dy === undefined || radius === undefined || !parsed) {
+    if (dx.kind === "invalid" || dy.kind === "invalid" || radius.kind === "invalid" || parsed.kind === "invalid") {
         return { kind: "invalid" };
     }
 
-    return { kind: "shadow", x: dx, y: dy, blur: radius, color: parsed };
+    return { kind: "shadow", x: dx.value, y: dy.value, blur: radius.value, color: parsed.value };
 }
 
-/**
- * The shadow a `box-shadow` (`inset` for an inner one) or `drop-shadow()` value states; undefined for a transparent
- * shadow, which draws nothing; a string naming why it is not drawn.
- */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function shadowEffect(value: string, inner: boolean): Effect | string | undefined {
+/** An effect a CSS value states: one to draw, one that draws nothing, or a value not drawn, with the report that says why. */
+export type EffectValue = { readonly kind: "effect"; readonly effect: Effect } | { readonly kind: "invisible" } | { readonly kind: "invalid"; readonly report: string };
+
+/** The shadow a `box-shadow` (`inset` for an inner one) or `drop-shadow()` value states; invisible when transparent. */
+export function shadowEffect(value: string, inner: boolean): EffectValue {
     const shadow = readShadow(value);
 
     if (shadow.kind === "invalid") {
-        return `shadow '${value}' is not '<x>px <y>px <blur>px <color>'`;
+        return { kind: "invalid", report: `shadow '${value}' is not '<x>px <y>px <blur>px <color>'` };
     }
 
     if (shadow.color.alpha <= 0) {
-        return undefined;
+        return { kind: "invisible" };
     }
 
-    return { color: shadow.color, spread: 0, sigma: Math.max(shadow.blur, 0) * (inner ? INNER_SHADOW_SIGMA_PER_BLUR : SHADOW_SIGMA_PER_BLUR), dx: shadow.x, dy: shadow.y, inner };
+    return { kind: "effect", effect: { color: shadow.color, spread: 0, sigma: Math.max(shadow.blur, 0) * (inner ? INNER_SHADOW_SIGMA_PER_BLUR : SHADOW_SIGMA_PER_BLUR), dx: shadow.x, dy: shadow.y, inner } };
 }
 
-/** A run's glow from its `text-shadow` glow entry (the blur is the glow radius); undefined when it draws nothing. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function glowEffect(value: string): Effect | string | undefined {
+/** A run's glow from its `text-shadow` glow entry (the blur is the glow radius); invisible when transparent or without a radius. */
+export function glowEffect(value: string): EffectValue {
     const glow = readShadow(value);
 
     if (glow.kind === "invalid") {
-        return `glow '${value}' is not '<x>px <y>px <blur>px <color>'`;
+        return { kind: "invalid", report: `glow '${value}' is not '<x>px <y>px <blur>px <color>'` };
     }
 
     const radius = Math.max(glow.blur, 0);
 
     if (glow.color.alpha <= 0 || !(radius > 0) || !Number.isFinite(radius)) {
-        return undefined;
+        return { kind: "invisible" };
     }
 
-    return { color: glow.color, spread: radius * GLOW_SPREAD_PER_RADIUS, sigma: radius * GLOW_SIGMA_PER_RADIUS, dx: 0, dy: 0, inner: false };
+    return { kind: "effect", effect: { color: glow.color, spread: radius * GLOW_SPREAD_PER_RADIUS, sigma: radius * GLOW_SIGMA_PER_RADIUS, dx: 0, dy: 0, inner: false } };
 }
 
 export function sameEffect(a: Effect, b: Effect): boolean {
@@ -206,14 +204,14 @@ export class Effects {
         const contentStart = content.length;
         const inverse = invert(currentTransform(doc));
 
-        if (!inverse) {
+        if (inverse.kind === "singular") {
             report("an effect on a degenerate transform is not drawn");
             draw();
 
             return;
         }
 
-        this.#active.push({ glow: glowing ? effect : undefined, inverse, lines: [], shapes: [] });
+        this.#active.push({ glow: glowing ? effect : undefined, inverse: inverse.matrix, lines: [], shapes: [] });
         draw();
         // Ends the innermost capture and rasterizes its silhouette into the effect's mask (pdf-core's
         // `Effects::render`); nothing is drawn when nothing was captured.

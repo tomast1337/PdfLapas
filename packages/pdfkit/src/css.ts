@@ -22,7 +22,7 @@ const TRANSPARENT: Color = { rgb: [0, 0, 0], alpha: 0 };
 
 export function readStyle(element: Element): Style {
     const style: Style = new Map();
-    const text = attribute(element, "style") ?? "";
+    const text = attribute(element, "style", "");
     // The declarations: the list split at the `;` outside quotes and parentheses (`font-family: "a;b"`, `rgba(...)`).
     const parts: string[] = [];
     let [start, depth, quote] = [0, 0, ""];
@@ -63,62 +63,73 @@ export function readStyle(element: Element): Style {
     return style;
 }
 
-/** The property's value, removed from `style` so it does not count as unread. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function take(style: Style, property: string): string | undefined {
-    const value = style.get(property);
+/** A value read in the form its reader takes, or `invalid` when it is in any other. */
+export type Parsed<T> = { readonly kind: "parsed"; readonly value: T } | { readonly kind: "invalid" };
+
+/** The property's value, or `absent` when the style does not declare it; removed from `style` so it does not count as unread. */
+export function take(style: Style, property: string, absent: string): string {
+    const value = style.get(property) ?? absent;
 
     style.delete(property);
 
     return value;
 }
 
-/** A `<n>px` length (or a bare `0`); undefined for anything else. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function px(value: string | undefined): number | undefined {
-    if (value === "0") {
-        return 0;
-    }
+/** The property as a px length, taken from `style`; `otherwise` when it is absent or not a px length. */
+export function takePx(style: Style, property: string, otherwise: number): number {
+    const length = px(take(style, property, ""));
 
-    const match = value === undefined ? null : PX_LENGTH.exec(value);
-
-    return match?.[1] === undefined ? undefined : Number(match[1]);
+    return length.kind === "parsed" ? length.value : otherwise;
 }
 
-/** An `<n>em` length; undefined for anything else. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function em(value: string | undefined): number | undefined {
-    const match = value === undefined ? null : EM_LENGTH.exec(value);
+/** A `<n>px` length (or a bare `0`). */
+export function px(value: string): Parsed<number> {
+    if (value === "0") {
+        return { kind: "parsed", value: 0 };
+    }
 
-    return match?.[1] === undefined ? undefined : Number(match[1]);
+    const match = PX_LENGTH.exec(value)?.[1];
+
+    return match === undefined ? { kind: "invalid" } : { kind: "parsed", value: Number(match) };
+}
+
+/** An `<n>em` length. */
+export function em(value: string): Parsed<number> {
+    const match = EM_LENGTH.exec(value)?.[1];
+
+    return match === undefined ? { kind: "invalid" } : { kind: "parsed", value: Number(match) };
 }
 
 /** A px length, or a percentage of `base`. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function length(value: string | undefined, base: number): number | undefined {
-    const percent = value === undefined ? null : PERCENT_LENGTH.exec(value);
+export function length(value: string, base: number): Parsed<number> {
+    const percent = PERCENT_LENGTH.exec(value)?.[1];
 
-    return percent?.[1] === undefined ? px(value) : (Number(percent[1]) / 100) * base;
+    return percent === undefined ? px(value) : { kind: "parsed", value: (Number(percent) / 100) * base };
 }
 
 /** The four px lengths of a `padding: <top> <right> <bottom> <left>` value. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function sides(value: string | undefined): [number, number, number, number] | undefined {
-    const parts = value?.split(/\s+/).map(px) ?? [];
-    const [top, right, bottom, left] = parts;
+export function sides(value: string): Parsed<[number, number, number, number]> {
+    const parts: number[] = [];
 
-    return parts.length === 4 && top !== undefined && right !== undefined && bottom !== undefined && left !== undefined ? [top, right, bottom, left] : undefined;
-}
+    for (const part of value.split(/\s+/)) {
+        const side = px(part);
 
-/** `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or `transparent`: the forms the profile writes. Undefined for others. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function color(value: string | undefined): Color | undefined {
-    if (value === undefined) {
-        return undefined;
+        if (side.kind === "invalid") {
+            return { kind: "invalid" };
+        }
+
+        parts.push(side.value);
     }
 
+    const [top, right, bottom, left] = parts;
+
+    return parts.length === 4 && top !== undefined && right !== undefined && bottom !== undefined && left !== undefined ? { kind: "parsed", value: [top, right, bottom, left] } : { kind: "invalid" };
+}
+
+/** `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or `transparent`: the forms the profile writes. */
+export function color(value: string): Parsed<Color> {
     if (value === "transparent" || value === "none") {
-        return TRANSPARENT;
+        return { kind: "parsed", value: TRANSPARENT };
     }
 
     const hex = HEX_COLOR.exec(value)?.[1];
@@ -127,16 +138,16 @@ export function color(value: string | undefined): Color | undefined {
         const full = hex.length === SHORT_HEX_LENGTH ? [...hex].map(digit => digit + digit).join("") : hex;
         const channel = (index: number) => Number.parseInt(full.slice(index * 2, index * 2 + 2), 16);
 
-        return { rgb: [channel(0), channel(1), channel(2)], alpha: full.length > 6 ? channel(3) / FULL_ALPHA : 1 };
+        return { kind: "parsed", value: { rgb: [channel(0), channel(1), channel(2)], alpha: full.length > 6 ? channel(3) / FULL_ALPHA : 1 } };
     }
 
     const rgb = RGB_COLOR.exec(value);
 
     if (!rgb) {
-        return undefined;
+        return { kind: "invalid" };
     }
 
-    return { rgb: [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])], alpha: rgb[4] === undefined ? 1 : Number(rgb[4]) };
+    return { kind: "parsed", value: { rgb: [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])], alpha: rgb[4] === undefined ? 1 : Number(rgb[4]) } };
 }
 
 const CSS_STRING = /"((?:[^"\\]|\\.)*)"/y;
@@ -144,17 +155,16 @@ const FAMILY_SEPARATOR = ", ";
 
 /**
  * The families of a profile `font-family`: one or more CSS strings separated by `, ` (`"Calibri", "Arial"`), without
- * their quotes and escapes. Undefined for anything else, a bare name included: those are the print step's.
+ * their quotes and escapes. Invalid for anything else, a bare name included: those are the print step's.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function cssStrings(value: string): string[] | undefined {
+export function cssStrings(value: string): Parsed<string[]> {
     const families: string[] = [];
     let index = 0;
 
     while (index < value.length) {
         if (families.length) {
             if (!value.startsWith(FAMILY_SEPARATOR, index)) {
-                return undefined;
+                return { kind: "invalid" };
             }
 
             index += FAMILY_SEPARATOR.length;
@@ -164,12 +174,12 @@ export function cssStrings(value: string): string[] | undefined {
         const quoted = CSS_STRING.exec(value)?.[1];
 
         if (quoted === undefined) {
-            return undefined;
+            return { kind: "invalid" };
         }
 
         families.push(quoted.replace(/\\(.)/g, "$1"));
         index = CSS_STRING.lastIndex;
     }
 
-    return families.length ? families : undefined;
+    return families.length ? { kind: "parsed", value: families } : { kind: "invalid" };
 }

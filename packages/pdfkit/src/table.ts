@@ -1,7 +1,7 @@
 // Tables (docs/HTML_PROFILE.md "Table"), as pdf-core's table.rs draws them: origin cells placed on the column grid the
 // way HTML places them, rows grown until their cells' text fits (a row's `height` is a minimum), then every cell fill,
 // every cell's text through the text box code, and every grid edge once.
-import { type Color, color, px, readStyle, type Style, take } from "#src/css";
+import { type Color, color, px, readStyle, type Style, take, takePx } from "#src/css";
 import { attribute, children, type Element, hasClass } from "#src/dom";
 import { dash, fill, type Paint, stroke } from "#src/paint";
 import { anchorTop, drawLayout, type Frame, measureBox } from "#src/text/draw";
@@ -59,38 +59,38 @@ function invalid(what: string): Error {
 
 /** `border-<side>: <width>px <solid|dashed> <color>`, or `0px none transparent` when hidden. */
 function readBorder(cell: Element, style: Style, side: (typeof SIDES)[number]): { kind: "border"; border: Border } | { kind: "none" } {
-    const value = take(style, `border-${side}`);
-
-    if (value === undefined) {
+    if (!style.has(`border-${side}`)) {
         throw invalid(`a table cell has no border-${side}`);
     }
+
+    const value = take(style, `border-${side}`, "");
 
     if (value === HIDDEN_BORDER) {
         return { kind: "none" };
     }
 
-    const [width, lineStyle, ...rest] = value.split(" ");
+    const [width = "", lineStyle, ...rest] = value.split(" ");
     const parsedWidth = px(width);
     const parsedColor = color(rest.join(" "));
 
-    if (parsedWidth === undefined || (lineStyle !== "solid" && lineStyle !== "dashed") || !parsedColor) {
+    if (parsedWidth.kind === "invalid" || (lineStyle !== "solid" && lineStyle !== "dashed") || parsedColor.kind === "invalid") {
         throw invalid(`a table cell's border-${side} '${value}' is not '<width>px <solid|dashed> <color>' or '${HIDDEN_BORDER}'`);
     }
 
-    if (!(parsedWidth > 0 && Number.isFinite(parsedWidth)) || parsedColor.alpha <= 0) {
+    if (!(parsedWidth.value > 0 && Number.isFinite(parsedWidth.value)) || parsedColor.value.alpha <= 0) {
         return { kind: "none" };
     }
 
-    const dashArray = attribute(cell, `data-border-${side}-dash-array`);
+    const dashArray = attribute(cell, `data-border-${side}-dash-array`, "");
 
-    return { kind: "border", border: { width: parsedWidth, color: parsedColor, ...(dashArray ? { dashArray } : {}) } };
+    return { kind: "border", border: { width: parsedWidth.value, color: parsedColor.value, ...(dashArray ? { dashArray } : {}) } };
 }
 
 function readSpan(cell: Element, name: string): number {
-    const value = attribute(cell, name);
+    const value = attribute(cell, name, "");
 
-    if (value === undefined || !SPAN.test(value)) {
-        throw invalid(`a table cell's ${name} '${value ?? ""}' is missing or not a whole number`);
+    if (!SPAN.test(value)) {
+        throw invalid(`a table cell's ${name} '${value}' is missing or not a whole number`);
     }
 
     return Math.max(1, Number(value));
@@ -183,14 +183,14 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
 
     for (const col of children(colgroup)) {
         const colStyle = readStyle(col);
-        const width = px(take(colStyle, "width"));
+        const width = px(take(colStyle, "width", ""));
 
-        if (col.tagName !== "col" || width === undefined) {
+        if (col.tagName !== "col" || width.kind === "invalid") {
             throw invalid("a <colgroup> may hold only <col style='width: <n>px'>");
         }
 
         reportUnread(col, colStyle, [], report);
-        columns.push(checkLength("column", width));
+        columns.push(checkLength("column", width.value));
     }
 
     const rows: Row[] = [];
@@ -204,7 +204,7 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
             }
 
             const rowStyle = readStyle(row);
-            const rowHeight = px(take(rowStyle, "height")) ?? 0;
+            const rowHeight = takePx(rowStyle, "height", 0);
 
             reportUnread(row, rowStyle, [], report);
             const tds: Element[] = [];
@@ -224,11 +224,13 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
                 const cellStyle = readStyle(cell);
                 const [top, right, bottom, left] = [readBorder(cell, cellStyle, "top"), readBorder(cell, cellStyle, "right"), readBorder(cell, cellStyle, "bottom"), readBorder(cell, cellStyle, "left")];
                 const borders: Borders = [top.kind === "border" ? top.border : undefined, right.kind === "border" ? right.border : undefined, bottom.kind === "border" ? bottom.border : undefined, left.kind === "border" ? left.border : undefined];
-                const background = color(take(cellStyle, "background-color"));
+                const background = color(take(cellStyle, "background-color", ""));
                 // The cell margin is the .table-cell-text padding; a td padding would add to it, as pdf-core refuses.
-                const padding = take(cellStyle, "padding");
+                const hasPadding = cellStyle.has("padding");
+                const padding = take(cellStyle, "padding", "");
+                const paddingPx = px(padding);
 
-                if (padding !== undefined && px(padding) !== 0) {
+                if (hasPadding && (paddingPx.kind === "invalid" || paddingPx.value !== 0)) {
                     throw invalid(`a <td>'s padding is '${padding}', expected 0px (the cell margin is the .table-cell-text padding)`);
                 }
 
@@ -238,7 +240,7 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
                     throw invalid("a <td> must hold one div.table-cell-text");
                 }
 
-                const fit = attribute(textBox, "data-text-fit") ?? "none";
+                const fit = attribute(textBox, "data-text-fit", "none");
 
                 if (fit !== "none") {
                     throw invalid(`a table cell's data-text-fit is '${fit}', expected 'none' (a cell has no autofit; its row grows to the text)`);
@@ -252,9 +254,9 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
                 cells.push({
                     colspan: readSpan(cell, "colspan"),
                     rowspan: readSpan(cell, "rowspan"),
-                    ...(background && background.alpha > 0 ? { fill: background } : {}),
+                    ...(background.kind === "parsed" && background.value.alpha > 0 ? { fill: background.value } : {}),
                     borders,
-                    ...(text ? { text } : {}),
+                    ...(text.kind === "text" ? { text: text.box } : {}),
                 });
             }
 

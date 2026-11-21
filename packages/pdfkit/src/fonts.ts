@@ -151,15 +151,3 @@ export function faceChain(faces: readonly Face[], { family, fallbacks, lang, bol
 
     return { faces: [...new Set(chain)], found: own.kind === "face" };
 }
-
-/** The first face of `chain` with a glyph for `codePoint`. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function faceFor(chain: FaceChain, codePoint: number): Face | undefined {
-    return chain.faces.find(face => face.font.hasGlyphForCodePoint(codePoint));
-}
-
-/** The family a missing face's text was drawn in: the first fallback family the caller supplied. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function fallbackFamily(chain: FaceChain): string | undefined {
-    return chain.faces[0]?.font.familyName;
-}

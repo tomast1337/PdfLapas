@@ -2,7 +2,7 @@
 // faces and outline of a multi-face preset, with fill, stroke, dashes and line heads (the arrow-head markers), as
 // pdf-core's shape.rs. The shadow on the svg is the object's: slide.ts draws it.
 import { type Color, color } from "./css";
-import { attribute, children, type Element, hasClass } from "./dom";
+import { attribute, children, type Element, hasAttribute, hasClass } from "./dom";
 import { captureFill, captureStroke, dash, fill, type Paint, stroke } from "./paint";
 import { pathEnds, type Point, record, replay } from "./path";
 import type { Frame } from "./text/draw";
@@ -25,7 +25,7 @@ type ShapeSpace = {
 };
 
 function numberAttribute(element: Element, name: string): number {
-    const value = Number(attribute(element, name) ?? Number.NaN);
+    const value = hasAttribute(element, name) ? Number(attribute(element, name, "")) : Number.NaN;
 
     if (!Number.isFinite(value)) {
         throw new Error(`invalid PdfLapas HTML: <${element.tagName}> attribute '${name}' is missing or not a number`);
@@ -38,21 +38,21 @@ function numberAttribute(element: Element, name: string): number {
 type PaintOf = { readonly kind: "color"; readonly color: Color } | { readonly kind: "none" } | { readonly kind: "transparent" } | { readonly kind: "invalid"; readonly value: string };
 
 function paintOf(element: Element, name: "fill" | "stroke", paint: Paint): PaintOf {
-    const value = attribute(element, name);
+    const value = attribute(element, name, "none");
 
-    if (value === undefined || value === "none") {
+    if (value === "none") {
         return { kind: "none" };
     }
 
     const parsed = color(value);
 
-    if (!parsed) {
+    if (parsed.kind === "invalid") {
         paint.report(`${name} '${value}' on <${element.tagName}> is not drawn`);
 
         return { kind: "invalid", value };
     }
 
-    return parsed.alpha > 0 ? { kind: "color", color: parsed } : { kind: "transparent" };
+    return parsed.value.alpha > 0 ? { kind: "color", color: parsed.value } : { kind: "transparent" };
 }
 
 /** Fills and strokes the path `trace` builds, in viewBox units scaled by `scale` (stroke widths are screen px). */
@@ -70,10 +70,10 @@ function paintGeometry(element: Element, paint: Paint, space: ShapeSpace, trace:
     const strokePaint = paintOf(element, "stroke", paint);
     const fillColor = fillPaint.kind === "color" ? fillPaint.color : undefined;
     const strokeColor = strokePaint.kind === "color" ? strokePaint.color : undefined;
-    const width = Number(attribute(element, "stroke-width") ?? 1);
+    const width = Number(attribute(element, "stroke-width", "1"));
     const dashes: number[] = [];
 
-    for (const part of (attribute(element, "stroke-dasharray") ?? "").split(/[\s,]+/)) {
+    for (const part of attribute(element, "stroke-dasharray", "").split(/[\s,]+/)) {
         if (part) {
             dashes.push(Number(part) / scale);
         }
@@ -113,23 +113,20 @@ function paintGeometry(element: Element, paint: Paint, space: ShapeSpace, trace:
 
     doc.restore();
     // SVG draws markers on paths only; the head is the line's, so it is drawn with a visible stroke.
-    const marked = attribute(element, "marker-start") !== undefined || attribute(element, "marker-end") !== undefined;
+    const marked = hasAttribute(element, "marker-start") || hasAttribute(element, "marker-end");
 
     // Fills each line head the element's `marker-start`/`marker-end` names at the ends of its path (viewBox units), in
     // the stroke's color: the head path in box px, turned to the path's direction there (pdf-core's `stroke_with_arrows`).
     if (marked && strokeColor && width > 0) {
         const ends = pathEnds(record(doc, trace));
 
-        for (const [name, at] of [
-            ["marker-start", ends && { point: ends.start, toward: ends.startDirection }],
-            ["marker-end", ends && { point: ends.end, toward: ends.endDirection }],
-        ] as const) {
-            const reference = attribute(element, name);
-
-            if (reference === undefined || !at) {
+        for (const name of ["marker-start", "marker-end"] as const) {
+            if (!hasAttribute(element, name) || ends.kind === "none") {
                 continue;
             }
 
+            const reference = attribute(element, name, "");
+            const [point, toward] = name === "marker-start" ? [ends.start, ends.startDirection] : [ends.end, ends.endDirection];
             const id = MARKER_URL.exec(reference)?.[1];
             const head = id === undefined ? undefined : space.heads.get(id);
 
@@ -139,8 +136,8 @@ function paintGeometry(element: Element, paint: Paint, space: ShapeSpace, trace:
             }
 
             const map = ([x, y]: Point): Point => [x * space.scaleX, y * space.scaleY];
-            const [x, y] = map(at.point);
-            const [dx, dy] = map(at.toward);
+            const [x, y] = map(point);
+            const [dx, dy] = map(toward);
             const angle = Math.atan2(dy, dx);
             const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
 
@@ -159,11 +156,11 @@ function paintGeometry(element: Element, paint: Paint, space: ShapeSpace, trace:
 }
 
 function drawGeometry(element: Element, paint: Paint, space: ShapeSpace): void {
-    if (attribute(element, "transform") !== undefined) {
+    if (hasAttribute(element, "transform")) {
         paint.report(`a transformed <${element.tagName}> geometry is not drawn`);
     } else if (element.tagName === "rect") {
         const [x, y, width, height] = ["x", "y", "width", "height"].map(name => numberAttribute(element, name)) as [number, number, number, number]; // `as`: four names map to four numbers
-        const [rx, ry] = [Number(attribute(element, "rx") ?? 0), Number(attribute(element, "ry") ?? 0)];
+        const [rx, ry] = [Number(attribute(element, "rx", "0")), Number(attribute(element, "ry", "0"))];
 
         if (rx !== ry) {
             paint.report("a rectangle with unequal corner radii is drawn with the horizontal one");
@@ -175,11 +172,11 @@ function drawGeometry(element: Element, paint: Paint, space: ShapeSpace): void {
 
         paintGeometry(element, paint, space, pen => pen.ellipse(cx, cy, rx, ry));
     } else if (element.tagName === "path") {
-        const d = attribute(element, "d");
-
-        if (d === undefined) {
+        if (!hasAttribute(element, "d")) {
             throw new Error("invalid PdfLapas HTML: a shape <path> has no 'd'");
         }
+
+        const d = attribute(element, "d", "");
 
         // Parsed once: the drawing, the silhouette and the line heads replay the same segments.
         const segments = record(paint.doc, pen => pen.path(d));
@@ -201,7 +198,9 @@ function drawGeometry(element: Element, paint: Paint, space: ShapeSpace): void {
 
 /** Draws `svg` (an `svg.shape-svg`) stretched over `frame`, as `preserveAspectRatio="none"` maps its viewBox. */
 export function drawShapeSvg(svg: Element, paint: Paint, frame: Frame): void {
-    const viewBox = (attribute(svg, "viewbox") ?? attribute(svg, "viewBox") ?? "").split(/[\s,]+/).map(Number);
+    const viewBox = attribute(svg, "viewbox", attribute(svg, "viewBox", ""))
+        .split(/[\s,]+/)
+        .map(Number);
     const [, , boxWidth = Number.NaN, boxHeight = Number.NaN] = viewBox;
 
     if (!(boxWidth > 0 && boxHeight > 0)) {
@@ -224,10 +223,8 @@ export function drawShapeSvg(svg: Element, paint: Paint, frame: Frame): void {
     for (const defs of children(svg).filter(child => child.tagName === "defs")) {
         for (const marker of children(defs)) {
             const [head, ...rest] = children(marker);
-            const id = attribute(marker, "id");
-            const d = head && attribute(head, "d");
 
-            if (marker.tagName !== "marker" || head?.tagName !== "path" || rest.length || id === undefined || d === undefined) {
+            if (marker.tagName !== "marker" || head?.tagName !== "path" || rest.length || !hasAttribute(marker, "id") || !hasAttribute(head, "d")) {
                 paint.report(`<${marker.tagName}> in a shape's <defs> is not drawn (expected <marker id><path d></marker>)`);
                 continue;
             }
@@ -238,7 +235,7 @@ export function drawShapeSvg(svg: Element, paint: Paint, frame: Frame): void {
                 }
             }
 
-            heads.set(id, d);
+            heads.set(attribute(marker, "id", ""), attribute(head, "d", ""));
         }
     }
 

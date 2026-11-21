@@ -102,16 +102,15 @@ export function multiply(m: Matrix, n: Matrix): Matrix {
     return [m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3], m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3], m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5]];
 }
 
-/** The inverse of `m`; undefined when it is degenerate. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function invert(m: Matrix): Matrix | undefined {
+/** The inverse of `m`, or `singular` when it has none (a zero or non-finite determinant). */
+export function invert(m: Matrix): { kind: "inverse"; matrix: Matrix } | { kind: "singular" } {
     const det = m[0] * m[3] - m[1] * m[2];
 
     if (!det || !Number.isFinite(det)) {
-        return undefined;
+        return { kind: "singular" };
     }
 
-    return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det];
+    return { kind: "inverse", matrix: [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det] };
 }
 
 export function apply(m: Matrix, x: number, y: number): Point {
@@ -378,10 +377,9 @@ export function strokeOutline(lines: readonly Polyline[], style: StrokeStyle): P
 /**
  * Where a line head sits on `segments` and the direction it points: the first point, away from the path, and the
  * last point, along it. Each direction comes from the nearest control point that does not coincide with the end, as
- * SVG orients markers (pdf-core's `direction`). Undefined without a drawn segment.
+ * SVG orients markers (pdf-core's `direction`). `none` without a drawn segment.
  */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function pathEnds(segments: readonly Segment[]): { start: Point; startDirection: Point; end: Point; endDirection: Point } | undefined {
+export function pathEnds(segments: readonly Segment[]): { kind: "ends"; start: Point; startDirection: Point; end: Point; endDirection: Point } | { kind: "none" } {
     const drawn: Point[][] = [];
     let current: Point = [0, 0];
     let start: Point = [0, 0];
@@ -404,7 +402,7 @@ export function pathEnds(segments: readonly Segment[]): { start: Point; startDir
     const [first, last] = [drawn[0], drawn.at(-1)];
 
     if (!first || !last) {
-        return undefined;
+        return { kind: "none" };
     }
 
     const away = (points: readonly Point[]): Point => {
@@ -415,5 +413,5 @@ export function pathEnds(segments: readonly Segment[]): { start: Point; startDir
     };
     const [startAway, endAway] = [away(first), away(last.toReversed())];
 
-    return { start: first[0] ?? [0, 0], startDirection: [-startAway[0], -startAway[1]], end: last.at(-1) ?? [0, 0], endDirection: [-endAway[0], -endAway[1]] };
+    return { kind: "ends", start: first[0] ?? [0, 0], startDirection: [-startAway[0], -startAway[1]], end: last.at(-1) ?? [0, 0], endDirection: [-endAway[0], -endAway[1]] };
 }

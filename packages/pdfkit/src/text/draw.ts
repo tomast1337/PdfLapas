@@ -1,7 +1,7 @@
 // Draws a laid-out text box: highlights, glyphs, decorations, links and bullets, on the profile's line boxes.
 import { type Effect, sameEffect } from "#src/effect/index";
 import { assertLinkUrl, CSS_PX_PER_INCH } from "@pdflapas/model";
-import { type Face, fallbackFamily } from "#src/fonts";
+import type { Face } from "#src/fonts";
 import { captureFill, captureGlyphs, fill, glyphs, type Paint, stroke, useFace } from "#src/paint";
 import { type BoxLayout, layoutText } from "./layout";
 import type { Decoration, Run, TextBox } from "./read";
@@ -16,7 +16,7 @@ export type Frame = {
 
 /** Lays the box's text out at `scale` in `width` px, the box's padding taken off. */
 export function measureBox(paint: Paint, box: TextBox, width: number, scale = 1): BoxLayout {
-    const missing = (run: Run) => paint.missingFace(run.face.family, fallbackFamily(paint.shaper.chain(run.face)));
+    const missing = (run: Run) => paint.missingFace(run.face.family, paint.shaper.chain(run.face));
 
     return layoutText(box, width - box.padding[1] - box.padding[3], scale, paint.shaper, missing);
 }

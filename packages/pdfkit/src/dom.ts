@@ -16,13 +16,17 @@ export function children(element: Element): Element[] {
     return element.childNodes.filter(isElement);
 }
 
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function attribute(element: Element, name: string): string | undefined {
-    return element.attrs.find(attr => attr.name === name)?.value;
+/** The attribute's value, or `absent` when `element` does not have it. */
+export function attribute(element: Element, name: string, absent: string): string {
+    return element.attrs.find(attr => attr.name === name)?.value ?? absent;
+}
+
+export function hasAttribute(element: Element, name: string): boolean {
+    return element.attrs.some(attr => attr.name === name);
 }
 
 export function hasClass(element: Element, name: string): boolean {
-    return attribute(element, "class")?.split(/\s+/).includes(name) ?? false;
+    return attribute(element, "class", "").split(/\s+/).includes(name);
 }
 
 /** Every element below `roots` in document order, depth first. */

@@ -60,6 +60,8 @@ export class PuppeteerSlide implements PptxSlide {
     private backgroundImage: NormalizedImage | undefined;
     newAutoPagedSlides: PptxGenJS.PresSlide[];
     private objectCounts: Record<string, number> = {};
+    /** Title placeholder text in the theme's head font, by its index in `model.objects`, and how to draw it in another. */
+    private headFontTexts: Array<{ index: number; fontFace: string; draw: (fontFace: string) => NormalizedSlideObject }> = [];
     /** Normalized, JSON-serializable record of this slide; toHtml() renders the slide from it alone. */
     readonly model: NormalizedSlide = {
         background: normalizeColor(PPTX_DEFAULTS.slide.backgroundColor),
@@ -148,6 +150,17 @@ export class PuppeteerSlide implements PptxSlide {
      */
     toModel(pageSize: PageSize, masterSlideNumber: PptxGenJS.SlideNumberProps | null): NormalizedSlide {
         const master = this.context.master;
+        const headFontFace = this.context.headFontFace();
+
+        // PptxGenJS 4.0.1 writes a title placeholder's font as the master's +mj-lt, resolved from theme1.xml when it
+        // writes the file, so text added before pres.theme set its headFontFace is drawn again in the new one.
+        for (const text of this.headFontTexts) {
+            if (text.fontFace !== headFontFace) {
+                this.model.objects[text.index] = text.draw(headFontFace);
+                text.fontFace = headFontFace;
+            }
+        }
+
         // The slide's own background replaces its master's, picture and color alike, as its <p:bg> replaces the layout's.
         const background = master?.layer && !this.ownBackground ? master.layer.backgroundLayer(pageSize) : this.backgroundLayer(pageSize);
         const masterObjects = master?.layer ? master.layer.model.objects : [];
@@ -341,6 +354,7 @@ export class PuppeteerSlide implements PptxSlide {
         let textOptions = options ?? {};
         let fillsPlaceholder = false;
         let placeholderSpaceBefore = {};
+        let headFont = false;
 
         // PptxGenJS 4.0.1 addTextDefinition (A.3): text that names one of its master's placeholders takes the
         // placeholder's options over its own, and slideObjectToXml writes it with no anchor and, for a string, no
@@ -354,6 +368,9 @@ export class PuppeteerSlide implements PptxSlide {
 
             fillsPlaceholder = placeholder !== undefined;
             const merged = { ...textOptions, ...placeholder?.options };
+
+            // The titleStyle's +mj-lt; not a box option, as PptxGenJS writes no typeface onto the runs (RunWriting).
+            headFont = placeholder?.title === true && !merged.fontFace;
             const typeStyle = placeholder?.title ? PPTX_DEFAULTS.placeholder.title : PPTX_DEFAULTS.placeholder.body;
             const fontSize = merged.fontSize ?? typeStyle.fontSizePt;
 
@@ -368,9 +385,6 @@ export class PuppeteerSlide implements PptxSlide {
                     ? {
                           fontSize,
                           align: merged.align ?? typeStyle.align,
-                          // shortcut: resolved when the text is added, and the theme setter only throws for a late
-                          // bodyFontFace; make it throw for headFontFace too once title placeholder text is tracked (#494).
-                          ...(placeholder.title && !merged.fontFace ? { fontFace: this.context.headFontFace() } : {}),
                       }
                     : {}),
             };
@@ -394,34 +408,40 @@ export class PuppeteerSlide implements PptxSlide {
         // the order of the addText() and addTable() calls; they differ only when a deck adds to a slide after a later
         // one with options both share. Normalize at write time if a deck needs that order.
         const box = { ...textOptions, color: textOptions.color || this.color || PPTX_DEFAULTS.text.color };
-        const normalizedText = normalizeText(
-            text,
-            { color: this.color, ...textOptions, fontFace: textOptions.fontFace ?? this.context.bodyFontFace() },
-            this.context.target,
-            this.context.fontMetrics,
-            this.context.bodyFontFace(),
-            this.context.bodyFontFace(),
-            {
+        const color = this.color;
+        // Drawn in `fontFace` where the text sets none; a title placeholder's is drawn again when the head font changes
+        // (toModel).
+        // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
+        // says; normalize at write time if a deck needs both.
+        const draw = (fontFace: string): NormalizedSlideObject => {
+            const normalizedText = normalizeText(text, { color, ...textOptions, fontFace: textOptions.fontFace ?? fontFace }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
                 box,
                 shared: this.context.sharedRunOptions,
                 ...placeholderSpaceBefore,
-            },
-        );
-        // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph
-        // only in plain text boxes (EEControlBits::ULSPACEFIRSTPARA), and PowerPoint in none (spacesFirstParagraph).
-        const [firstParagraph, ...laterParagraphs] = normalizedText.paragraphs;
-        const placedText = fillsPlaceholder && firstParagraph ? { ...normalizedText, paragraphs: [{ ...firstParagraph, spaceBefore: 0 }, ...laterParagraphs] } : normalizedText;
-        const height = textStyle.geometry.height ?? 0;
-        const width = textStyle.geometry.width ?? 0;
+            });
+            // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph
+            // only in plain text boxes (EEControlBits::ULSPACEFIRSTPARA), and PowerPoint in none (spacesFirstParagraph).
+            const [firstParagraph, ...laterParagraphs] = normalizedText.paragraphs;
+            const placedText = fillsPlaceholder && firstParagraph ? { ...normalizedText, paragraphs: [{ ...firstParagraph, spaceBefore: 0 }, ...laterParagraphs] } : normalizedText;
+            const height = textStyle.geometry.height ?? 0;
+            const width = textStyle.geometry.width ?? 0;
 
-        if (!textOptions.shape) {
-            return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(placedText, width, this.context.target), height) });
+            if (!textOptions.shape) {
+                return { kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(placedText, width, this.context.target), height) };
+            }
+
+            // `as`: PptxGenJS writes a text box's shape from its own options object, so normalizeShape reads them as ShapeProps.
+            const shapeOptions = textOptions as unknown as PptxGenJS.ShapeProps;
+            const shape = normalizeShape(textOptions.shape, shapeOptions, width, height, this.pageSize);
+
+            return { kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizeShapeTextBox(placedText, shape), width, this.context.target), height), shape };
+        };
+        const fontFace = headFont ? this.context.headFontFace() : this.context.bodyFontFace();
+
+        if (headFont) {
+            this.headFontTexts.push({ index: this.model.objects.length, fontFace, draw });
         }
 
-        // `as`: PptxGenJS writes a text box's shape from its own options object, so normalizeShape reads them as ShapeProps.
-        const shapeOptions = textOptions as unknown as PptxGenJS.ShapeProps;
-        const shape = normalizeShape(textOptions.shape, shapeOptions, width, height, this.pageSize);
-
-        return this.addObject({ kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizeShapeTextBox(placedText, shape), width, this.context.target), height), shape });
+        return this.addObject(draw(fontFace));
     }
 }

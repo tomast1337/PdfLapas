@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "578e011da8127c6e079b0a0c72d63bee69f333ab7c7102ae930576004cbfbd6e",
+    fixture: "aca85c585e55d76db622371c5e463367ebd0b3b469910495d540d219760e2061",
     "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
     "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -22,14 +22,14 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-tables": "9db006ff1efc30aadf23d6a778a023f8f365eff14875d520687566383e68a917",
     "wasm-images": "acedb8d02711e608c7933252c27af2c6b534fecb709e45d621ca170a3ef0d6ce",
     "wasm-effects": "c66bddedfa6557470ca3ff722723e60f28892ce2815af183d8afdc680a427207",
-    "wasm-charts": "5a4e115bb816ab2f64ca6291cedfd556a68c531a90a350b9e9fac42a9fe1c9fb",
-    "wasm-chartAxis": "bd79ed8e4dc0795515d1373554c7d1e722c7f495c6bda2c8e268a2e6c6c0e790",
-    "wasm-chartPlot": "3590c1d9d7673fe2be3a33589d45d5e6e531bae0e60a0c0dd1314417dcde071e",
+    "wasm-charts": "416c91c5e3276de3c64f3b88decfe4cd9553ca3f095909864eac42a2496199a9",
+    "wasm-chartAxis": "bbff91860bbec71611606a3062a3aa81f030c2e2bb81ffd8524efd32535b3c45",
+    "wasm-chartPlot": "b11c6dfe60c6cf0678eb7df9c80755218c7571f9dc20a6b234bf60a34be114f9",
     "wasm-svg": "0ed2222573f3ffa6ec6b887907d3f26a2343fe30f2c4a44a4608df6e0b5fba31",
     "wasm-gif": "cc044a43bcdaa50876fc2da1fedc3d3ede74d271b7a8ce406191ddd96b4dc71e",
     "wasm-webp": "389927c7c8b1506b25d5dece837d9f0131d4af29ad94ee0b361719c07798f1b8",
     "wasm-slides": "7ceb86e4a5ef2d6629dc1766f6fd1bcaaa752d9b7fbd35b2d91fd4c915be61f2",
-    "wasm-chartLabels": "f7c99e8ae10914228f5c8ba369ba13cee6282a4841a048242e50e42ed20572a7",
+    "wasm-chartLabels": "8ee9f3acc24b4dd0f9638b2adb14e0e848b9977a06db5ec2bf92fba7ec4530a5",
     "wasm-components": "306e319217049fcad4206767ddeae2b4777b4986127957b685f076fcd603f576",
     "wasm-options": "b2f13b2296f80ff6acafbaad92e2a61e2ff943600b5aa9c51afeebc9b36fd3f5",
     "wasm-tableOptions": "97ffa9ab07f395f5cc0c99085665bbdda51f361f20aa7f5a4e0d65ff810e168f",

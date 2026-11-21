@@ -135,6 +135,11 @@ reads no other text option of a slide number.
 | Kerning font support  |        Version 0 `kern` only, no GPOS | PowerPoint target (see below)  |
 | Run `shadow`          |      Not written (only run `glow` is) | Ignored, as PptxGenJS          |
 
+A falsy `align`, `valign` or `hyperlink` (`0`, `""`, `false`, `null`, none of them declared types) is
+unset, as PptxGenJS 4.0.1 writes nothing for it: a text box is left aligned and middle anchored, a table
+cell left aligned and top anchored (its `<a:tcPr>` gets no `anchor`), a slide number left aligned
+(`algn="l"`) and top anchored, and no object gets a link.
+
 Text `margin` values are points. A scalar applies to all sides. PptxGenJS
 4.0.1 emits a four-value text margin as `[left, right, bottom, top]`, although
 its type documentation says `[top, right, bottom, left]`. PuppeteerGen mirrors

@@ -891,7 +891,9 @@ export function normalizeText(
     return {
         paragraphs: spaced,
         margin: textMarginPixels(options.margin, options.inset),
-        verticalAlign: valign.kind === "align" ? valign.align : PPTX_DEFAULTS.text.valign,
+        // Unset: a text box's <a:bodyPr> gets anchor="ctr" from PptxGenJS 4.0.1; a cell's <a:tcPr> gets no anchor, which
+        // OOXML reads as top. Only a cell `valign` of 0 reaches here unset (inheritedCellOptions fills the other falsy ones).
+        verticalAlign: valign.kind === "align" ? valign.align : writing.cell ? PPTX_DEFAULTS.table.valign : PPTX_DEFAULTS.text.valign,
         wrap: options.wrap ?? PPTX_DEFAULTS.text.wrap,
         fit,
         direction,

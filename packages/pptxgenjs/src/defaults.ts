@@ -322,6 +322,14 @@ export const PPTX_DEFAULTS = Object.freeze({
         lineSmooth: false,
         firstSliceAngle: 0,
         doughnutHoleSizePct: 50,
+        // PptxGenJS writes `<c:layout/>` on a pie or doughnut too, so the application sizes the ring. LibreOffice 26.2
+        // draws it centered in the plot area the title and legend leave, as wide as that area's shorter side less an
+        // inset of 13px (9.75pt) on each side, whatever the chart size (1 to 6in frames). Fitted on its PDF exports of
+        // PptxGenJS pies (96 dpi, within 1.5px): a title band is 2% of the chart height (plotAreaGapRatio), 1.7 title
+        // font sizes and 14pt; a top or bottom legend band 1.05 legend font sizes and two insets; a left or right one its
+        // widest entry (key, its 5px gap and text) and two insets. PowerPoint's ring on examples/company-report.ts
+        // slide 6 is within 4px of it.
+        pieLayout: Object.freeze({ insetPt: 9.75, titleBandEm: 1.7, titleBandPt: 14, legendBandEm: 1.05 }),
         dataBorderWidthPt: 0.75,
         dataLabelFormatCode: "#,##0",
         scatterDataLabelFormatCode: "General",

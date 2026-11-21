@@ -517,5 +517,9 @@
   "chartBarColors": {
     "p1-Chart0": 0.1082,
     "p1-Chart1": 0.1029
+  },
+  "chartPie": {
+    "p1-Chart0": 0.0634,
+    "p1-Chart1": 0.0665
   }
 }

@@ -9,6 +9,7 @@ import {
     populateChartCategoryAxisFixture,
     populateChartFixture,
     populateChartMarkerFixture,
+    populateChartPieFixture,
     populateChartPlotAreaFixture,
     populateChartScatterFixture,
     populateComponentFixture,
@@ -58,8 +59,8 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     webp: { populate: populateWebpDeck, pages: FORMAT_PAGES, crop: object => object.kind === "image" },
     // effects: every shadowed or glowing object; the slide titles sit above y = 0.5in (48px).
     effects: { populate: populateEffectDeck, pages: EFFECT_PAGES, crop: object => object.style.geometry.y > 48 },
-    // charts: the shared fixture's chart slides and its axis-label slide. Pie, doughnut, radar and scatter are left to tests/wasm.test.ts:
-    // LibreOffice draws them too far from ECharts for the page limit (0.1455 Puppeteer, 0.1485 WASM on one slide).
+    // charts: the shared fixture's chart slides and its axis-label slide. Pie and doughnut have the chartPie deck; radar and
+    // scatter are left to tests/wasm.test.ts: LibreOffice draws them too far from ECharts for the page limit.
     charts: {
         populate: presentation => {
             populateChartFixture(presentation);
@@ -124,6 +125,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartBarColors: {
         populate: presentation => {
             populateChartBarColorFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartPie: the shared fixture's pie and doughnut slide (#468); every chart gets a crop.
+    chartPie: {
+        populate: presentation => {
+            populateChartPieFixture(presentation);
 
             return presentation;
         },

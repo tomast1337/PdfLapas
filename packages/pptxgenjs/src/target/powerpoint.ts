@@ -208,6 +208,8 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
  * shortcut: pdf-core and the PDFKit renderer draw those shapes and the line's band; Chromium cannot from the HTML
  * alone (its explicit thickness at least 1px, its double gap 1px, its wave at least 5px tall) and keeps its own
  * double and wavy, a normal-thickness heavy and a band per run (#396).
+ * It draws a doughnut's hole `holeSize` percent of its outer diameter (`readsDoughnutHoleSize`), as OOXML defines
+ * `<c:holeSize>`: in its PDF export of examples/company-report.ts slide 6, `holeSize: 55`, the hole is 0.55 of the ring.
  */
 export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     readsKern: true,
@@ -238,6 +240,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     drawsPictureInnerShadow: true,
     drawsChartMarkerOutline: true,
     underlineFromFont: true,
+    readsDoughnutHoleSize: true,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

@@ -771,9 +771,10 @@ export function normalizeText(
         if (first.bullet) {
             const config = typeof first.bullet === "object" ? first.bullet : {};
             // PptxGenJS 4.0.1 (genXmlTextBody) reads these with `||`: a falsy indent, numberStartAt, startAt, style or
-            // characterCode falls through to the next one or the default (numberStartAt 0 writes startAt="1", #491).
-            const indentPt = config.indent || (config.marginPt ?? PPTX_DEFAULTS.bullet.indentPt);
-            const kind = config.type === "number" ? "number" : "bullet";
+            // characterCode falls through to the next one or the default (numberStartAt 0 writes startAt="1", #491). It never
+            // reads the deprecated marginPt (#498), and matches `type.toString().toLowerCase() === 'number'` (#501).
+            const indentPt = config.indent || PPTX_DEFAULTS.bullet.indentPt;
+            const kind = config.type?.toString().toLowerCase() === "number" ? "number" : "bullet";
             const start = config.numberStartAt || config.startAt || PPTX_DEFAULTS.bullet.numberStartAt;
             const numberType = config.style || PPTX_DEFAULTS.bullet.numberType;
             const code = config.characterCode || config.code;

@@ -34,17 +34,29 @@ function svgData(width: number, height: number, body: string): string {
     return `image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 }
 
-/** A content slide: the title, a theme rule under it, the footer and the slide number. */
-function contentSlide(pres: pptxgen, title: string, kicker: string): PptxGenJS.Slide {
-    const slide = pres.addSlide();
+/** The master of the content slides: a white background, the theme rule under the title, the footer and the slide number. */
+const CONTENT_MASTER: PptxGenJS.SlideMasterProps = {
+    title: "CONTENT",
+    background: { color: THEME.white },
+    slideNumber: { x: SLIDE.w - SLIDE.margin - 0.8, y: SLIDE.h - 0.36, w: 0.8, h: 0.28, fontFace: FONT, fontSize: 8, color: THEME.grey, align: "right", valign: "middle", margin: 0 },
+    objects: [
+        { rect: { x: SLIDE.margin, y: 1.05, w: 0.8, h: 0.05, fill: { color: THEME.amber } } },
+        { line: { x: SLIDE.margin, y: SLIDE.h - 0.4, w: CONTENT_W, h: 0, line: { color: THEME.rule, width: 0.75 } } },
+        {
+            text: {
+                text: `${COMPANY}  |  Annual report 2026  |  Fictional company, invented figures`,
+                options: { x: SLIDE.margin, y: SLIDE.h - 0.36, w: 7, h: 0.28, fontFace: FONT, fontSize: 8, color: THEME.grey, margin: 0, valign: "middle" },
+            },
+        },
+    ],
+};
 
-    slide.background = { color: THEME.white };
+/** A content slide on CONTENT_MASTER, with its kicker and title. */
+function contentSlide(pres: pptxgen, title: string, kicker: string): PptxGenJS.Slide {
+    const slide = pres.addSlide({ masterName: CONTENT_MASTER.title });
+
     slide.addText(kicker.toUpperCase(), { x: SLIDE.margin, y: 0.25, w: CONTENT_W, h: 0.25, fontFace: FONT, fontSize: 9, bold: true, color: THEME.teal, charSpacing: 1, margin: 0 });
     slide.addText(title, { x: SLIDE.margin, y: 0.5, w: CONTENT_W, h: 0.5, fontFace: FONT, fontSize: 22, bold: true, color: THEME.navy, margin: 0, valign: "middle" });
-    slide.addShape("rect", { x: SLIDE.margin, y: 1.05, w: 0.8, h: 0.05, fill: { color: THEME.amber } });
-    slide.addShape("line", { x: SLIDE.margin, y: SLIDE.h - 0.4, w: CONTENT_W, h: 0, line: { color: THEME.rule, width: 0.75 } });
-    slide.addText(`${COMPANY}  |  Annual report 2026  |  Fictional company, invented figures`, { x: SLIDE.margin, y: SLIDE.h - 0.36, w: 7, h: 0.28, fontFace: FONT, fontSize: 8, color: THEME.grey, margin: 0, valign: "middle" });
-    slide.slideNumber = { x: SLIDE.w - SLIDE.margin - 0.8, y: SLIDE.h - 0.36, w: 0.8, h: 0.28, fontFace: FONT, fontSize: 8, color: THEME.grey, align: "right", valign: "middle", margin: 0 };
 
     return slide;
 }
@@ -55,6 +67,7 @@ export function buildCompanyReport(pres: pptxgen): pptxgen {
     pres.theme = { headFontFace: FONT, bodyFontFace: FONT };
     pres.title = `${COMPANY} annual report 2026 (fictional)`;
     pres.company = COMPANY;
+    pres.defineSlideMaster(CONTENT_MASTER);
 
     const logo = svgData(
         100,

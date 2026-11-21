@@ -28,6 +28,7 @@
     "bench:renderers": "bun run scripts/bench-renderers.ts",
     "bench:wasm": "bun run bench:renderers",
     "fonts:check": "bun run scripts/check-fonts.ts",
+    "compare:pdfs": "bun run scripts/compare-pdfs.ts",
     "test:visual:gallery": "VISUAL_GALLERY_DIR=visual-comparison bun run tests/visual/compare.ts",
     "lint": "bun --bun eslint \"packages/*/src/**/*.{ts,tsx}\" scripts tests examples",
     "fmt": "bun run fmt:ts && bun run fmt:rust",

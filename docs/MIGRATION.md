@@ -130,3 +130,35 @@ const pres = new pptxgen(undefined, { renderer: await createWasmRenderer({ fonts
 
 It draws text, shapes, images, tables and charts without a browser and throws on what it cannot
 draw; [Choosing a backend](../README.md#choosing-a-backend) says when to pick it.
+
+**Checking the switch.** Run both pipelines side by side for a while and compare each deck's two PDFs
+with the repository's migration check, instead of looking at pages:
+
+```sh
+bun run compare:pdfs old-pipeline.pdf pdflapas.pdf          # text summary
+bun run compare:pdfs old-pipeline.pdf pdflapas.pdf --json   # the same report as JSON
+```
+
+It needs poppler (`pdftotext`, `pdftocairo`, `pdftoppm`) and ImageMagick (`magick`) on `PATH`. Per
+page it reports a page size that differs, words only one PDF has (in reading order), a line that
+breaks after a word in one PDF only, words whose position moved more than `--move-tolerance` (1pt by
+default), shapes and images that moved, are missing or are extra beyond `--shape-tolerance` (2pt), and
+the pixel score (normalized RMSE at 96 dpi) against `--pixel-threshold` (0.12, the limit of the visual
+tests). It exits `1` when anything differs beyond those tolerances, so it can gate a CI or shadow-mode
+job, and `2` on a usage error. An example report:
+
+```text
+Pages: reference 1, actual 1
+Page 1: differs, pixel RMSE 0.0745
+  text only in reference: eiusmod
+  text only in actual: tempor
+  line break after "elit" only in actual
+  line break after "sed" only in reference
+  2 words moved more than 1pt: "sed" (-164.19, 16.78), "do" (26.46, 0)
+  shape [360.0, 72.0, 504.0, 144.0] moved by (14.39, 0)
+FAIL
+```
+
+Positions are in pt from the page's top left. A word's position is where its first glyph starts on
+the line's bottom edge as pdftotext measures it, so two fonts with different descents read as moved
+vertically; a shape's box is its outline without the stroke width.

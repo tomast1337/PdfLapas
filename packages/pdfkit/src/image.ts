@@ -80,7 +80,6 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
         // The first frame of a GIF or WebP as a PNG file, for PDFKit, which embeds only PNG and JPEG. Its pixels are
         // within the renderer's imageLimits: render() checks every image's header first.
         const gif = startsWith(bytes, GIF_SIGNATURE);
-        let screen: [number, number] | undefined;
 
         if (gif) {
             // The GIF's logical screen size, once its first frame is known to fill it (pdf-core's
@@ -125,13 +124,7 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
             if (frameX !== 0 || frameY !== 0 || frameW !== sw || frameH !== sh) {
                 throw new Error(`the GIF's first frame (${frameW}x${frameH} at ${frameX},${frameY}) does not fill its ${sw}x${sh} screen; save it with a full first frame`);
             }
-
-            screen = [sw ?? 0, sh ?? 0];
-        } else {
-            screen = webpSize(bytes);
-        }
-
-        if (!screen) {
+        } else if (webpSize(bytes).kind !== "size") {
             throw new Error(`cannot decode ${mime} data: no image size in its header`);
         }
 

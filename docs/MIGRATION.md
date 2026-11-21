@@ -144,8 +144,9 @@ draw; [Choosing a backend](../README.md#choosing-a-backend) says when to pick it
 with the repository's migration check, instead of looking at pages:
 
 ```sh
-bun run compare:pdfs old-pipeline.pdf pdflapas.pdf          # text summary
-bun run compare:pdfs old-pipeline.pdf pdflapas.pdf --json   # the same report as JSON
+bun run compare:pdfs old-pipeline.pdf pdflapas.pdf                   # text summary
+bun run compare:pdfs old-pipeline.pdf pdflapas.pdf --json            # the same report as JSON
+bun run compare:pdfs old-pipeline.pdf pdflapas.pdf --diff-dir=diffs  # and a diff image per page that differs
 ```
 
 It needs poppler (`pdftotext`, `pdftocairo`, `pdftoppm`) and ImageMagick (`magick`) on `PATH`. Per
@@ -154,23 +155,27 @@ breaks after a word in one PDF only, words whose position moved more than `--mov
 default), shapes and images that moved, are missing or are extra beyond `--shape-tolerance` (2pt), and
 the pixel score (normalized RMSE at 96 dpi) against `--pixel-threshold` (0.12, the limit of the visual
 tests). It exits `1` when anything differs beyond those tolerances, so it can gate a CI or shadow-mode
-job, and `2` on a usage error. An example report:
+job, and `2` on a usage error. With `--diff-dir=<dir>`, each page that differs gets
+`<dir>/page-<n>-diff.png`, ImageMagick's diff of the two pages at 96 dpi with the changed pixels in
+red; the same two PDFs give byte-identical images, and the report names each image. An example
+report:
 
 ```text
 Pages: reference 1, actual 1
 Page 1: differs, pixel RMSE 0.0745
   text only in reference: eiusmod
   text only in actual: tempor
+  2 words moved more than 1pt: "sed" (-164.19, 16.78), "do" (26.46, 0)
   line break after "elit" only in actual
   line break after "sed" only in reference
-  2 words moved more than 1pt: "sed" (-164.19, 16.78), "do" (26.46, 0)
   shape [360.0, 72.0, 504.0, 144.0] moved by (14.39, 0)
+  diff image: diffs/page-1-diff.png
 FAIL
 ```
 
-Positions are in pt from the page's top left. A word's position is where its first glyph starts on
-the line's bottom edge as pdftotext measures it, so two fonts with different descents read as moved
-vertically. Fragments of a letter-spaced word are joined into the word, and a word that the two PDFs
-read in a different order is matched and reported as moved. A shape's box is the outline of each
-subpath without the stroke width, so gridlines drawn as one path or as one path each compare equal.
-The text summary lists up to 8 items of a kind per page; the JSON lists all.
+Positions are in pt from the page's top left. A word's position is its first glyph's origin, on the
+baseline, so a substituted font with another descent does not read as moved vertically. Fragments of
+a letter-spaced word are joined into the word, and a word that the two PDFs read in a different order
+is matched and reported as moved. A shape's box is the outline of each subpath without the stroke
+width, so gridlines drawn as one path or as one path each compare equal. The text summary lists up to
+8 items of a kind per page; the JSON lists all.

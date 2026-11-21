@@ -316,6 +316,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     radius: chart.type === "doughnut" ? [`${chart.doughnutHoleSize}%`, "70%"] : "70%",
                     startAngle: 90 - chart.firstSliceAngle,
                     itemStyle: { opacity: chart.colorOpacity },
+                    // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent
+                    // off unless showLabel, showValue or showPercent is set (which normalization rejects, #445), so
+                    // PowerPoint and LibreOffice draw no slice labels; ECharts would draw category names on leaders.
+                    label: { show: false },
+                    labelLine: { show: false },
                     data: series.values.map((value, index) => ({
                         value,
                         name: series.labels[index] ?? String(index + 1),

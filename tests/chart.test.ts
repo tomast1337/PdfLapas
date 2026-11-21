@@ -122,6 +122,21 @@ describe("chart normalization and rendering", () => {
         expect(renderedPage(presentation).querySelectorAll(".slide-chart svg")).toHaveLength(7);
     });
 
+    test("draws no slice labels on pie and doughnut charts, as PptxGenJS's per-point c:dLbl turn them off", () => {
+        // PptxGenJS 4.0.1 writes, for each point, `<c:dLbl>` with showVal, showCatName and showPercent "0" when
+        // showValue, showLabel and showPercent are unset: PowerPoint and LibreOffice draw no slice labels.
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("pie", [categoricalData[0]!], { x: 0, y: 0, w: 3, h: 2 });
+        slide.addChart("doughnut", [categoricalData[0]!], { x: 3, y: 0, w: 3, h: 2, showLegend: true });
+        const [pie, doughnut] = renderedPage(presentation).querySelectorAll(".slide-chart svg");
+
+        expect(pie?.querySelectorAll("text")).toHaveLength(0);
+        // Only the legend names the categories.
+        expect(Array.from(doughnut?.querySelectorAll("text") ?? [], text => text.textContent)).toEqual(["A", "B", "C"]);
+    });
+
     test("reports unsupported types and options with structured details", () => {
         try {
             normalizeChart("bar", categoricalData, { showValue: true });

@@ -8,7 +8,7 @@ import { normalizeChart } from "./normalize/chart";
 import { normalizeImage } from "./normalize/image";
 import { normalizeObjectStyle } from "./normalize/object";
 import { normalizeShape, normalizeShapeTextBox } from "./normalize/shape";
-import { normalizeShapeLine, normalizeTextLine, straightLineLength } from "./normalize/shape/line";
+import { lineOutline, normalizeShapeLine, normalizeTextLine } from "./normalize/shape/line";
 import { normalizeSlideNumber } from "./normalize/slideNumber";
 import { innerShadowError, normalizeColor, normalizeLine } from "./normalize/style";
 import { normalizeTable } from "./normalize/table";
@@ -245,7 +245,7 @@ export class PuppeteerSlide implements PptxSlide {
         const shapeOptions = options ?? {};
         const style = normalizeObjectStyle(shapeOptions, PPTX_DEFAULTS.shape, this.pageSize, this.nextObjectName("Shape", shapeOptions.objectName ?? shapeOptions.shapeName), { fill: true, shadow: true });
 
-        style.line = normalizeShapeLine(shapeOptions, line => normalizeLine(line, straightLineLength(shapeName, style.geometry.width ?? 0, style.geometry.height ?? 0)));
+        style.line = normalizeShapeLine(shapeOptions, line => normalizeLine(line, lineOutline(shapeName, style.geometry.width ?? 0, style.geometry.height ?? 0)));
         const shape = normalizeShape(shapeName, shapeOptions, style.geometry.width ?? 0, style.geometry.height ?? 0, this.pageSize);
 
         return this.addObject({ kind: "shape", style, shape });
@@ -313,7 +313,7 @@ export class PuppeteerSlide implements PptxSlide {
             shadow: true,
         });
 
-        textStyle.line = normalizeTextLine(textOptions, straightLineLength(textOptions.shape ?? "", textStyle.geometry.width ?? 0, textStyle.geometry.height ?? 0));
+        textStyle.line = normalizeTextLine(textOptions, lineOutline(textOptions.shape ?? "", textStyle.geometry.width ?? 0, textStyle.geometry.height ?? 0));
         // PptxGenJS 4.0.1 addTextDefinition (cleanOpts) gives the box, and each of its runs without one, the box's color,
         // else the slide's, else black, and writes the box's options onto the runs as it writes the slide (RunWriting).
         // shortcut: PptxGenJS writes slide by slide, and PdfLapas reads what an earlier box wrote onto a run's options in

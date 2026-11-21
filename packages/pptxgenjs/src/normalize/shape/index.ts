@@ -59,7 +59,7 @@ export function normalizeShape(shapeName: CustomShapeName, options: PptxGenJS.Sh
         throw innerShadowError(`shape "${shapeName}"`);
     }
 
-    const link = normalizeHyperlink(options.hyperlink);
+    const link = options.hyperlink ? normalizeHyperlink(options.hyperlink) : undefined;
 
     const drawn = geometry(width, height, options, pageSize);
     // The roundRect corner is the only adjustment PdfLapas reads (rectRadius in inches, as the `adj` PptxGenJS writes).

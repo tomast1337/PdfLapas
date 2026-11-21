@@ -1,17 +1,17 @@
 import type PptxGenJS from "pptxgenjs";
 import type { NormalizedLine } from "@pdflapas/model";
 import { PPTX_DEFAULTS } from "#src/defaults";
-import { normalizeLine } from "#src/normalize/style";
+import { type LineOutline, normalizeLine } from "#src/normalize/style";
 
 /**
  * The outline of addText(). PptxGenJS 4.0.1 (addTextDefinition) reads a string `line` and the deprecated
  * lineSize, lineDash, lineHead and lineTail only for `shape: "line"`; any other text writes <a:ln> from the
  * `line` object alone, without `w` when it has no width.
  */
-export function normalizeTextLine(options: PptxGenJS.TextPropsOptions, straightLength: number | undefined): NormalizedLine {
+export function normalizeTextLine(options: PptxGenJS.TextPropsOptions, outline: LineOutline): NormalizedLine {
     // TextPropsOptions declares the same line fields as ShapeProps; normalizeShapeLine reads only those.
     if (options.shape === "line") {
-        return normalizeShapeLine(options as unknown as PptxGenJS.ShapeProps, line => normalizeLine(line, straightLength));
+        return normalizeShapeLine(options as unknown as PptxGenJS.ShapeProps, line => normalizeLine(line, outline));
     }
 
     if (typeof options.line !== "object") {
@@ -22,10 +22,9 @@ export function normalizeTextLine(options: PptxGenJS.TextPropsOptions, straightL
     return normalizeLine({ ...options.line, width: options.line.width || PPTX_DEFAULTS.text.hairlineWidthPt });
 }
 
-/** Length (px) of the straight line presets, whose stroke normalizeLine trims behind its heads; undefined for other shapes. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function straightLineLength(shapeName: string, width: number, height: number): number | undefined {
-    return shapeName === "line" || shapeName === "lineInv" ? Math.hypot(width, height) : undefined;
+/** The outline of a `width` x `height` px shape: straight, with its length, for the straight line presets, whose stroke normalizeLine trims behind its heads. */
+export function lineOutline(shapeName: string, width: number, height: number): LineOutline {
+    return shapeName === "line" || shapeName === "lineInv" ? { kind: "straight", length: Math.hypot(width, height) } : { kind: "other" };
 }
 
 export function normalizeShapeLine(options: PptxGenJS.ShapeProps, normalize: (line?: PptxGenJS.ShapeLineProps) => NormalizedLine): NormalizedLine {

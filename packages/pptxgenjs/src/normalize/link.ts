@@ -1,13 +1,11 @@
 import type PptxGenJS from "pptxgenjs";
 import { LINK_URL_SCHEME, type NormalizedTextLink } from "@pdflapas/model";
 
-/** The model link of a text run, shape or image `hyperlink` option: its `url`, else a jump to its 1-based `slide`. */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function normalizeHyperlink(hyperlink: PptxGenJS.HyperlinkProps | undefined): NormalizedTextLink | undefined {
-    if (!hyperlink) {
-        return undefined;
-    }
-
+/**
+ * The model link of a text run, shape or image `hyperlink` option: its `url`, else a jump to its 1-based `slide`. The
+ * caller reads a falsy option as no link, as PptxGenJS does.
+ */
+export function normalizeHyperlink(hyperlink: PptxGenJS.HyperlinkProps): NormalizedTextLink {
     const { url, slide, tooltip } = hyperlink;
 
     if (url) {

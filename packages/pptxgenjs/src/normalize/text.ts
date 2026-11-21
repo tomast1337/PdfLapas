@@ -137,7 +137,7 @@ export function normalizeTextRun(text: string, options: PptxGenJS.TextPropsOptio
           : options.superscript
             ? PPTX_DEFAULTS.text.superscriptBaseline
             : undefined;
-    const link = normalizeHyperlink(options.hyperlink);
+    const link = options.hyperlink ? normalizeHyperlink(options.hyperlink) : undefined;
     const defaultColor = link && options.color === undefined ? PPTX_DEFAULTS.theme.colors.hyperlink : PPTX_DEFAULTS.text.color;
     const bold = options.bold ?? PPTX_DEFAULTS.text.bold;
     const italic = options.italic ?? PPTX_DEFAULTS.text.italic;
@@ -669,13 +669,13 @@ export function normalizeText(
 
             const marks = languageHangingMarks(runOptions.lang ?? PPTX_DEFAULTS.theme.language, RENDERING_TARGETS[target].hangingMarks);
 
-            if (!marks) {
+            if (marks.kind === "none") {
                 normalizedRuns.push(...fallbackRuns(piece.text, runOptions, target, fontMetrics, cursor, kernedText));
             } else {
                 const next = paragraphPieces[pieceIndex + 1];
                 const after = next && !next.options.softBreakBefore ? [...next.text][0] : undefined;
                 const font = fontMetrics.glyphAdvances?.(runOptions.fontFace ?? PPTX_DEFAULTS.text.fontFace, runOptions.bold ?? PPTX_DEFAULTS.text.bold, runOptions.italic ?? PPTX_DEFAULTS.text.italic);
-                const segments = hangingSegments(piece.text, after, marks);
+                const segments = hangingSegments(piece.text, after, marks.marks);
 
                 for (const [segmentIndex, { text, hangs }] of segments.entries()) {
                     const rest = segments.slice(segmentIndex + 1).map(segment => segment.text);
@@ -723,7 +723,7 @@ export function normalizeText(
                 const previous = run.softBreakBefore ? "" : (joinedRuns[runIndex - 1]?.text.at(-1) ?? "");
                 const following = joinedRuns[runIndex + 1];
                 const next = following && !following.softBreakBefore ? following.text.charAt(0) : "";
-                const text = breakAroundHanPunctuation(run.text, previous, next, languageHangingMarks(run.language, hangingMarks) !== undefined);
+                const text = breakAroundHanPunctuation(run.text, previous, next, languageHangingMarks(run.language, hangingMarks).kind === "marks");
 
                 runs.push(text === run.text ? run : { ...run, text });
             }
@@ -737,7 +737,8 @@ export function normalizeText(
         // A line feed ends its line in the run's own font: only the <a:p>'s last line holds the paragraph mark.
         const { markBaseline: _markBaseline, ...feedLineBox } = lineBox;
 
-        const align = paragraphAlign(first.align) ?? PPTX_DEFAULTS.text.align;
+        const ownAlign = paragraphAlign(first.align);
+        const align = ownAlign.kind === "align" ? ownAlign.align : PPTX_DEFAULTS.text.align;
         const tabStops = (first.tabStops ?? [])
             .map(stop => ({
                 // PptxGenJS writes `stop.position || 1` and `stop.alignment || "l"`.
@@ -866,10 +867,12 @@ export function normalizeText(
         fit = PPTX_DEFAULTS.text.fit;
     }
 
+    const valign = verticalAlign(options.valign, writing.cell ? "tableCell" : "textBox");
+
     return {
         paragraphs: spaced,
         margin: textMarginPixels(options.margin, options.inset),
-        verticalAlign: verticalAlign(options.valign, writing.cell ? "tableCell" : "textBox") ?? PPTX_DEFAULTS.text.valign,
+        verticalAlign: valign.kind === "align" ? valign.align : PPTX_DEFAULTS.text.valign,
         wrap: options.wrap ?? PPTX_DEFAULTS.text.wrap,
         fit,
         direction,

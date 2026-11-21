@@ -541,8 +541,8 @@ describe("SVG shape rendering", () => {
 
         expect(marker("end")?.getAttribute("markerUnits")).toBe("userSpaceOnUse");
         expect(marker("end")?.getAttribute("orient")).toBe("auto-start-reverse");
-        expect(marker("end")?.querySelector("path")?.getAttribute("d")).toBe(String(arrowHeadPath("triangle", (2 * 96) / 72)));
-        expect(marker("start")?.querySelector("path")?.getAttribute("d")).toBe(String(arrowHeadPath("oval", (2 * 96) / 72)));
+        expect(marker("end")?.querySelector("path")?.getAttribute("d")).toBe(arrowHeadPath("triangle", (2 * 96) / 72));
+        expect(marker("start")?.querySelector("path")?.getAttribute("d")).toBe(arrowHeadPath("oval", (2 * 96) / 72));
         // Ids come from the outline, not the object name, which repeats across slides: url(#id) takes the first match.
         const objectName = shapes[2]?.dataset.objectName;
 
@@ -552,7 +552,7 @@ describe("SVG shape rendering", () => {
         expect(repeated?.dataset.objectName).toBe(String(objectName));
         const repeatedEnd = repeated?.querySelector(".shape-geometry")?.getAttribute("marker-end")?.slice(5, -1) ?? "";
 
-        expect(renderedPage(presentation).getElementById(repeatedEnd)?.querySelector("path")?.getAttribute("d")).toBe(String(arrowHeadPath("diamond", (2 * 96) / 72)));
+        expect(renderedPage(presentation).getElementById(repeatedEnd)?.querySelector("path")?.getAttribute("d")).toBe(arrowHeadPath("diamond", (2 * 96) / 72));
         // The model's gap-first pattern "0 3.9 12 9 ..." is written verbatim; the Puppeteer print step redraws it.
         const dashed = shapes[3]?.querySelector(".shape-geometry");
 

@@ -165,7 +165,7 @@ describe("shared object normalization", () => {
     });
 
     test("resolves line heads to LibreOffice's medium outlines, pointing out of the line", () => {
-        const points = (path: string | undefined) => [...(path ?? "").matchAll(/[ML] (\S+) (\S+)/g)].map(([, x, y]) => [Number(x), Number(y)]);
+        const points = (path: string) => [...path.matchAll(/[ML] (\S+) (\S+)/g)].map(([, x, y]) => [Number(x), Number(y)]);
 
         // 3px line: 9px heads; the tip sits on the line end and the base 9px back along the line.
         expect(points(arrowHeadPath("triangle", 3))).toEqual([
@@ -196,18 +196,17 @@ describe("shared object normalization", () => {
         expect(arrow[4]![1]! - arrow[5]![1]!).toBeCloseTo(3, 9);
         // Thin lines size heads from a 0.7mm line.
         expect(points(arrowHeadPath("triangle", 1))[1]![0]).toBeCloseTo((-3 * 0.7 * 96) / 25.4, 9);
-        expect(arrowHeadPath("none", 3)).toBeUndefined();
         expect(() => arrowHeadPath("hook", 3)).toThrow("Unknown line arrow type 'hook'");
         const line = normalizeLine({ width: 2.25, beginArrowType: "oval", endArrowType: "triangle" });
 
-        expect(line.beginHeadPath).toBe(String(arrowHeadPath("oval", 3)));
-        expect(line.endHeadPath).toBe(String(arrowHeadPath("triangle", 3)));
+        expect(line.beginHeadPath).toBe(arrowHeadPath("oval", 3));
+        expect(line.endHeadPath).toBe(arrowHeadPath("triangle", 3));
         expect(normalizeLine({ width: 2.25 }).endHeadPath).toBeUndefined();
     });
 
     test("strokes a straight line only between its heads, as LibreOffice does", () => {
         // 3px line, 100px long: the shaft runs from 3.9px (oval) to 100 - 8.4px (triangle).
-        const solid = normalizeLine({ width: 2.25, beginArrowType: "oval", endArrowType: "triangle" }, 100).dashArray!.split(" ").map(Number);
+        const solid = normalizeLine({ width: 2.25, beginArrowType: "oval", endArrowType: "triangle" }, { kind: "straight", length: 100 }).dashArray!.split(" ").map(Number);
 
         for (const [index, value] of [0, 3.9, 87.7, 100].entries()) {
             expect(solid[index]).toBeCloseTo(value, 9);
@@ -220,7 +219,7 @@ describe("shared object normalization", () => {
         // A line shorter than its heads draws no shaft.
         expect(shaftDashes([12, 9], 8, 5, 10)).toEqual([0, 18]);
         // Without heads, or without a straight length, nothing is trimmed.
-        expect(normalizeLine({ width: 2.25 }, 100).dashArray).toBeUndefined();
+        expect(normalizeLine({ width: 2.25 }, { kind: "straight", length: 100 }).dashArray).toBeUndefined();
         expect(normalizeLine({ width: 2.25, endArrowType: "triangle" }).dashArray).toBeUndefined();
     });
 

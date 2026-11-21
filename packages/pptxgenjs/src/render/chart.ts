@@ -43,6 +43,8 @@ function lineType(style: "solid" | "dash" | "dot"): "solid" | "dashed" | "dotted
 const TICK_LENGTH = 5;
 /** ECharts' default axisLabel.margin, the px between a tick and its label. */
 const AXIS_LABEL_MARGIN = 8;
+/** ECharts' default axisLabel.textMargin[1], the px it adds on each side of a label's measured width when fitting it. */
+const AXIS_LABEL_TEXT_MARGIN = 3;
 
 function tickOption(mark: NormalizedChart["valueAxes"][number]["majorTickMark"], color: string, width: number) {
     return {
@@ -291,12 +293,21 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         gutter = Math.ceil(Math.max(80, labelWidth + pointsToPixels(firstAxis.titleFontSize) + 30));
     }
 
+    // The gutters are the least room beside the plot; ECharts shrinks the plot further until every axis label and title
+    // measures (zrender's text width, as it lays the labels out) inside the chart less the gap on each side, as
+    // PowerPoint and LibreOffice size the plot area so the labels fit the frame (#443): a currency value axis, long
+    // category names, the last value label centered on a horizontal bar chart's right edge. Vertically the bands above
+    // already hold the labels, so the bounds there are the chart's edges.
+    // shortcut: without a canvas (Node, Bun) zrender measures every face with its built-in Arial-like width table, so a
+    // face much wider than Arial can still overflow by a few px; measure with the face's advances when charts get them.
+    const labelBound = gap - AXIS_LABEL_TEXT_MARGIN;
     const grid = {
         left: gutter,
         right: chart.valueAxes.length > 1 ? "14%" : "2%",
         top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
         bottom: gap + legendBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
-        outerBoundsMode: "none",
+        outerBoundsMode: "auto",
+        outerBounds: { left: labelBound, right: labelBound, top: 0, bottom: 0 },
     } as const;
     let option: EChartsCoreOption;
 

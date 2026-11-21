@@ -2197,6 +2197,8 @@ export function populateParityFixture(presentation: Presentation): void {
         second.addText("The slide's own background replaces the master's", { x: body.x, y: body.y, w: body.w, h: 0.6, fontFace: "Arial", fontSize: 20, color: "7F3F00", margin: 0 });
         second.addShape("ellipse", { x: body.x, y: 2.1, w: 3, h: 2.2, fill: { color: "F4B183" } });
     }
+
+    populateChartAxisLabelFixture(presentation);
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */
@@ -2562,6 +2564,38 @@ export function populateChartFixture(presentation: Presentation): void {
             showValAxisTitle: true,
             valAxisTitle: "Log scale",
         },
+    );
+}
+
+/**
+ * Axis labels wider than a fixed margin (#443): currency values on a column chart's value axis, long category names
+ * on a horizontal bar chart and its last value label centered on the plot's right edge. The last parity slide (after
+ * populateParityFixture's own slides, so no page number moves) and the WASM charts deck's last page, which crops each
+ * chart. No parity crop: the label columns match LibreOffice's to a pixel, but the plot's top and bottom edges sit a few
+ * pixels off (the horizontal bar chart's top band), so a chart or label-band crop scores 0.12-0.14 on rows #443 does
+ * not touch; the page score (0.107 locally, 0.239 before) gates the slide.
+ */
+export function populateChartAxisLabelFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Axis label space", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const regions = ["Lorem ipsum dolor", "Sit amet", "Consectetur elit", "Adipiscing"];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, fontSize: 11, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", valAxisMinVal: 0, valAxisLabelFormatCode: "$#,##0" };
+
+    slide.addChart(
+        "bar",
+        [
+            { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [82400, 86900, 91200, 100700] },
+            { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [93100, 99800, 104500, 115200] },
+        ],
+        { ...shared, x: 0.4, barDir: "col", valAxisMaxVal: 120000, valAxisMajorUnit: 20000 },
+    );
+    slide.addChart(
+        "bar",
+        // One series in one color: LibreOffice stacks a horizontal bar chart's series and legend entries in the reverse
+        // order (#472), and PptxGenJS gives each bar of a single series its own chartColors entry (#473).
+        [{ name: "Lorem", labels: regions, values: [123600, 66100, 77400, 38200] }],
+        { ...shared, x: 5.2, chartColors: ["4472C4"], barDir: "bar", valAxisMaxVal: 150000, valAxisMajorUnit: 50000 },
     );
 }
 

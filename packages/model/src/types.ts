@@ -345,6 +345,23 @@ export type NormalizedChartValueAxis = {
     gridLineCap: "flat" | "round" | "square";
 };
 
+/** The data labels of a bar, line, pie or doughnut chart: what each label shows, where and in which text style. */
+export type NormalizedChartDataLabels = {
+    showValue: boolean;
+    /** The category name, on pie and doughnut slices. */
+    showCategory: boolean;
+    /** The share of the total, on pie and doughnut slices. */
+    showPercent: boolean;
+    position: "b" | "bestFit" | "ctr" | "inBase" | "inEnd" | "l" | "outEnd" | "r" | "t";
+    valueFormat: string;
+    percentFormat: string;
+    color: CssColor;
+    fontFace: string;
+    fontSize: number;
+    bold: boolean;
+    italic: boolean;
+};
+
 export type NormalizedChart = {
     type: NormalizedChartType;
     series: NormalizedChartSeries[];
@@ -386,6 +403,7 @@ export type NormalizedChart = {
     lineSymbol: "circle" | "dash" | "diamond" | "dot" | "none" | "square" | "triangle";
     lineSymbolSize: number;
     lineSize: number;
+    dataLabels: NormalizedChartDataLabels;
     altText: string;
 };
 

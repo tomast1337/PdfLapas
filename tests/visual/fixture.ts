@@ -2199,6 +2199,7 @@ export function populateParityFixture(presentation: Presentation): void {
     }
 
     populateChartAxisLabelFixture(presentation);
+    populateChartDataLabelFixture(presentation);
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */
@@ -2597,6 +2598,26 @@ export function populateChartAxisLabelFixture(presentation: Presentation): void 
         [{ name: "Lorem", labels: regions, values: [123600, 66100, 77400, 38200] }],
         { ...shared, x: 5.2, chartColors: ["4472C4"], barDir: "bar", valAxisMaxVal: 150000, valAxisMajorUnit: 50000 },
     );
+}
+
+/**
+ * Data labels (#445): a clustered column chart's values at their default place (outside the bar end) in a currency
+ * format, a line chart's above each point in bold. A parity slide after the others (no page number moves) and the WASM
+ * chartLabels deck, which crops each chart. No pie: ECharts draws the pie smaller than LibreOffice (#468), which alone
+ * puts the page over the limit; tests/chart.test.ts checks the slice labels.
+ */
+export function populateChartDataLabelFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Chart data labels", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3200, 5100, 4400, 7000] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5000, 2300, 6100, 4200] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", showValue: true, dataLabelFontSize: 9, dataLabelFontFace: "Arial" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, dataLabelFormatCode: "$#,##0", dataLabelColor: "404040" });
+    slide.addChart("line", data, { ...shared, x: 5.2, dataLabelPosition: "t", dataLabelFontBold: true });
 }
 
 export function populateComponentFixture(presentation: Presentation): void {

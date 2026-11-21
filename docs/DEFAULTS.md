@@ -427,6 +427,10 @@ contract includes:
   and LibreOffice, and through the WASM renderer's alias table.
 - Bar direction/grouping, 3D shape, gaps, overlap, and rotations.
 - Legend, data-label, axis visibility, and data-table flags.
+- Data labels: 12pt black Arial, `#,##0` (a pie or doughnut: `0%` with `showPercent`, else `General`),
+  outside a clustered bar's end, in a stacked bar's or a doughnut ring's center, right of a line point
+  and inside a pie slice when PptxGenJS writes no `c:dLblPos`; a pie label puts its category, value and
+  percentage on separate lines, as LibreOffice draws them.
 - Legend keys: a bar, area or pie entry is a filled square at 0.6 of the legend font size (8px at
   10pt), as Office and LibreOffice draw it; a line entry shows its line and marker.
 - Line cap/dash/width, marker shape/size/border, and smoothing.

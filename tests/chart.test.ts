@@ -179,14 +179,105 @@ describe("chart normalization and rendering", () => {
 
     test("reports unsupported types and options with structured details", () => {
         try {
-            normalizeChart("bar", categoricalData, { showValue: true });
+            normalizeChart("bar", categoricalData, { showSerName: true });
             throw new Error("Expected normalization to fail");
         } catch (error) {
             expect(error).toBeInstanceOf(UnsupportedChartError);
             expect((error as UnsupportedChartError).code).toBe("UNSUPPORTED_CHART");
             expect((error as UnsupportedChartError).reason).toBe("chart-option");
-            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["showValue"]);
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["showSerName"]);
         }
+    });
+
+    test("normalizes data labels from PptxGenJS's defaults and the positions its option cleanup keeps", () => {
+        // PptxGenJS 4.0.1: dataLabelFontSize || 12, dataLabelColor || '000000', dataLabelFontFace || 'Arial', format
+        // '#,##0' (pie and doughnut: showPercent ? '0%' : 'General'), no c:dLblPos unless dataLabelPosition is kept.
+        const bar = normalizeChart("bar", categoricalData);
+
+        expect(bar.dataLabels).toEqual({
+            showValue: false,
+            showCategory: false,
+            showPercent: false,
+            position: "outEnd",
+            valueFormat: "#,##0",
+            percentFormat: "#,##0",
+            color: "#000000" as typeof bar.dataLabels.color,
+            fontFace: "Arial",
+            fontSize: 12,
+            bold: false,
+            italic: false,
+        });
+        expect(normalizeChart("bar", categoricalData, { barGrouping: "stacked" }).dataLabels.position).toBe("ctr");
+        expect(normalizeChart("line", categoricalData).dataLabels.position).toBe("r");
+        expect(normalizeChart("pie", [categoricalData[0]!]).dataLabels.position).toBe("bestFit");
+        // PptxGenJS deletes outEnd on a clustered bar, any position on a doughnut, and a bar position on a line chart.
+        expect(normalizeChart("bar", categoricalData, { showValue: true, dataLabelPosition: "outEnd" }).dataLabels.position).toBe("outEnd");
+        expect(normalizeChart("bar", categoricalData, { showValue: true, dataLabelPosition: "inEnd" }).dataLabels.position).toBe("inEnd");
+        expect(normalizeChart("bar", categoricalData, { showValue: true, barGrouping: "stacked", dataLabelPosition: "outEnd" }).dataLabels.position).toBe("outEnd");
+        expect(normalizeChart("doughnut", [categoricalData[0]!], { showValue: true, dataLabelPosition: "t" }).dataLabels.position).toBe("ctr");
+        expect(normalizeChart("line", categoricalData, { showValue: true, dataLabelPosition: "inEnd" }).dataLabels.position).toBe("r");
+        expect(normalizeChart("line", categoricalData, { showValue: true, dataLabelPosition: "t" }).dataLabels.position).toBe("t");
+
+        const styled = normalizeChart("line", categoricalData, { showValue: true, dataLabelColor: "C00000", dataLabelFontFace: "Courier New", dataLabelFontSize: 9, dataLabelFontBold: true, dataLabelFontItalic: true, dataLabelFormatCode: "0.0%" });
+
+        expect([styled.dataLabels.color, styled.dataLabels.fontFace, styled.dataLabels.fontSize, styled.dataLabels.bold, styled.dataLabels.italic, styled.dataLabels.valueFormat]).toEqual([
+            "#C00000" as typeof styled.dataLabels.color,
+            "Courier New",
+            9,
+            true,
+            true,
+            "0.0%",
+        ]);
+        // showLabel and showPercent are written only on pie and doughnut points.
+        expect(normalizeChart("bar", categoricalData, { showLabel: true, showPercent: true }).dataLabels).toMatchObject({ showCategory: false, showPercent: false });
+
+        // A pie formats the percentage with the code and the value in General once showPercent is set (LibreOffice).
+        const pie = normalizeChart("pie", [categoricalData[0]!], { showLabel: true, showValue: true, showPercent: true });
+
+        expect(pie.dataLabels).toMatchObject({ showCategory: true, showValue: true, showPercent: true, valueFormat: "General", percentFormat: "0%" });
+        expect(normalizeChart("pie", [categoricalData[0]!], { showValue: true }).dataLabels).toMatchObject({ valueFormat: "General" });
+    });
+
+    test("rejects data labels it cannot draw, naming the option and the reason", () => {
+        const unsupported = (type: PptxGenJS.CHART_NAME, data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts) => {
+            try {
+                normalizeChart(type, data, options);
+            } catch (error) {
+                return (error as UnsupportedChartError).unsupportedOptions;
+            }
+
+            throw new Error("Expected normalization to fail");
+        };
+
+        expect(unsupported("area", categoricalData, { showValue: true })).toEqual(["showValue[area]"]);
+        expect(unsupported("radar", categoricalData, { showValue: true })).toEqual(["showValue[radar]"]);
+        expect(unsupported("pie", [categoricalData[0]!], { showValue: true, dataLabelPosition: "outEnd" })).toEqual(["dataLabelPosition[outEnd]"]);
+        expect(unsupported("bar", categoricalData, { showValue: true, dataLabelFormatCode: "0;[Red]-0" })).toEqual(["dataLabelFormatCode[format]"]);
+        // Styling without a shown label draws nothing in PptxGenJS's output either.
+        expect(normalizeChart("area", categoricalData, { dataLabelColor: "FF0000", showLabel: true }).dataLabels.showValue).toBe(false);
+    });
+
+    test("draws each bar and line value and each slice's category and percentage in the data-label style", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const thousands = [{ name: "S", labels: ["A", "B"], values: [1200, 3400] }];
+
+        slide.addChart("bar", thousands, { x: 0, y: 0, w: 3, h: 2, showValue: true, dataLabelFormatCode: "$#,##0", dataLabelColor: "C00000", dataLabelFontSize: 9 });
+        slide.addChart("bar", thousands, { x: 3, y: 0, w: 3, h: 2, barGrouping: "percentStacked", showValue: true });
+        slide.addChart("line", thousands, { x: 6, y: 0, w: 3, h: 2, showValue: true, dataLabelPosition: "t" });
+        slide.addChart("pie", [{ name: "S", labels: ["Lorem", "Ipsum"], values: [1, 3] }], { x: 0, y: 2, w: 3, h: 2, showLabel: true, showPercent: true });
+        const charts = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+        const texts = (index: number) => Array.from(charts[index]?.querySelectorAll("text") ?? [], text => text.textContent ?? "");
+        const labelText = (index: number, content: string) => Array.from(charts[index]?.querySelectorAll("text") ?? []).find(text => text.textContent === content);
+
+        expect(texts(0)).toEqual(expect.arrayContaining(["$1,200", "$3,400"]));
+        expect(labelText(0, "$1,200")?.getAttribute("style")).toContain("12px");
+        expect(labelText(0, "$1,200")?.getAttribute("fill")).toBe("#C00000");
+        // A percent-stacked bar draws its share but labels its own value.
+        expect(texts(1)).toEqual(expect.arrayContaining(["1,200", "3,400"]));
+        expect(texts(2)).toEqual(expect.arrayContaining(["1,200", "3,400"]));
+        // Each field on its own line: ECharts writes one text element per line.
+        expect(texts(3)).toEqual(["Lorem", "25%", "Ipsum", "75%"]);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {

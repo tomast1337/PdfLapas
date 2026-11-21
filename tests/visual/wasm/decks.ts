@@ -2,7 +2,17 @@
 // PDF's bytes (pdf-sha256.json); tests/htmlBytes.test.ts pins their toHtml() bytes.
 import type pptxgen from "pptxgenjs";
 import type { PuppeteerGen } from "../../../packages/pptxgenjs/src/node";
-import { populateChartAxisLabelFixture, populateChartFixture, populateComponentFixture, populateImageFixture, populateSlidePropertiesFixture, populateTableOptionsFixture, populateTextOptionsFixture, TEXT_OPTION_PAGES } from "../fixture";
+import {
+    populateChartAxisLabelFixture,
+    populateChartDataLabelFixture,
+    populateChartFixture,
+    populateComponentFixture,
+    populateImageFixture,
+    populateSlidePropertiesFixture,
+    populateTableOptionsFixture,
+    populateTextOptionsFixture,
+    TEXT_OPTION_PAGES,
+} from "../fixture";
 import { populateShapeDeck, populateTableDeck, populateTextDeck, SHAPE_PAGES, TABLE_PAGES, TEXT_PAGES } from "./deck";
 import { EFFECT_PAGES, populateEffectDeck } from "./effect-deck";
 import { EMOJI_PAGES, populateEmojiDeck } from "./emoji-deck";
@@ -52,6 +62,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
             return presentation;
         },
         pages: 6,
+        crop: object => object.kind === "chart",
+    },
+    // chartLabels: the shared fixture's data-label slide (#445); every chart gets a crop.
+    chartLabels: {
+        populate: presentation => {
+            populateChartDataLabelFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
         crop: object => object.kind === "chart",
     },
     // components: the shared fixture's component slide (an HTML and a React progress bar, sized boxes;

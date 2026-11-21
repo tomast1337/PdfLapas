@@ -55,6 +55,28 @@ function tickOption(mark: NormalizedChart["valueAxes"][number]["majorTickMark"],
     };
 }
 
+/** ECharts label positions for each OOXML `c:dLblPos`: a column's (vertical), a horizontal bar's, a line point's and a slice's. */
+type LabelPositions = Readonly<Partial<Record<NormalizedChart["dataLabels"]["position"], string>>>;
+const COLUMN_LABEL_POSITIONS: LabelPositions = { outEnd: "top", inEnd: "insideTop", ctr: "inside", inBase: "insideBottom" };
+const BAR_LABEL_POSITIONS: LabelPositions = { outEnd: "right", inEnd: "insideRight", ctr: "inside", inBase: "insideLeft" };
+const POINT_LABEL_POSITIONS: LabelPositions = { t: "top", b: "bottom", l: "left", r: "right", ctr: "inside" };
+
+/** The ECharts `label` of a series; `text` gives each data point's label. */
+function dataLabelOption(labels: NormalizedChart["dataLabels"], position: string, text: (dataIndex: number) => string) {
+    return {
+        show: true,
+        position,
+        formatter: (params: { dataIndex: number }) => text(params.dataIndex),
+        color: labels.color,
+        fontFamily: labels.fontFace,
+        fontSize: pointsToPixels(labels.fontSize),
+        fontWeight: labels.bold ? "bold" : "normal",
+        fontStyle: labels.italic ? "italic" : "normal",
+        // ECharts outlines a label drawn over a mark; Office draws the text alone.
+        textBorderWidth: 0,
+    };
+}
+
 /** A filled square; the legend's symbolKeepAspect keeps it square when a line key makes the items wider. */
 const LEGEND_SQUARE_ICON = "path://M0 0H1V1H0Z";
 
@@ -318,6 +340,33 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             throw new TypeError(`A ${chart.type} chart model needs one data series; got none`);
         }
 
+        // Each slice's label: its category, value and share of the total, each shown field on its own line.
+        const labels = chart.dataLabels;
+        let total = 0;
+
+        for (const value of series.values) {
+            total += value;
+        }
+
+        const sliceLabel = (index: number) => {
+            const value = series.values[index] ?? 0;
+            const fields: string[] = [];
+
+            if (labels.showCategory) {
+                fields.push(series.labels[index] ?? String(index + 1));
+            }
+
+            if (labels.showValue) {
+                fields.push(formatChartNumber(value, labels.valueFormat));
+            }
+
+            if (labels.showPercent) {
+                fields.push(formatChartNumber(total === 0 ? 0 : value / total, labels.percentFormat));
+            }
+
+            return fields.join(PPTX_DEFAULTS.chart.dataLabelSeparator);
+        };
+
         option = {
             ...common,
             series: [
@@ -328,9 +377,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     startAngle: 90 - chart.firstSliceAngle,
                     itemStyle: { opacity: chart.colorOpacity },
                     // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent
-                    // off unless showLabel, showValue or showPercent is set (which normalization rejects, #445), so
-                    // PowerPoint and LibreOffice draw no slice labels; ECharts would draw category names on leaders.
-                    label: { show: false },
+                    // off unless showLabel, showValue or showPercent is set, so PowerPoint and LibreOffice draw no
+                    // slice labels by default; ECharts would draw category names on leaders. Normalization keeps the
+                    // positions inside the slice (bestFit and ctr; LibreOffice places a bestFit label inside).
+                    label: labels.showCategory || labels.showValue || labels.showPercent ? dataLabelOption(labels, "inside", sliceLabel) : { show: false },
                     labelLine: { show: false },
                     data: series.values.map((value, index) => ({
                         value,
@@ -495,7 +545,15 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 values = percent;
             }
 
+            // Normalization allows value labels only on bar and line charts, whose positions the tables map.
+            // shortcut: a negative column's outEnd label sits above the zero line, not below the bar; flip it per point when needed (#478).
+            const positions = series.type === "line" ? POINT_LABEL_POSITIONS : horizontal ? BAR_LABEL_POSITIONS : COLUMN_LABEL_POSITIONS;
+            const labelPosition = positions[chart.dataLabels.position] ?? "inside";
+            // The series' own value, also on a percent-stacked chart that draws its share.
+            const label = chart.dataLabels.showValue ? dataLabelOption(chart.dataLabels, labelPosition, dataIndex => formatChartNumber(series.values[dataIndex] ?? 0, chart.dataLabels.valueFormat)) : undefined;
+
             cartesian.push({
+                label,
                 name: series.name,
                 type: seriesType,
                 data: series.varyColors

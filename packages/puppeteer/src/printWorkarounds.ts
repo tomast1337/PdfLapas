@@ -19,6 +19,8 @@ const TOP = /(?:^|; )top: ([^;]+)px;/;
 const ROTATE = /rotate\(([^)]+)deg\)/;
 const BORDER_WIDTH = /(?:^|; )border-(top|right|bottom|left): ([^ ;]+)px /g;
 const ABSOLUTE = /(?:^|; )position: absolute;/;
+// The separators of an SVG stroke-dasharray list: commas and/or whitespace.
+const DASH_SEPARATOR = /\s*,\s*|\s+/;
 // An inner shadow as render/style.ts applyShadow writes it on a box.
 const INSET_SHADOW = /(?:^|; )box-shadow: inset ([^;]+);/;
 // A box's line as render/style.ts applyLine writes it: color, width, style.
@@ -289,7 +291,7 @@ export function printHtml(html: string): string {
                     continue;
                 }
 
-                const [first, gap = 0, ...rest] = dashes.split(" ").map(Number);
+                const [first, gap = 0, ...rest] = dashes.trim().split(DASH_SEPARATOR).map(Number);
                 const last = rest.at(-1);
 
                 if (first !== 0 || last === undefined) {

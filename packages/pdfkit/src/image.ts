@@ -28,7 +28,7 @@ function startsWith(bytes: Uint8Array, signature: readonly number[], at = 0): bo
 }
 
 export function drawImage(element: Element, objectStyle: Map<string, string>, paint: Paint, box: Frame): void {
-    const rounded = take(objectStyle, "border-radius") === ROUNDED;
+    const rounded = take(objectStyle, "border-radius", "") === ROUNDED;
     const frame = children(element).find(child => hasClass(child, "slide-image-frame"));
     const img = frame && children(frame).find(child => hasClass(child, "slide-image-content"));
 
@@ -38,25 +38,27 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
 
     const frameStyle = readStyle(frame);
 
-    take(frameStyle, "border-radius");
+    frameStyle.delete("border-radius");
     reportUnread(frame, frameStyle, [], paint.report, FRAME_LAYOUT);
     const style = readStyle(img);
-    const opacity = Number(take(style, "opacity") ?? 1);
-    const x = length(take(style, "left"), box.width) ?? 0;
-    const y = length(take(style, "top"), box.height) ?? 0;
-    const width = length(take(style, "width"), box.width);
-    const height = length(take(style, "height"), box.height);
+    const opacity = Number(take(style, "opacity", "1"));
+    const offsetX = length(take(style, "left", ""), box.width);
+    const offsetY = length(take(style, "top", ""), box.height);
+    const x = offsetX.kind === "parsed" ? offsetX.value : 0;
+    const y = offsetY.kind === "parsed" ? offsetY.value : 0;
+    const imgWidth = length(take(style, "width", ""), box.width);
+    const imgHeight = length(take(style, "height", ""), box.height);
     // `object-fit: fill` maps the image onto the img box the profile sizes for every sizing mode; there object-position does nothing.
-    const fit = take(style, "object-fit");
+    const fit = take(style, "object-fit", "none");
 
     if (fit !== "fill") {
-        paint.report(`object-fit '${fit ?? "none"}' is drawn as 'fill'`);
+        paint.report(`object-fit '${fit}' is drawn as 'fill'`);
     } else {
-        take(style, "object-position");
+        style.delete("object-position");
     }
 
     reportUnread(img, style, ["data-image-sizing"], paint.report, IMG_LAYOUT);
-    const src = attribute(img, "src") ?? "";
+    const src = attribute(img, "src", "");
     const dataUri = DATA_URI.exec(src);
 
     if (!dataUri) {
@@ -66,9 +68,11 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
     const payload = dataUri[3] ?? "";
     const bytes = dataUri[2] ? Uint8Array.from(atob(payload.replace(/\s+/g, "")), char => char.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(payload));
 
-    if (width === undefined || height === undefined) {
+    if (imgWidth.kind === "invalid" || imgHeight.kind === "invalid") {
         throw new Error("invalid PdfLapas HTML: an image's img has no width and height in px or %");
     }
+
+    const [width, height] = [imgWidth.value, imgHeight.value];
 
     const mime = dataUri[1] || "unknown";
     // By magic bytes, as browsers sniff: a mislabelled PNG still draws.

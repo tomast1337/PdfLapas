@@ -4,7 +4,7 @@
 // viewBox and preserveAspectRatio as Chromium sizes an `<img>`. Anything else in the file is reported, not dropped.
 import { parseFragment } from "parse5";
 import { type Color, color as cssColor, readStyle, type Style, take } from "./css";
-import { attribute, children, type Element } from "./dom";
+import { attribute, children, type Element, hasAttribute } from "./dom";
 import { opacityGroup } from "./internals";
 import { dash, fill, type Paint, stroke } from "./paint";
 import { flatten, IDENTITY, record, replay, type Segment } from "./path";
@@ -132,8 +132,8 @@ function paintColor(reader: Reader, value: string, name: string): PaintColor {
 
     const parsed = cssColor(value);
 
-    if (parsed) {
-        return { kind: "color", color: parsed };
+    if (parsed.kind === "parsed") {
+        return { kind: "color", color: parsed.value };
     }
 
     // A colour name, from PDFKit's table.
@@ -155,7 +155,7 @@ function paintColor(reader: Reader, value: string, name: string): PaintColor {
 /** The properties `element` passes to its children: its own over its parent's. */
 function inherit(reader: Reader, element: Element, css: Style, parent: Inherited): Inherited {
     // A property from the `style` declarations, or else from the attribute of that name.
-    const read = (name: string) => take(css, name) ?? attribute(element, name);
+    const read = (name: string) => (css.has(name) || hasAttribute(element, name) ? take(css, name, attribute(element, name, "")) : undefined);
     const unit = (name: string, value: number) => {
         const parsed = svgNumber(read(name), value);
 
@@ -237,11 +237,7 @@ function reportOthers(reader: Reader, element: Element, css: Style, allowed: rea
 }
 
 /** Applies `transform` (SVG's transform list) to the document, reporting the parts the renderer does not read. */
-function applyTransform(reader: Reader, value: string | undefined): void {
-    if (value === undefined) {
-        return;
-    }
-
+function applyTransform(reader: Reader, value: string): void {
     const doc = reader.paint.doc;
     let consumed = "";
 
@@ -278,7 +274,7 @@ function applyTransform(reader: Reader, value: string | undefined): void {
 
 /** An element's `opacity`, which fades it and its content as one group. */
 function opacityOf(element: Element, css: Style): number {
-    const opacity = svgNumber(take(css, "opacity") ?? attribute(element, "opacity"), 1);
+    const opacity = svgNumber(take(css, "opacity", attribute(element, "opacity", "1")), 1);
 
     return Math.min(Math.max(opacity.kind === "number" ? opacity.value : 1, 0), 1);
 }
@@ -313,7 +309,7 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
                     continue;
                 }
 
-                const parsed = svgNumber(attribute(element, name), 0);
+                const parsed = svgNumber(attribute(element, name, "0"), 0);
 
                 if (parsed.kind === "number") {
                     geometryNumbers.push(parsed.value);
@@ -331,11 +327,11 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
             let trace: (pen: PDFKit.PDFDocument) => void;
 
             if (element.tagName === "path") {
-                const d = attribute(element, "d");
-
-                if (d === undefined) {
+                if (!hasAttribute(element, "d")) {
                     continue;
                 }
+
+                const d = attribute(element, "d", "");
 
                 // Replayed, so quadratics are drawn as the curves they are (see `record`).
                 const segments = record(reader.paint.doc, pen => pen.path(d));
@@ -343,10 +339,9 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
                 trace = pen => replay(pen, segments);
             } else if (element.tagName === "rect") {
                 // SVG: a missing rx or ry takes the other; both are capped at half the side.
-                const [rxValue, ryValue] = [attribute(element, "rx"), attribute(element, "ry")];
-                const rxNumber = svgNumber(rxValue ?? ryValue, 0);
+                const rxNumber = svgNumber(attribute(element, "rx", attribute(element, "ry", "0")), 0);
                 const rx = Math.min(rxNumber.kind === "number" ? rxNumber.value : 0, n2 / 2);
-                const ryNumber = svgNumber(ryValue ?? rxValue, 0);
+                const ryNumber = svgNumber(attribute(element, "ry", attribute(element, "rx", "0")), 0);
                 const ry = Math.min(ryNumber.kind === "number" ? ryNumber.value : 0, n3 / 2);
 
                 if (!(n2 > 0 && n3 > 0)) {
@@ -373,7 +368,7 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
             } else if (element.tagName === "line") {
                 trace = pen => pen.moveTo(n0, n1).lineTo(n2, n3);
             } else {
-                const list = numberList(attribute(element, "points") ?? "");
+                const list = numberList(attribute(element, "points", ""));
 
                 if (list.kind === "invalid" || list.numbers.length % 2) {
                     reader.report(`<${element.tagName}> points in an SVG image are not pairs of numbers; not drawn`);
@@ -427,7 +422,7 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
 
             opacityGroup(doc, opacity, () => {
                 doc.save();
-                applyTransform(reader, attribute(element, "transform"));
+                applyTransform(reader, attribute(element, "transform", ""));
                 let visible = stroked;
 
                 if (strokeColor && stroked) {
@@ -463,7 +458,7 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
             reportOthers(reader, child, css, [new Set(["transform", "opacity"]), PAINT_PROPERTIES]);
             opacityGroup(doc, opacity, () => {
                 doc.save();
-                applyTransform(reader, attribute(child, "transform"));
+                applyTransform(reader, attribute(child, "transform", ""));
                 drawChildren(reader, child, own);
                 doc.restore();
             });
@@ -490,7 +485,7 @@ export function drawSvgImage(text: string, paint: Paint, box: Frame): void {
         return;
     }
 
-    if (attribute(svg, "xmlns") !== SVG_NAMESPACE) {
+    if (attribute(svg, "xmlns", "") !== SVG_NAMESPACE) {
         report(`an SVG image's <svg> must have xmlns="${SVG_NAMESPACE}" (browsers draw nothing without it); the picture is not drawn`);
 
         return;
@@ -502,21 +497,20 @@ export function drawSvgImage(text: string, paint: Paint, box: Frame): void {
 
     reportOthers(reader, svg, css, [ROOT_ATTRIBUTES, PAINT_PROPERTIES]);
     // The SVG image's mapping from its user units to the picture box (`x`, `y`, `width`, `height` px).
-    const viewBox = attribute(svg, "viewBox");
-    const fitValue = attribute(svg, "preserveAspectRatio");
+    const viewBox = attribute(svg, "viewBox", "");
+    const fitValue = attribute(svg, "preserveAspectRatio", "xMidYMid meet");
     let map: [number, number, number, number];
 
-    if (viewBox === undefined) {
+    if (!hasAttribute(svg, "viewBox")) {
         // Chromium scales an SVG without a viewBox from its width and height, like a raster picture; without them its user units are px.
-        const [w, h] = [attribute(svg, "width"), attribute(svg, "height")];
-
-        if (w === undefined && h === undefined) {
+        if (!hasAttribute(svg, "width") && !hasAttribute(svg, "height")) {
             map = [1, 1, box.x, box.y];
         } else {
-            const [width, height] = [svgNumber(w, Number.NaN), svgNumber(h, Number.NaN)];
+            // A missing side is not a number either: the picture is then not drawn.
+            const [width, height] = [svgNumber(attribute(svg, "width", ""), Number.NaN), svgNumber(attribute(svg, "height", ""), Number.NaN)];
             const view = [0, 0, width.kind === "number" ? width.value : Number.NaN, height.kind === "number" ? height.value : Number.NaN];
 
-            if (fitValue !== undefined) {
+            if (hasAttribute(svg, "preserveAspectRatio")) {
                 report("preserveAspectRatio on an SVG image without a viewBox is not drawn (it is stretched)");
             }
 
@@ -539,7 +533,7 @@ export function drawSvgImage(text: string, paint: Paint, box: Frame): void {
             return;
         }
 
-        const [mode, slice] = (fitValue ?? "xMidYMid meet").trim().split(/\s+/);
+        const [mode, slice] = fitValue.trim().split(/\s+/);
 
         if (mode === "none") {
             const stretched = stretch(view, box, report);

@@ -5,7 +5,7 @@ import { color, px, readStyle, type Style, take, takePx } from "./css";
 import { attribute, children, type Element, hasAttribute, hasClass } from "./dom";
 import { type Effect, shadowEffect } from "./effect/index";
 import { drawImage } from "./image";
-import { captureFill, captureStroke, dash, fill, type Paint, stroke, transformBox } from "./paint";
+import { captureFill, captureStroke, dash, fill, type Paint, stroke } from "./paint";
 import { drawShapeSvg } from "./shape";
 import { drawTable } from "./table";
 import { drawLayout, type Frame, layoutBox } from "./text/draw";
@@ -79,7 +79,22 @@ function drawBox(element: Element, style: Style, paint: Paint, box: Box): void {
     const report = paint.report;
 
     doc.save();
-    transformBox(doc, box, box.rotation, box.flipH, box.flipV);
+    // The box `transform` (rotation, flips) about the box centre, as CSS `transform-origin: center` applies it.
+    if (box.rotation || box.flipH || box.flipV) {
+        const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+
+        doc.translate(cx, cy);
+        if (box.rotation) {
+            doc.rotate(box.rotation);
+        }
+
+        if (box.flipH || box.flipV) {
+            doc.scale(box.flipH ? -1 : 1, box.flipV ? -1 : 1);
+        }
+
+        doc.translate(-cx, -cy);
+    }
+
     if (hasClass(element, "slide-text")) {
         const text = readTextBox(element, style, paint.report);
         const svg = children(element).find(child => hasClass(child, "shape-svg"));

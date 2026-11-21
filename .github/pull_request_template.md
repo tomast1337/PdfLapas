@@ -10,6 +10,17 @@
 
 <!-- Remaining unsupported behaviour or visual differences, with issue links. -->
 
+## AI use
+
+<!-- Check one. Either answer is fine; it tells reviewers what to look at. -->
+
+- [ ] No AI
+- [ ] AI helped (suggestions, review, editing); I wrote and checked the change
+- [ ] AI wrote most of the change; I reviewed and tested it
+- [ ] An AI agent wrote and opened this pull request
+
+AI tools used, and for what (optional):
+
 ## Checklist
 
 - [ ] One topic; branch named for it.

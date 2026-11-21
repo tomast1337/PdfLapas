@@ -294,6 +294,7 @@ export const PPTX_DEFAULTS = Object.freeze({
         scatterGridLine: Object.freeze({ color: "D9D9D9", widthPt: 1 }),
         barDirection: "col" as const,
         grouping: Object.freeze({ area: "standard" as const, bar: "clustered" as const, bar3D: "standard" as const }),
+        // A stacked or percent-stacked chart's `<c:gapWidth>` when barGapWidthPct is unset or 0.
         stackedGapWidthPct: 50,
         barGapWidthPct: 150,
         barGapDepthPct: 150,

@@ -422,6 +422,10 @@ export type NormalizedChart = {
     lineSmooth: boolean;
     lineSymbol: "circle" | "dash" | "diamond" | "dot" | "none" | "square" | "triangle";
     lineSymbolSize: number;
+    /** The marker outline's color; absent: the series color. */
+    lineSymbolLineColor?: CssColor;
+    /** The marker outline's width in points; 0 draws none. */
+    lineSymbolLineSize: number;
     lineSize: number;
     dataLabels: NormalizedChartDataLabels;
     plotArea: NormalizedChartPlotArea;

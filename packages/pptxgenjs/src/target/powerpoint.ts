@@ -191,6 +191,7 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
  * measured against PowerPoint's PDF export of a regular-only face; measure them when a deck needs one.
  * It draws a picture's inner shadow (`drawsPictureInnerShadow`), the Format Picture > Shadow > Inner effect, on the
  * side its angle points to with a Gaussian of sigma blurRad / 3 (`PPTX_DEFAULTS.shadow.innerSigmaPerBlur`).
+ * It draws a chart marker's outline (`drawsChartMarkerOutline`), the Format Data Series > Marker > Border.
  * It draws an underline from the face's `post` table, unbroken under descenders (`underlineFromFont`), where
  * Chromium's default is about 0.1em thick at its own offset with gaps for descenders: measured against its PDF
  * export of a synthetic deck (Arial, Calibri and Times New Roman at 8, 10, 12, 18 and 24pt, regular and bold), the
@@ -235,6 +236,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     emojiFace: EMOJI_FACE,
     nonBreakingHyphen: "hyphen-minus",
     drawsPictureInnerShadow: true,
+    drawsChartMarkerOutline: true,
     underlineFromFont: true,
 });
 

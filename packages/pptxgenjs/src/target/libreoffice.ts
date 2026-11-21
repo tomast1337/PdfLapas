@@ -23,6 +23,9 @@ import type { RenderingTargetProfile } from "./index";
  * It draws no inner shadow on a picture (`drawsPictureInnerShadow`): in its PDF export a 2in picture with
  * `<a:innerShdw blurRad="101600" dist="76200" dir="2700000">` (75% black) is the bare picture, while the same
  * picture beside it with the outer shadow has one.
+ * It draws no outline on a chart marker (`drawsChartMarkerOutline`): in its PDF export of a synthetic line chart with
+ * 14pt circles, `lineDataSymbolLineColor: "000000"` and `lineDataSymbolLineSize: 3`, each marker is a 14pt disc in the
+ * series color (56px across at 288 dpi), with no black ring and no growth.
  * Its underline is not the face's `post` table band (`underlineFromFont`): on the visual fixture's "Underline
  * styles" slide (Arial 20pt) its PDF export draws it thinner and lower, closer to Chromium's own underline than to
  * the band (text-underline-sng 0.0867 with the band, over the 0.08 crop target that Chromium's underline meets).
@@ -54,5 +57,6 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     emojiFace: undefined,
     nonBreakingHyphen: undefined,
     drawsPictureInnerShadow: false,
+    drawsChartMarkerOutline: false,
     underlineFromFont: false,
 });

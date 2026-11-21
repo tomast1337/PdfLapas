@@ -15,13 +15,20 @@ import { applyObjectStyle } from "./style";
 
 use([BarChart, LineChart, PieChart, RadarChart, ScatterChart, GridComponent, LegendComponent, RadarComponent, TitleComponent, SVGRenderer]);
 
+// LibreOffice draws OOXML's `dot` marker as its right-pointing arrow (oox maps XML_dot to chart2 StandardSymbol 4,
+// Symbol_Right) and `dash` as its horizontal bar (Symbol_HorizontalBar), 0.2 of the marker size tall: measured in its
+// PDF export of a synthetic line chart with 14pt markers, a 14pt triangle and a 14pt by 3pt bar.
+// shortcut: PowerPoint draws `dot` as a small round dot and `dash` as its own short bar, not measured yet (#500).
+const DOT_SYMBOL = "path://M0 0L2 1L0 2Z";
+const DASH_SYMBOL_HEIGHT_RATIO = 0.2;
+
 function lineSymbol(symbol: NormalizedChart["lineSymbol"]): string {
-    if (symbol === "none") {
-        return "none";
+    if (symbol === "dot") {
+        return DOT_SYMBOL;
     }
 
-    if (symbol === "dot" || symbol === "dash") {
-        return "circle";
+    if (symbol === "dash") {
+        return "rect";
     }
 
     return symbol;
@@ -255,9 +262,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         },
     };
     // PptxGenJS writes <c:marker> on line, radar and scatter series: <c:size> is in points (ECharts takes pixels) and
-    // <a:ln> outlines each marker with lineDataSymbolLineSize in the series color.
-    const symbolSize = pointsToPixels(chart.lineSymbolSize);
-    const symbolBorderWidth = pointsToPixels(PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt);
+    // <a:ln> outlines each marker with lineDataSymbolLineSize in lineDataSymbolLineColor or the series color.
+    const symbolPixels = pointsToPixels(chart.lineSymbolSize);
+    const symbolSize = chart.lineSymbol === "dash" ? [symbolPixels, symbolPixels * DASH_SYMBOL_HEIGHT_RATIO] : symbolPixels;
+    const symbolBorder = { borderWidth: pointsToPixels(chart.lineSymbolLineSize), ...(chart.lineSymbolLineColor ? { borderColor: chart.lineSymbolLineColor } : {}) };
     const common: EChartsCoreOption = {
         animation: false,
         color: chart.colors,
@@ -426,7 +434,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     type: "radar",
                     symbol: chart.radarStyle === "standard" ? "none" : lineSymbol(chart.lineSymbol),
                     symbolSize,
-                    itemStyle: { borderWidth: symbolBorderWidth },
+                    itemStyle: symbolBorder,
                     areaStyle: chart.radarStyle === "filled" ? {} : undefined,
                     data: chart.series.map(series => ({ name: series.name, value: series.values })),
                 },
@@ -452,7 +460,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 data: series.values.map((value, index) => (chart.type === "bubble" ? [xValues[index], value, series.sizes?.[index] ?? 0] : [xValues[index], value])),
                 ...(chart.type === "bubble"
                     ? { symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32, itemStyle: { opacity: chart.colorOpacity } }
-                    : { symbol: lineSymbol(chart.lineSymbol), symbolSize, itemStyle: { opacity: chart.colorOpacity, borderWidth: symbolBorderWidth } }),
+                    : { symbol: lineSymbol(chart.lineSymbol), symbolSize, itemStyle: { opacity: chart.colorOpacity, ...symbolBorder } }),
             });
         }
 
@@ -626,7 +634,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 symbolSize: series.type === "line" ? symbolSize : undefined,
                 lineStyle: lineLike ? { width: pointsToPixels(chart.lineSize), color } : undefined,
                 areaStyle: series.type === "area" ? {} : undefined,
-                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, borderWidth: symbolBorderWidth } : {}) },
+                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : {}) },
                 yAxisIndex: series.valueAxisIndex,
             });
         }

@@ -219,7 +219,9 @@ export class PuppeteerSlide implements PptxSlide {
             this.pageSize,
             this.nextObjectName("Chart", chartOptions.objectName),
         );
-        const chart = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() });
+        const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() });
+        // PptxGenJS always writes a marker outline, but not every target draws it (drawsChartMarkerOutline).
+        const chart = RENDERING_TARGETS[this.context.target].drawsChartMarkerOutline ? normalized : { ...normalized, lineSymbolLineSize: 0 };
 
         chartSize(style);
 

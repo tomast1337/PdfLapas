@@ -293,6 +293,8 @@ const chart = z.strictObject({
     lineSmooth: z.boolean(),
     lineSymbol: z.enum(["circle", "dash", "diamond", "dot", "none", "square", "triangle"]),
     lineSymbolSize: nonNegative,
+    lineSymbolLineColor: cssColor.optional(),
+    lineSymbolLineSize: nonNegative,
     lineSize: nonNegative,
     dataLabels: z.strictObject({
         showValue: z.boolean(),

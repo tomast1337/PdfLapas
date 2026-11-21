@@ -386,12 +386,12 @@
   },
   "charts": {
     "p1-Chart0": 0.0895,
-    "p1-Chart1": 0.0912,
+    "p1-Chart1": 0.0903,
     "p2-Chart0": 0.118,
-    "p3-Chart0": 0.134,
-    "p4-Chart0": 0.1185,
+    "p3-Chart0": 0.1339,
+    "p4-Chart0": 0.1182,
     "p5-Chart0": 0.12,
-    "p5-Chart1": 0.0996,
+    "p5-Chart1": 0.0991,
     "p6-Chart0": 0.0983,
     "p6-Chart1": 0.1374
   },
@@ -491,19 +491,23 @@
   },
   "chartLabels": {
     "p1-Chart0": 0.109,
-    "p1-Chart1": 0.1101
+    "p1-Chart1": 0.1077
   },
   "chartAxis": {
     "p1-Chart0": 0.1117,
-    "p1-Chart1": 0.1257
+    "p1-Chart1": 0.1251
   },
   "chartPlot": {
     "p1-Chart0": 0.0867,
-    "p1-Chart1": 0.0879
+    "p1-Chart1": 0.0868
   },
   "placeholders": {
     "p1-TitlePlaceholder": 0.0626,
     "p1-BodyPlaceholder": 0.0185,
     "p1-SidePlaceholder": 0.0409
+  },
+  "chartMarker": {
+    "p1-Chart0": 0.0897,
+    "p1-Chart1": 0.0901
   }
 }

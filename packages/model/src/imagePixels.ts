@@ -47,59 +47,63 @@ const le = (bytes: Uint8Array, at: number, count: number): HeaderField => {
 };
 const startsWith = (bytes: Uint8Array, signature: readonly number[], at = 0) => signature.every((byte, index) => bytes[at + index] === byte);
 
+/**
+ * The pixel size an image header declares: `size`; `unknown-format` when no raster signature matches (SVG, another
+ * format); `truncated` when the bytes end before the size does; `malformed` when the header is not laid out as its
+ * format requires (a check on a signature or marker past the end of the bytes also lands here).
+ */
+export type ImageHeaderSize = { kind: "size"; width: number; height: number } | { kind: "unknown-format" } | { kind: "truncated" } | { kind: "malformed" };
+
+const TRUNCATED = { kind: "truncated" } as const;
+const MALFORMED = { kind: "malformed" } as const;
+const headerSize = (width: HeaderField, height: HeaderField): ImageHeaderSize => (width.kind === "short" || height.kind === "short" ? TRUNCATED : { kind: "size", width: width.value, height: height.value });
+
 /** WebP: the first chunk is VP8X (canvas size minus one), VP8L (14-bit sizes minus one) or VP8 (14-bit sizes). */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function webpSize(bytes: Uint8Array): [number, number] | undefined {
+export function webpSize(bytes: Uint8Array): ImageHeaderSize {
     const chunk = String.fromCharCode(...bytes.subarray(12, 16));
 
     if (chunk === "VP8X") {
         const [w, h] = [le(bytes, 24, 3), le(bytes, 27, 3)];
 
-        return w.kind === "short" || h.kind === "short" ? undefined : [w.value + 1, h.value + 1];
+        return w.kind === "short" || h.kind === "short" ? TRUNCATED : { kind: "size", width: w.value + 1, height: h.value + 1 };
     }
 
     if (chunk === "VP8L" && bytes[20] === 0x2f) {
         const bits = le(bytes, 21, 4);
 
-        return bits.kind === "short" ? undefined : [(bits.value % 2 ** 14) + 1, (Math.floor(bits.value / 2 ** 14) % 2 ** 14) + 1];
+        return bits.kind === "short" ? TRUNCATED : { kind: "size", width: (bits.value % 2 ** 14) + 1, height: (Math.floor(bits.value / 2 ** 14) % 2 ** 14) + 1 };
     }
 
     if (chunk === "VP8 " && startsWith(bytes, [0x9d, 0x01, 0x2a], 23)) {
         const [w, h] = [le(bytes, 26, 2), le(bytes, 28, 2)];
 
-        return w.kind === "short" || h.kind === "short" ? undefined : [w.value % 2 ** 14, h.value % 2 ** 14];
+        return w.kind === "short" || h.kind === "short" ? TRUNCATED : { kind: "size", width: w.value % 2 ** 14, height: h.value % 2 ** 14 };
     }
 
-    return undefined;
+    return MALFORMED;
 }
 
-/**
- * The pixel size a raster image declares in its header (PNG IHDR, JPEG SOFn, GIF logical screen, WebP), by its magic
- * bytes; undefined for SVG, another format, or a header cut short.
- */
-// eslint-disable-next-line pdflapas/no-nullable-return -- phase 2 (#425)
-export function rasterImageSize(bytes: Uint8Array): [number, number] | undefined {
+/** The pixel size a raster image declares in its header (PNG IHDR, JPEG SOFn, GIF logical screen, WebP), by its magic bytes. */
+export function rasterImageSize(bytes: Uint8Array): ImageHeaderSize {
     if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
         if (!startsWith(bytes, [0x49, 0x48, 0x44, 0x52], 12)) {
-            return undefined;
+            return MALFORMED;
         } // "IHDR"
 
-        const [w, h] = [be(bytes, 16, 4), be(bytes, 20, 4)];
-
-        return w.kind === "short" || h.kind === "short" ? undefined : [w.value, h.value];
+        return headerSize(be(bytes, 16, 4), be(bytes, 20, 4));
     }
 
     if (startsWith(bytes, [0xff, 0xd8])) {
         // JPEG: the first start-of-frame segment (SOF0-SOF15 except DHT, JPG and DAC) holds the height, then the width.
         for (let at = 2; at < bytes.length;) {
             if (bytes[at] !== 0xff) {
-                return undefined;
+                return MALFORMED;
             }
 
             const marker = bytes[at + 1];
 
             if (marker === undefined) {
-                return undefined;
+                return TRUNCATED;
             }
 
             if (marker === 0xff) {
@@ -109,34 +113,33 @@ export function rasterImageSize(bytes: Uint8Array): [number, number] | undefined
             } else if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
                 const [height, width] = [be(bytes, at + 5, 2), be(bytes, at + 7, 2)];
 
-                return width.kind === "short" || height.kind === "short" ? undefined : [width.value, height.value];
+                return headerSize(width, height);
             } else if (marker === 0xda || marker === 0xd9) {
-                return undefined;
+                // The scan or the end of the image before any frame header.
+                return MALFORMED;
             } else {
                 const length = be(bytes, at + 2, 2);
 
                 if (length.kind === "short") {
-                    return undefined;
+                    return TRUNCATED;
                 }
 
                 at += 2 + length.value;
             }
         }
 
-        return undefined;
+        return TRUNCATED;
     }
 
     if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) {
-        const [w, h] = [le(bytes, 6, 2), le(bytes, 8, 2)];
-
-        return w.kind === "short" || h.kind === "short" ? undefined : [w.value, h.value];
+        return headerSize(le(bytes, 6, 2), le(bytes, 8, 2));
     }
 
     if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) {
         return webpSize(bytes);
     }
 
-    return undefined;
+    return { kind: "unknown-format" };
 }
 
 // A base64 image data URI in the HTML, wherever it is (an <img> src, a CSS url()).
@@ -182,21 +185,24 @@ export function checkImagePixels(html: string, limits: Required<ImagePixelLimits
         seen.add(payload);
         // The size the payload (base64) declares, decoding only its head unless a JPEG's frame header lies further in.
         const compact = /\s/.test(payload) ? payload.replace(/\s+/g, "") : payload;
-        let size: [number, number] | undefined;
+        let size: ImageHeaderSize;
 
         try {
             const head = base64Bytes(compact.slice(0, HEAD_CHARACTERS));
 
-            size = rasterImageSize(head) ?? (compact.length > HEAD_CHARACTERS && startsWith(head, [0xff, 0xd8]) ? rasterImageSize(base64Bytes(compact)) : undefined);
+            size = rasterImageSize(head);
+            if (size.kind !== "size" && compact.length > HEAD_CHARACTERS && startsWith(head, [0xff, 0xd8])) {
+                size = rasterImageSize(base64Bytes(compact));
+            }
         } catch {
-            size = undefined; // Not valid base64: the renderer reports the image it cannot decode.
+            continue; // Not valid base64: the renderer reports the image it cannot decode.
         }
 
-        if (!size) {
+        if (size.kind !== "size") {
             continue;
         }
 
-        const [w, h] = size;
+        const { width: w, height: h } = size;
         const pixels = w * h;
 
         if (pixels > limits.maxImagePixels) {

@@ -613,6 +613,51 @@ describe("chart normalization and rendering", () => {
         expect(markers("scatter", { lineDataSymbol: "none" })).toHaveLength(0);
     });
 
+    test("joins a scatter series' points with its line, as PptxGenJS's lineMarker style writes it", () => {
+        const xyData: PptxGenJS.OptsChartData[] = [
+            { name: "X", values: [1, 2, 3, 4] },
+            { name: "Lorem", values: [2, 4, 3, 5] },
+            { name: "Ipsum", values: [1, 2, 4, 2] },
+        ];
+        // The stroked, unfilled series paths (axis and grid lines are gray).
+        const seriesLines = (options: PptxGenJS.IChartOpts = {}) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("scatter", xyData, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"], ...options });
+            const lines = [];
+
+            for (const path of renderedPage(presentation).querySelectorAll('.slide-chart path[fill="none"]')) {
+                if (path.getAttribute("stroke") === "#4472C4" || path.getAttribute("stroke") === "#ED7D31") {
+                    lines.push(path);
+                }
+            }
+
+            return lines;
+        };
+        // PptxGenJS: `<a:ln w="${valToPts(lineSize)}">` (2pt by default), `<a:ln><a:noFill/></a:ln>` at 0, `<c:smooth>`.
+        const lines = seriesLines();
+
+        expect(lines).toHaveLength(2);
+        expect(lines[0]?.getAttribute("d")).toMatch(/^M[\d.]+ [\d.]+(L[\d.]+ [\d.]+){3}$/);
+        expect(Number(lines[0]?.getAttribute("stroke-width"))).toBe(pointsToPixels(PPTX_DEFAULTS.chart.lineSizePt));
+        expect(Number(seriesLines({ lineSize: 4 })[0]?.getAttribute("stroke-width"))).toBe(pointsToPixels(4));
+        expect(seriesLines({ lineSmooth: true })[0]?.getAttribute("d")).toContain("C");
+        // Without markers the lines remain.
+        expect(seriesLines({ lineDataSymbol: "none" })).toHaveLength(2);
+
+        // The markers keep their outline in the series color.
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addChart("scatter", xyData, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"] });
+        const marker = renderedPage(presentation).querySelector('.slide-chart path[ecmeta_ssr_type="chart"][ecmeta_series_index="1"][ecmeta_data_index]');
+
+        expect([marker?.getAttribute("fill"), marker?.getAttribute("stroke")]).toEqual(["#ED7D31", "#ED7D31"]);
+
+        for (const line of seriesLines({ lineSize: 0 })) {
+            expect(line.getAttribute("stroke-width")).toBe("0");
+        }
+    });
+
     test("keys bar entries with a square 0.6 of the legend font size and keeps line entries as a line", () => {
         const legendKeys = (type: "bar" | "line", options: PptxGenJS.IChartOpts = {}) => {
             const presentation = new PuppeteerGen();

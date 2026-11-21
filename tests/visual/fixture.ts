@@ -2225,6 +2225,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartCategoryAxisFixture(presentation);
     populateChartPlotAreaFixture(presentation);
     populateChartMarkerFixture(presentation);
+    populateChartScatterFixture(presentation);
 }
 
 /**
@@ -2842,4 +2843,28 @@ export function populateChartMarkerFixture(presentation: Presentation): void {
 
     slide.addChart("line", data, { ...shared, x: 0.4, lineDataSymbol: "dash", lineDataSymbolLineColor: "000000", lineDataSymbolLineSize: 2 });
     slide.addChart("line", data, { ...shared, x: 5.2, lineDataSymbol: "dot" });
+}
+
+/**
+ * Scatter lines (#485): PptxGenJS's lineMarker style joins each series' points with its line, the default 2pt and a
+ * 3pt `lineSize`; without markers (`lineDataSymbol: "none"`) the lines must remain. No markers and no legend, whose
+ * keys draw the marker: the line chart slides and tests/chart.test.ts cover them, and #484 changes their outline. A
+ * parity slide after the others (no page number moves) and the WASM chartScatter deck, which crops each chart. The
+ * data keeps both axes off a tick (x to 7.6, y to 6.4), where LibreOffice and ECharts round them to the same 8 and 7,
+ * and the charts are small: the scatter gridlines are drawn 888888 where LibreOffice draws PptxGenJS's D9D9D9 (#502),
+ * which alone puts a 4.4 x 4.1in pair near the page limit.
+ */
+export function populateChartScatterFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Scatter lines", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "X", values: [0, 2, 4, 6, 7.6] },
+        { name: "Lorem", values: [3, 5, 4, 6.4, 5.5] },
+        { name: "Ipsum", values: [4.5, 1.5, 5.5, 3.5, 0.5] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 2.6, h: 2.6, chartColors: ["4472C4", "ED7D31"], lineDataSymbol: "none" };
+
+    slide.addChart("scatter", data, { ...shared, x: 0.4 });
+    slide.addChart("scatter", data, { ...shared, x: 5.2, lineSize: 3 });
 }

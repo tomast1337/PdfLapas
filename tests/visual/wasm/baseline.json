@@ -509,5 +509,9 @@
   "chartMarker": {
     "p1-Chart0": 0.0897,
     "p1-Chart1": 0.0901
+  },
+  "chartScatter": {
+    "p1-Chart0": 0.1916,
+    "p1-Chart1": 0.1936
   }
 }

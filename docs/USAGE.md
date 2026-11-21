@@ -11,6 +11,7 @@ PuppeteerGen is a library that implements the PptxGenJS interface to generate PD
 - [Text Styling](#text-styling)
 - [Tables](#tables)
 - [Multiple Slides](#multiple-slides)
+- [Slide Masters](#slide-masters)
 - [Custom Layouts](#custom-layouts)
 - [API Reference](#api-reference)
 - [Running PdfLapas on a server](#running-pdflapas-on-a-server)
@@ -292,6 +293,42 @@ slide2.addText("• Point 1\n• Point 2\n• Point 3", {
 await pres.writeFile({ fileName: "multi-slide.pdf" });
 ```
 
+## Slide Masters
+
+`defineSlideMaster()` defines what several slides share, as in PptxGenJS 4.0.1; `addSlide({ masterName })`
+adds a slide on it:
+
+```typescript
+pres.defineSlideMaster({
+    title: "REPORT",
+    background: { color: "F4F7FB" },
+    margin: [1, 0.5, 0.75, 0.5], // inches: where autoPage tables on its slides start and stop
+    slideNumber: { x: 9, y: 5.1, fontFace: "Arial", fontSize: 10, color: "1F3A5F" },
+    objects: [
+        { rect: { x: 0, y: 0, w: "100%", h: 0.7, fill: { color: "1F3A5F" } } },
+        { text: { text: "Quarterly report", options: { x: 0.4, y: 0.1, w: 6, h: 0.5, color: "FFFFFF", fontSize: 18 } } },
+        { image: { path: "logo.png", x: 8.8, y: 0.1, w: 0.8, h: 0.5 } },
+        { line: { x: 0.4, y: 5, w: 9.2, h: 0, line: { color: "7F8FA6", width: 1 } } },
+    ],
+});
+
+const slide = pres.addSlide({ masterName: "REPORT" });
+
+slide.addText("Drawn on top of the master's objects", { x: 0.5, y: 1.2, w: 9, h: 0.6 });
+```
+
+- The master's `objects` (`rect`, `line`, `text`, `image`, `chart`) are drawn in order under each
+  slide's own objects. In `toHtml()` they are ordinary elements at the start of each slide.
+- A slide shows the master's `background` (or the deprecated `bkgd`) until it sets its own
+  `background`, which replaces the master's color and picture.
+- Each slide starts with the master's `slideNumber`; setting `slide.slideNumber` replaces it.
+- `margin` places autoPage tables on the master's slides (and `tableToSlides({ masterSlideName })`
+  pages), whose continuation slides are added on the same master.
+- A `placeholder` object draws nothing, as its prompt text is not shown on a slide; filling it with
+  `addText(text, { placeholder })` throws `UnsupportedFeatureError` for now
+  ([#465](https://github.com/tomast1337/PdfLapas/issues/465)).
+- An unknown `masterName` adds a slide without a master, as PptxGenJS does, and logs a warning.
+
 ## Custom Layouts
 
 PptxGenJS's layout names work: `pres.layout = "LAYOUT_WIDE"` (13⅓" × 7.5"), `LAYOUT_4x3`,
@@ -568,6 +605,9 @@ WASM also writes them to the XMP packet; Puppeteer writes no XMP.
 
 - `defineLayout(layout: PresLayout): void`
     - Defines a custom page layout with width and height
+
+- `defineSlideMaster(props: SlideMasterProps): void`
+    - Defines a slide master that `addSlide({ masterName })` adds slides on; see [Slide Masters](#slide-masters)
 
 - `setPageSize(pageSize: PageSize): void`
     - Changes the page size of the presentation

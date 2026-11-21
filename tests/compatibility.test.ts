@@ -219,15 +219,16 @@ describe("compatibility manifest", () => {
         expect(SHAPE_GEOMETRY_COMPATIBILITY.cloud).toBe("implemented");
     });
 
-    test("tracks the tableToSlides option surface and unsupported master behavior", () => {
+    test("tracks the tableToSlides option surface and slide master behavior", () => {
         for (const option of TABLE_TO_SLIDES_OPTION_KEYS) {
             expect(COMPATIBILITY.table.options[option]).toBeDefined();
         }
 
         expect(COMPATIBILITY.table.options.tableToSlides).toBe("verified");
-        expect(COMPATIBILITY.table.options.masterSlideName).toBe("unsupported");
-        // Both master-name options throw the same UnsupportedFeatureError (tests/unsupportedMethods.test.ts).
+        expect(COMPATIBILITY.table.options.masterSlideName).toBe("implemented");
+        // tests/slideMaster.test.ts covers both master-name options.
         expect(API_COMPATIBILITY.presentation.addSlide?.note).toContain("masterName");
-        expect(API_COMPATIBILITY.presentation.addSlide?.note).toContain("throws UnsupportedFeatureError");
+        expect(API_COMPATIBILITY.presentation.defineSlideMaster?.status).toBe("implemented");
+        expect(API_COMPATIBILITY.presentation.defineSlideMaster?.note).toContain("#465");
     });
 });

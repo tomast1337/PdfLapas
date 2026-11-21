@@ -6,6 +6,16 @@ import type { SharedRunOptions } from "./normalize/sharedRunOptions";
 import type { PageSize } from "./pageLayouts";
 import type { PuppeteerSlide } from "./PuppeteerSlide";
 
+/** A defineSlideMaster() layout: PptxGenJS draws its background and objects under those of each slide added on it. */
+export type SlideMaster = {
+    /** The master's background and objects, normalized as a slide of their own that is never a page of the deck. */
+    readonly layer: PuppeteerSlide;
+    /** The `slideNumber` each slide added on the master starts with. */
+    readonly slideNumber: PptxGenJS.SlideNumberProps | null;
+    /** `margin` in inches, [top, right, bottom, left] or one for all: where autoPage tables on its slides start and stop. */
+    readonly margin: PptxGenJS.Margin;
+};
+
 /** What a slide reads from the presentation that owns it. PuppeteerGen.addSlide() creates one per slide; every field is required. */
 export type SlideContext = {
     /** The presentation's page size when the slide was added, which its percentage positions resolve against. */
@@ -28,4 +38,6 @@ export type SlideContext = {
     readonly continuationSlide: (offset: number) => PuppeteerSlide;
     /** PptxGenJS's `setSlideNumber` callback: every slide's `slideNumber` setter also sets the master's. */
     readonly setMasterSlideNumber: (props: PptxGenJS.SlideNumberProps | null) => void;
+    /** The defineSlideMaster() layout the slide was added on (`addSlide({ masterName })`), or null for none. */
+    readonly master: SlideMaster | null;
 };

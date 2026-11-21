@@ -305,7 +305,7 @@ export const COMPATIBILITY = Object.freeze({
             outline: "implemented",
             paraSpaceAfter: "implemented",
             paraSpaceBefore: "implemented",
-            // Throws UnsupportedFeatureError: placeholders live on slide layouts, which need defineSlideMaster().
+            // Throws UnsupportedFeatureError: filling a slide master's placeholder is not drawn yet (#465).
             placeholder: "unsupported",
             // rectRadius: the roundRect geometry's corner in inches, as PptxGenJS writes it; the text box stays square.
             rectRadius: "implemented",
@@ -357,7 +357,7 @@ export const COMPATIBILITY = Object.freeze({
             flipH: "verified",
             flipV: "verified",
             hyperlink: "implemented",
-            // Throws UnsupportedFeatureError: placeholders live on slide layouts, which need defineSlideMaster().
+            // Throws UnsupportedFeatureError: filling a slide master's placeholder is not drawn yet (#465).
             placeholder: "unsupported",
             rotate: "verified",
             rounding: "verified",
@@ -490,9 +490,9 @@ export const COMPATIBILITY = Object.freeze({
             addText: "verified",
             slideMargin: "verified",
             addHeaderToEach: "implemented",
-            // Throws UnsupportedFeatureError: a master needs defineSlideMaster(). PptxGenJS's built-in "DEFAULT" is
-            // accepted and, as in PptxGenJS, replaces slideMargin with its 0.5in margins.
-            masterSlideName: "unsupported",
+            // Adds every page on that master and takes its `margin` over slideMargin; PptxGenJS's built-in "DEFAULT" is a
+            // plain slide with 0.5in margins.
+            masterSlideName: "implemented",
         }),
     }),
     // Slide properties; the fixture's slide-properties pages (populateSlidePropertiesFixture) check the verified ones.
@@ -622,9 +622,9 @@ export const API_COMPATIBILITY = Object.freeze({
         subject: { status: "implemented", note: 'PDF Subject; no PptxGenJS default, unset reads "" and is not written' },
         title: { status: "implemented", note: 'PDF Title; no PptxGenJS default, unset reads "" and is not written' },
         addSection: { status: "implemented", note: "sections draw nothing; PptxGenJS's input warnings are kept" },
-        addSlide: { status: "implemented", note: 'a masterName (or the deprecated string argument) other than PptxGenJS\'s built-in "DEFAULT" throws UnsupportedFeatureError: masters need defineSlideMaster()' },
+        addSlide: { status: "implemented", note: "masterName (or the deprecated string argument) adds the slide on a defineSlideMaster() master; an unknown name adds it without one, as PptxGenJS does, with a console warning" },
         defineLayout: { status: "implemented", note: "also applies the size at once" },
-        defineSlideMaster: { status: "unsupported", note: "set slide.background and add the shared objects to each slide" },
+        defineSlideMaster: { status: "implemented", note: "background, objects (drawn under each slide's own), slideNumber and margin; placeholders draw nothing and filling one throws (#465)" },
         tableToSlides: { status: "implemented", note: "finds the table id in the global document, as PptxGenJS; also takes the <table> element or its HTML" },
         stream: { status: "implemented", note: "the PDF as a Node Buffer" },
         write: { status: "implemented", note: "the PDF in the requested outputType" },
@@ -632,8 +632,8 @@ export const API_COMPATIBILITY = Object.freeze({
         LAYOUTS: { status: "internal", note: "built-in sizes are PPTX_DEFAULTS.presentation.layouts; defineLayout() adds names" },
         slides: { status: "internal", note: "getModel() is the public view of the slides" },
         sections: { status: "internal", note: "sections draw nothing" },
-        masterSlide: { status: "internal", note: "masters are unsupported" },
-        slideLayouts: { status: "internal", note: "masters are unsupported" },
+        masterSlide: { status: "internal", note: "defineSlideMaster() is the public way to define masters" },
+        slideLayouts: { status: "internal", note: "defineSlideMaster() is the public way to define masters" },
         addNewSlide: { status: "internal", note: "auto-paging callback" },
         getSlide: { status: "internal", note: "auto-paging callback" },
         setSlideNumber: { status: "internal", note: "slide-number callback" },

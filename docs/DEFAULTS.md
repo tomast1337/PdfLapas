@@ -54,7 +54,7 @@ and only a number above it as EMU. Two table quirks follow: `h: 100` is a 100 EM
 
 `pres.theme.bodyFontFace` replaces Calibri as the font of text boxes, shape text, table cells and
 chart legends that set no `fontFace`: PptxGenJS writes it as the theme's minor font, which their
-runs inherit. `headFontFace` only reaches title placeholders, which need `defineSlideMaster()`.
+runs inherit. `headFontFace` only reaches title placeholders, which PdfLapas does not fill yet (#465).
 
 Where the Microsoft Office fonts are not installed, install their metric-compatible equivalents so
 text wraps as in PowerPoint: Carlito for Calibri, Caladea for Cambria, and Liberation Sans, Serif
@@ -97,6 +97,12 @@ slide's number inherits from it what its own props leave unset: font size (unles
 `fontFace`, `fontSize` or `color` writes one, `fontSize || 12`), color, font, `valign` and
 `margin`. An array `margin` is `[top, right, bottom, left]` here, unlike text boxes. PptxGenJS
 reads no other text option of a slide number.
+
+A slide added on a `defineSlideMaster()` master starts with the master's `slideNumber`, and its own
+inherits what it leaves unset from the master's, then from the one set last. The first master with
+a `slideNumber` also becomes that last one while no slide has set one. A master's `margin`
+defaults to 0.5in on each side (`DEF_SLIDE_MARGIN_IN`), and a master's text is black unless it
+sets a color, as the layout has no slide `color`.
 
 ## Shared styles
 

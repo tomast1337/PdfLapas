@@ -60,7 +60,8 @@ export function autoPageTableOptions(rows: PptxGenJS.TableRow[], options: PptxGe
     return { ...options, colW: Array<number>(count).fill(((x || rightMargin) + leftMargin) / count) };
 }
 
-export function paginateTableRows(inputRows: PptxGenJS.TableRow[], options: PptxGenJS.TableProps, pageSize: PageSize): PaginatedTablePage[] {
+/** `layoutTopMargin` is the top margin in inches of the slide's layout: a slide master's `margin`, else DEF_SLIDE_MARGIN_IN. */
+export function paginateTableRows(inputRows: PptxGenJS.TableRow[], options: PptxGenJS.TableProps, pageSize: PageSize, layoutTopMargin: number = PPTX_DEFAULTS.slide.marginIn): PaginatedTablePage[] {
     if (!inputRows.length) {
         return [];
     }
@@ -74,7 +75,7 @@ export function paginateTableRows(inputRows: PptxGenJS.TableRow[], options: Pptx
 
     // PptxGenJS 4.0.1 addTableDefinition places continuation tables at the slide layout's margin (DEF_SLIDE_MARGIN_IN
     // without a master), not at `slideMargin`, which only sizes the pages in getSlidesForTableRows.
-    const continuationY = startY ?? PPTX_DEFAULTS.slide.marginIn;
+    const continuationY = startY ?? layoutTopMargin;
     const firstY = verticalInches(options.y, topMargin, pageSize.height);
     const heightLimit = verticalInches(options.h, pageSize.height, pageSize.height);
 

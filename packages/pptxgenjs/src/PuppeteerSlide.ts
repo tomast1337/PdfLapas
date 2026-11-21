@@ -1,11 +1,12 @@
 import type PptxGenJS from "pptxgenjs";
-import type { NormalizedImage, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
+import type { CssColor, NormalizedImage, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
 import type { ChartExtensionInput, ChartExtensionOptions } from "./chart/types";
 import { normalizeComponent } from "./components/normalize";
 import type { ComponentInput, ComponentOptions } from "./components/types";
 import { PPTX_DEFAULTS } from "./defaults";
 import { normalizeChart } from "./normalize/chart";
 import { normalizeImage } from "./normalize/image";
+import { slideMarginInches } from "./normalize/margin";
 import { normalizeObjectStyle } from "./normalize/object";
 import { normalizeShape, normalizeShapeTextBox } from "./normalize/shape";
 import { lineOutline, normalizeShapeLine, normalizeTextLine } from "./normalize/shape/line";
@@ -23,13 +24,9 @@ import type { SlideContext } from "./slideContext";
 import { RENDERING_TARGETS } from "./target";
 import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
 
-/** A `placeholder` names one on the slide's layout, which only defineSlideMaster() can define. */
+/** A `placeholder` names one of the slide master's; filling it is not drawn yet (#465). */
 function placeholderError(method: "addText" | "addImage"): UnsupportedFeatureError {
-    return new UnsupportedFeatureError(
-        `${method}({ placeholder })`,
-        "Placeholders come from slide layouts, which need defineSlideMaster(), and PdfLapas has no slide masters. Remove `placeholder` and give the object its own x, y, w, h and style.",
-        "property",
-    );
+    return new UnsupportedFeatureError(`${method}({ placeholder })`, "Filling a slide master's placeholder is not drawn yet (#465). Remove `placeholder` and give the object the placeholder's x, y, w, h and style.", "property");
 }
 
 export class PuppeteerSlide implements PptxSlide {
@@ -44,6 +41,10 @@ export class PuppeteerSlide implements PptxSlide {
         this.hidden = false;
         this.newAutoPagedSlides = [];
         this.bkgd = PPTX_DEFAULTS.slide.backgroundColor;
+        // The defaults above are not the slide's own background: a master's shows until the caller sets one.
+        this.ownBackground = false;
+        // PptxGenJS's Slide constructor copies the layout's slide number props, without the setter that writes them to the master.
+        this._slideNumber = context.master?.slideNumber ?? null;
     }
     pageSize: PageSize;
     private _background: PptxGenJS.BackgroundProps = { color: PPTX_DEFAULTS.slide.backgroundColor };
@@ -51,6 +52,8 @@ export class PuppeteerSlide implements PptxSlide {
     private _color: string = PPTX_DEFAULTS.slide.color;
     private _hidden: boolean = PPTX_DEFAULTS.slide.hidden;
     private _slideNumber: PptxGenJS.SlideNumberProps | null = null;
+    /** Whether the caller set a background color or picture, which replaces the master's as the slide's <p:bg> does. */
+    private ownBackground = false;
     /** The background picture, checked when it is set; drawn under every object over the whole slide. */
     private backgroundImage: NormalizedImage | undefined;
     newAutoPagedSlides: PptxGenJS.PresSlide[];
@@ -77,6 +80,7 @@ export class PuppeteerSlide implements PptxSlide {
 
         if (data || path) {
             this.backgroundImage = normalizeImage({ ...(data ? { data } : {}), ...(path ? { path } : {}) }, this.pageSize);
+            this.ownBackground = true;
         }
 
         this._background = value;
@@ -88,6 +92,7 @@ export class PuppeteerSlide implements PptxSlide {
         }
 
         this.model.background = normalizeColor({ ...value, color });
+        this.ownBackground = true;
     }
 
     get bkgd(): string {
@@ -102,6 +107,7 @@ export class PuppeteerSlide implements PptxSlide {
         }
 
         this.model.background = normalizeColor(value);
+        this.ownBackground = true;
     }
 
     get color(): string {
@@ -135,17 +141,31 @@ export class PuppeteerSlide implements PptxSlide {
 
     /**
      * The slide's model as getModel() returns it: the background picture first, stretched over `pageSize` (the
-     * presentation's), then the slide's objects, then its number, which PptxGenJS writes last. `masterSlideNumber` is
-     * the `slideNumber` set last on any slide.
+     * presentation's), then its master's objects, then the slide's, then its number, which PptxGenJS writes last.
+     * `masterSlideNumber` is the `slideNumber` set last on any slide.
      */
     toModel(pageSize: PageSize, masterSlideNumber: PptxGenJS.SlideNumberProps | null): NormalizedSlide {
-        const backgroundStyle = () => normalizeObjectStyle({ x: 0, y: 0, w: pageSize.width, h: pageSize.height }, PPTX_DEFAULTS.image, pageSize, PPTX_DEFAULTS.backgroundImage.objectName);
-        const background: NormalizedSlideObject[] = this.backgroundImage ? [{ kind: "image", style: backgroundStyle(), image: this.backgroundImage }] : [];
-        const slideNumber = this._slideNumber ? [normalizeSlideNumber(this._slideNumber, masterSlideNumber ?? {}, this.context.slideIndex + 1, this.pageSize, this.context.bodyFontFace(), this.context.target, this.context.fontMetrics)] : [];
-        // PptxGenJS writes the picture alone, so its transparent parts show white (LibreOffice), not the color.
-        const color = this.backgroundImage ? normalizeColor(PPTX_DEFAULTS.slide.backgroundColor) : this.model.background;
+        const master = this.context.master;
+        // The slide's own background replaces its master's, picture and color alike, as its <p:bg> replaces the layout's.
+        const background = master && !this.ownBackground ? master.layer.backgroundLayer(pageSize) : this.backgroundLayer(pageSize);
+        const masterObjects = master ? master.layer.model.objects : [];
+        // The slide's number placeholder inherits what its props leave out from its layout's, then from the master's.
+        const inherited = { ...masterSlideNumber, ...master?.slideNumber };
+        const slideNumber = this._slideNumber ? [normalizeSlideNumber(this._slideNumber, inherited, this.context.slideIndex + 1, this.pageSize, this.context.bodyFontFace(), this.context.target, this.context.fontMetrics)] : [];
 
-        return { ...this.model, background: color, objects: [...background, ...this.model.objects, ...slideNumber] };
+        return { ...this.model, background: background.color, objects: [...background.objects, ...masterObjects, ...this.model.objects, ...slideNumber] };
+    }
+
+    /** The slide's background color and picture over `pageSize`; a master's is read by the slides added on it. */
+    private backgroundLayer(pageSize: PageSize): { color: CssColor; objects: NormalizedSlideObject[] } {
+        if (!this.backgroundImage) {
+            return { color: this.model.background, objects: [] };
+        }
+
+        const style = normalizeObjectStyle({ x: 0, y: 0, w: pageSize.width, h: pageSize.height }, PPTX_DEFAULTS.image, pageSize, PPTX_DEFAULTS.backgroundImage.objectName);
+
+        // PptxGenJS writes the picture alone, so its transparent parts show white (LibreOffice), not the color.
+        return { color: normalizeColor(PPTX_DEFAULTS.slide.backgroundColor), objects: [{ kind: "image", style, image: this.backgroundImage }] };
     }
 
     private nextObjectName(kind: string, explicit?: string): string {
@@ -256,8 +276,11 @@ export class PuppeteerSlide implements PptxSlide {
 
         this.newAutoPagedSlides = [];
         if (tableOptions.autoPage) {
-            const pageOptions = autoPageTableOptions(tableRows, tableOptions, this.pageSize);
-            const pages = paginateTableRows(tableRows, pageOptions, this.pageSize);
+            // addTableDefinition and getSlidesForTableRows take a master's margin over the table's `slideMargin`.
+            const master = this.context.master;
+            const layoutOptions: PptxGenJS.TableProps & { slideMargin?: PptxGenJS.Margin } = master ? { ...tableOptions, slideMargin: master.margin } : tableOptions;
+            const pageOptions = autoPageTableOptions(tableRows, layoutOptions, this.pageSize);
+            const pages = paginateTableRows(tableRows, pageOptions, this.pageSize, master ? slideMarginInches(master.margin)[0] : PPTX_DEFAULTS.slide.marginIn);
             const continuationSlides: PuppeteerSlide[] = [];
 
             for (const [index, page] of pages.entries()) {

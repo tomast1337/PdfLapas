@@ -245,6 +245,19 @@ slide.addText("Right Content", {
 
 ### Header and Footer
 
+On every slide, with a slide master:
+
+```typescript
+pres.defineSlideMaster({
+    title: "PAGE",
+    slideNumber: { x: 9, y: 5.1, fontSize: 10 },
+    objects: [{ text: { text: "Header", options: { x: 0.5, y: 0.25, w: 9, h: 0.5, fontSize: 14, color: "666666" } } }, { text: { text: "Footer", options: { x: 0.5, y: 5, w: 9, h: 0.3, fontSize: 12, color: "999999" } } }],
+});
+const slide = pres.addSlide({ masterName: "PAGE" });
+```
+
+On one slide:
+
 ```typescript
 // Header
 slide.addText("Header", {

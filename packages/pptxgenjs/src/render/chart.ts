@@ -236,17 +236,28 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // The ECharts option of a 2D chart.
     const keySize = Math.round(pointsToPixels(chart.legendFontSize) * PPTX_DEFAULTS.chart.legendKeyFontRatio);
     const hasLineKey = chart.type === "radar" || chart.series.some(series => series.type === "line");
+    // LibreOffice's title and top or bottom legend bands (PPTX_DEFAULTS.chart.plotBand): a legend's row is legendBandEm
+    // legend font sizes tall with its entries centered in it, a top one legendBandPt below the title band and a bottom
+    // one legendBottomPt above the chart's bottom edge. ECharts (padding 0) centers an entry half a font size from the
+    // legend's edge, so the edge goes the rest of half a row further in.
+    const gap = height * PPTX_DEFAULTS.chart.plotAreaGapRatio;
+    const plotBand = PPTX_DEFAULTS.chart.plotBand;
+    const pieLayout = PPTX_DEFAULTS.chart.pieLayout;
+    const legendPx = pointsToPixels(chart.legendFontSize);
+    const legendBand = legendPx * plotBand.legendBandEm + pointsToPixels(plotBand.legendBandPt);
+    const legendRowInset = (legendPx * (plotBand.legendBandEm - 1)) / 2;
+    const titleBand = chart.showTitle ? gap + pointsToPixels(chart.titleFontSize) * pieLayout.titleBandEm + pointsToPixels(plotBand.titleBandPt) : 0;
     let legendPlacement: Record<string, unknown>;
 
     switch (chart.legendPosition) {
         case "b":
-            legendPlacement = { left: "center", bottom: 0, orient: "horizontal" };
+            legendPlacement = { left: "center", bottom: pointsToPixels(plotBand.legendBottomPt) + legendRowInset, orient: "horizontal", padding: 0 };
             break;
         case "l":
             legendPlacement = { left: 0, top: "middle", orient: "vertical" };
             break;
         case "t":
-            legendPlacement = { left: "center", top: 0, orient: "horizontal" };
+            legendPlacement = { left: "center", top: titleBand + pointsToPixels(plotBand.legendBandPt) + legendRowInset, orient: "horizontal", padding: 0 };
             break;
         case "tr":
             legendPlacement = { right: 0, top: 0, orient: "vertical" };
@@ -331,17 +342,17 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             lineStyle: { color: chart.gridLineColor, width: pointsToPixels(chart.gridLineWidth) },
         },
     };
-    // The automatic plot area (PptxGenJS writes `<c:layout/>`) in text-sized bands, not fractions of the chart height:
-    // a gap, the legend line and a gap below it, then the ticks, the label margin and one label line; above it a gap
-    // and half a value label, which is centered on the top gridline.
-    const gap = height * PPTX_DEFAULTS.chart.plotAreaGapRatio;
+    // The automatic plot area (PptxGenJS writes `<c:layout/>`) in text-sized bands, not fractions of the chart height,
+    // as LibreOffice lays it out (PPTX_DEFAULTS.chart.plotBand, and the title and legend bands above).
     const valueLabelPx = pointsToPixels(chart.valueAxes[0]?.labelFontSize ?? chart.fontSize);
     const categoryAxisModel = chart.categoryAxis;
     const categoryLabelPx = pointsToPixels(categoryAxisModel.labelFontSize);
     const bottomLabelPx = horizontal ? valueLabelPx : categoryLabelPx;
-    const sideLabelPx = horizontal ? categoryLabelPx : valueLabelPx;
+    const bottomTickMark = horizontal ? chart.valueAxes[0]?.majorTickMark : chart.categoryMajorTickMark;
+    // The bottom axis's labels sit below its outside ticks and the label spacing, centered in a line of labelLineEm
+    // label font sizes; ECharts measures axisLabel.margin from the axis line to the label's font box.
+    const bottomLabelMargin = (bottomTickMark === "outside" || bottomTickMark === "cross" ? pointsToPixels(plotBand.tickLengthPt) : 0) + pointsToPixels(plotBand.labelSpacingPt) + (bottomLabelPx * (plotBand.labelLineEm - 1)) / 2;
     const lineEm = PPTX_DEFAULTS.text.singleLineEm;
-    const pieLayout = PPTX_DEFAULTS.chart.pieLayout;
     const inset = pointsToPixels(pieLayout.insetPt);
     // A left or right legend's band beside the plot area, as LibreOffice reserves it on every chart type (#468, #517):
     // its widest entry (key, gap and text) and an inset on each side.
@@ -366,7 +377,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // axis labels an inset clear of the legend.
     const leftLegendShift = chart.legendPosition === "l" ? Math.max(0, sideLegendBand - inset) : 0;
     const rightLegendBand = chart.legendPosition === "r" || chart.legendPosition === "tr" ? sideLegendBand : 0;
-    const legendBand = chart.showLegend && chart.legendPosition === "b" ? pointsToPixels(chart.legendFontSize) * lineEm + gap : 0;
     // A bottom category-axis title gets its band below the labels, as LibreOffice lays it out; a left one (a horizontal
     // bar chart's) is moved clear of the labels by ECharts (nameMoveOverlap) and kept in the frame by the outer bounds.
     const categoryTitleBand = categoryAxisModel.showTitle && !horizontal ? 2 * gap + pointsToPixels(categoryAxisModel.titleFontSize) * PPTX_DEFAULTS.chart.categoryAxis.titleBandEm : 0;
@@ -411,8 +421,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
               // shortcut: the secondary axis beside a right legend is not measured against LibreOffice; measure it when a
               // deck needs both.
               right: chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : Math.max(width * 0.02, rightLegendBand),
-              top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
-              bottom: gap + legendBand + categoryTitleBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
+              top: gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2),
+              bottom: gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2,
               outerBoundsMode: "auto",
               outerBounds: { left: labelBound + leftLegendShift, right: Math.max(labelBound, rightLegendBand), top: 0, bottom: 0 },
               ...plotAreaStyle,
@@ -460,8 +470,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         let right: number = inset;
 
         if (chart.showLegend) {
-            const legendPx = pointsToPixels(chart.legendFontSize);
-
             if (chart.legendPosition === "b") {
                 bottom = 2 * inset + legendPx * pieLayout.legendBandEm;
             } else if (chart.legendPosition === "t") {
@@ -574,6 +582,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 color: categoryAxisModel.labelColor,
                 fontFamily: categoryAxisModel.labelFontFace,
                 fontSize: categoryLabelPx,
+                ...(horizontal ? {} : { margin: bottomLabelMargin }),
                 ...(categoryAxisModel.labelBold ? { fontWeight: "bold" } : {}),
                 ...(categoryAxisModel.labelItalic ? { fontStyle: "italic" } : {}),
             },
@@ -618,6 +627,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     color: axis.labelColor,
                     fontFamily: axis.labelFontFace,
                     fontSize: pointsToPixels(axis.labelFontSize),
+                    ...(horizontal && index === 0 ? { margin: bottomLabelMargin } : {}),
                     fontWeight: axis.labelBold ? "bold" : "normal",
                     fontStyle: axis.labelItalic ? "italic" : "normal",
                     formatter: (value: number) => formatChartNumber(value, axis.labelFormatCode),

@@ -14,6 +14,7 @@ import {
     populateChartMarkerFixture,
     populateChartPieFixture,
     populateChartPlotAreaFixture,
+    populateChartPlotBandFixture,
     populateChartScatterFixture,
     populateChartStackedFixture,
     populateComponentFixture,
@@ -179,6 +180,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartArea: {
         populate: presentation => {
             populateChartAreaFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartPlotBand: the shared fixture's plot-area band slide (#528); every chart gets a crop.
+    chartPlotBand: {
+        populate: presentation => {
+            populateChartPlotBandFixture(presentation);
 
             return presentation;
         },

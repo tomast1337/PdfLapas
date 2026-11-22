@@ -657,12 +657,15 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const valueAxes = [];
 
         for (const [index, axis] of chart.valueAxes.entries()) {
+            const min = chart.grouping === "percentStacked" ? 0 : axis.minimum;
+            const max = chart.grouping === "percentStacked" ? 100 : axis.maximum;
+
             valueAxes.push({
                 type: axis.logScaleBase === undefined ? ("value" as const) : ("log" as const),
                 logBase: axis.logScaleBase,
-                min: chart.grouping === "percentStacked" ? 0 : axis.minimum,
-                max: chart.grouping === "percentStacked" ? 100 : axis.maximum,
-                interval: axis.logScaleBase === undefined ? axis.majorUnit : undefined,
+                min,
+                max,
+                interval: axis.logScaleBase === undefined ? (axis.majorUnit ?? automaticAxisInterval(min, max)) : undefined,
                 position: index === 1 ? ("right" as const) : ("left" as const),
                 show: !axis.hidden,
                 name: axis.showTitle ? axis.title : undefined,

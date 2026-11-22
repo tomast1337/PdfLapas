@@ -41,10 +41,10 @@ export function automaticAxisInterval(minimum: number, maximum: number): number 
 }
 
 /**
- * LibreOffice's automatic scale of a linear axis whose data runs from low to high, as it draws a scatter chart's x axis
- * (it does not reach to zero): the automatic interval, the bounds rounded out to whole intervals, then each bound one
- * interval further where the data comes within borderRatio of the range of it, except a minimum of 0; a bound that
- * makes too many steps takes the next interval.
+ * LibreOffice's automatic scale of a linear axis whose data runs from low to high: the automatic interval, the bounds
+ * rounded out to whole intervals, then each bound one interval further where the data comes within borderRatio of the
+ * range of it, except a bound at 0; a bound that makes too many steps takes the next interval. A scatter chart's x axis
+ * passes its data range; a bar, line or area value axis reaches to 0 (automaticValueBounds).
  */
 export function automaticAxisScale(low: number, high: number): AxisScale {
     const { maxIncrements, borderRatio } = PPTX_DEFAULTS.chart.automaticScale;
@@ -66,7 +66,7 @@ export function automaticAxisScale(low: number, high: number): AxisScale {
             minimum -= interval;
         }
 
-        if (maximum - high <= border + STEP_EPSILON) {
+        if (high !== 0 && maximum - high <= border + STEP_EPSILON) {
             maximum += interval;
         }
 

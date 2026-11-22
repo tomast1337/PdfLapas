@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "3040c28df3a482e6c1e0c692cc556574445741f9d04154a093687b52a8cd0c8e",
+    fixture: "2ca23700e9543121ba9ed1acc26394c6b01dc82d9ca930141fe88f4236e3f5ff",
     "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
     "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -28,7 +28,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-placeholders": "3010682db4a0a542a254c4866a24b695c4b53c879a1ad9ab5e645f6c2956a792",
     "wasm-chartMarker": "512861437e9bb3e1b0a4caa1b4bd1b09a1e76a8c2fde82fd29ccf085a28cfc76",
     "wasm-chartScatter": "b04a984ecd3496101a3f6c5f5fc06068d4bd8f195aa07986b8619010eae37252",
-    "wasm-chartBarColors": "f97fd3115fd894adf4dddc82574c1e22a8db41ce34bee1d28a2cfd6dfeae4bcf",
+    "wasm-chartBarColors": "91491b8a63a878d08a16fce5f979aa7bef70d4505331e190ff702fd1c49d5efb",
     "wasm-chartPie": "b5b9ac58f88bf6a830d87b93d82135122a80cd2a87b9b367478c477a662fadea",
     "wasm-chartBarOrder": "b65d32f5288d81d4080ce7c27f579c4d277a738dca9424a418222d949fe534ad",
     "wasm-chartLegendOrder": "0fb670a22e4216b4ca25e958c671644b40e0ed5dc3f8ffca738ec51c6e278381",
@@ -40,6 +40,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartPointColors": "6c691e8bc07e0a1eddbb38d5907c9e6333b48d9a9bec3a5e8158142620b53f2d",
     "wasm-chartScatterAxes": "cccfe2aca9150f8f64e25931e78cdac2c83a1a7d0f6873c3cdf8e803ddb5837e",
     "wasm-chartTopRightLegend": "aaf39b16e26a813435a919b18fdc3fe34472d21b639f684f6f6f23fb62a7cab3",
+    "wasm-chartValueAxis": "f10bcbcfa7b15b0dc6e084b343249e1cd7ba7201dbbea188eb85f8d365923073",
     "wasm-svg": "0ed2222573f3ffa6ec6b887907d3f26a2343fe30f2c4a44a4608df6e0b5fba31",
     "wasm-gif": "cc044a43bcdaa50876fc2da1fedc3d3ede74d271b7a8ce406191ddd96b4dc71e",
     "wasm-webp": "389927c7c8b1506b25d5dece837d9f0131d4af29ad94ee0b361719c07798f1b8",

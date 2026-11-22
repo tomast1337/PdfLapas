@@ -530,7 +530,7 @@ describe("chart normalization and rendering", () => {
         // The automatic axis covers the bar stack (6, 6, 9) and the line (6, 9, 7) apart: 9 is the largest, not 9 + 9.
         expect(normalizeChart(combo, [], { barGrouping: "stacked" }).valueAxisMaximum).toBe(10);
         // A percent-stacked bar group shares 100 among the bars only, the areas and the line keep their values.
-        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }).valueAxisMaximum).toBe(110);
+        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }).valueAxisMaximum).toBe(120);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {

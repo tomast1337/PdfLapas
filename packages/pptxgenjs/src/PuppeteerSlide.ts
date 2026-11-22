@@ -232,11 +232,18 @@ export class PuppeteerSlide implements PptxSlide {
             this.pageSize,
             this.nextObjectName("Chart", chartOptions.objectName),
         );
+        const target = RENDERING_TARGETS[this.context.target];
         // PptxGenJS writes `<c:holeSize>`, but not every target reads it (readsDoughnutHoleSize).
-        const holeSize = RENDERING_TARGETS[this.context.target].readsDoughnutHoleSize ? chartOptions.holeSize : undefined;
+        const holeSize = target.readsDoughnutHoleSize ? chartOptions.holeSize : undefined;
         const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() });
-        // PptxGenJS always writes a marker outline, but not every target draws it (drawsChartMarkerOutline).
-        const chart = RENDERING_TARGETS[this.context.target].drawsChartMarkerOutline ? normalized : { ...normalized, lineSymbolLineSize: 0 };
+        // PptxGenJS always writes a marker outline, but not every target draws it (drawsChartMarkerOutline); an
+        // unstacked area chart's series overlap, and the target decides which is in front (firstAreaSeriesInFront).
+        // shortcut: a combo chart's area group keeps the series order, as LibreOffice draws it behind the others (#538).
+        const chart = {
+            ...normalized,
+            ...(target.drawsChartMarkerOutline ? {} : { lineSymbolLineSize: 0 }),
+            ...(target.firstAreaSeriesInFront && normalized.type === "area" && normalized.grouping === "standard" ? { firstSeriesInFront: true } : {}),
+        };
 
         chartSize(style);
 

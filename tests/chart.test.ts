@@ -806,6 +806,34 @@ describe("chart normalization and rendering", () => {
         expect(areaPaths({ chartColorsOpacity: 40 })[0]?.getAttribute("fill-opacity")).toBe("0.4");
     });
 
+    test("draws a standard area chart's first series in front where the target does (firstAreaSeriesInFront, #533)", () => {
+        const drawn = (options: PptxGenJS.IChartOpts, target: "libreoffice" | "powerpoint" = "libreoffice") => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart("area", categoricalData, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"], ...options });
+            const object = presentation.getModel().slides[0]?.objects[0];
+            // The series fills in paint order: the last is in front.
+            const fills: string[] = [];
+
+            for (const path of renderedPage(presentation).querySelectorAll(".slide-chart path")) {
+                const fill = path.getAttribute("fill");
+
+                if ((fill === "#4472C4" || fill === "#ED7D31") && path.getAttribute("d")?.endsWith("Z")) {
+                    fills.push(fill);
+                }
+            }
+
+            return { fills, firstSeriesInFront: object?.kind === "chart" ? object.chart.firstSeriesInFront : undefined };
+        };
+
+        // LibreOffice: the overlapping series are drawn from the last, so the first is in front.
+        expect(drawn({})).toEqual({ fills: ["#ED7D31", "#4472C4"], firstSeriesInFront: true });
+        // PowerPoint draws them in series order, so the last is in front.
+        expect(drawn({}, "powerpoint")).toEqual({ fills: ["#4472C4", "#ED7D31"], firstSeriesInFront: undefined });
+        // A stacked chart's series do not overlap and keep the series order, which is also its stacking order.
+        expect(drawn({ barGrouping: "stacked" })).toEqual({ fills: ["#4472C4", "#ED7D31"], firstSeriesInFront: undefined });
+    });
+
     test("joins a scatter series' points with its line, as PptxGenJS's lineMarker style writes it", () => {
         const xyData: PptxGenJS.OptsChartData[] = [
             { name: "X", values: [1, 2, 3, 4] },

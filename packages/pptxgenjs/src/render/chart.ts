@@ -727,8 +727,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             });
         }
 
-        // ECharts places a band's bars from the top down in series order.
-        if (reversedSeries) {
+        // ECharts places a band's bars from the top down in series order, and draws each series over the ones before it.
+        if (reversedSeries || chart.firstSeriesInFront) {
             cartesian.reverse();
         }
 

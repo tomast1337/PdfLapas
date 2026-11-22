@@ -31,6 +31,10 @@ import type { RenderingTargetProfile } from "./index";
  * the band (text-underline-sng 0.0867 with the band, over the 0.08 crop target that Chromium's underline meets).
  * It draws every doughnut's hole half its outer diameter (`readsDoughnutHoleSize` off): in LibreOffice 26.2's PDF
  * export of PptxGenJS doughnuts with `<c:holeSize>` 30, 50 and 75 the hole is 0.496, 0.500 and 0.501 of it.
+ * It draws a standard area chart's first series in front (`firstAreaSeriesInFront`, #533): in LibreOffice 26.2.6's PDF
+ * export of PptxGenJS area charts with two series (Lorem [3, 5, 4, 7], Ipsum [5, 2, 6, 4]) and three (with Dolor
+ * [4, 4, 4, 4]), Lorem fills everything below its line, Ipsum shows only above it and Dolor only above both, though
+ * PptxGenJS writes them in that order (`<c:idx>` and `<c:order>` 0, 1, 2) in one `<c:areaChart>`.
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -62,4 +66,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     drawsChartMarkerOutline: false,
     underlineFromFont: false,
     readsDoughnutHoleSize: false,
+    firstAreaSeriesInFront: true,
 });

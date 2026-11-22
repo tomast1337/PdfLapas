@@ -436,6 +436,8 @@ export type NormalizedChart = {
     plotArea: NormalizedChartPlotArea;
     /** The inner plot rectangle as fractions of the chart frame; absent for the automatic layout. */
     plotLayout?: NormalizedChartLayout;
+    /** Whether the series are drawn from the last to the first, so the first is in front; absent: in series order. */
+    firstSeriesInFront?: boolean;
     altText: string;
 };
 

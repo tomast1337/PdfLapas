@@ -154,6 +154,11 @@ export type RenderingTargetProfile = {
      * from `holeSize`), or always PPTX_DEFAULTS.chart.doughnutHoleSizePct whatever it says.
      */
     readonly readsDoughnutHoleSize: boolean;
+    /**
+     * Whether a standard (unstacked) area chart, whose series overlap, draws its first series in front of the later
+     * ones, or each series in front of the ones before it, in the order PptxGenJS writes them.
+     */
+    readonly firstAreaSeriesInFront: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

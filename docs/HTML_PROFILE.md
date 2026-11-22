@@ -1048,6 +1048,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChart.lineSymbol`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSymbolSize`           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSymbolLineColor`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChart.firstSeriesInFront`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSymbolLineSize`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSize`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.dataLabels`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

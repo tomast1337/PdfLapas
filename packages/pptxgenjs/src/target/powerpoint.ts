@@ -246,6 +246,9 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of a synthetic deck (an area chart, Lorem [3, 5, 4, 7] then Ipsum [5, 2, 6, 4]) draws the
     // last series in front: Ipsum covers Lorem, which shows only above Ipsum's line (#533).
     firstAreaSeriesInFront: false,
+    // PowerPoint's PDF export of a synthetic deck (#507) fills each outline-only point with the automatic accent1, as
+    // LibreOffice does.
+    chartPointKeepsSeriesFill: false,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

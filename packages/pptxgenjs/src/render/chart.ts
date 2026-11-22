@@ -704,12 +704,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 label,
                 name: series.name,
                 type: seriesType,
-                data: series.varyColors
-                    ? values.map((value, valueIndex) => ({
-                          value,
-                          itemStyle: { color: chart.colors[valueIndex % chart.colors.length] },
-                      }))
-                    : values,
+                // Each point in its own fill; the series color keys the legend.
+                data:
+                    series.varyColors || series.automaticPointFill
+                        ? values.map((value, valueIndex) => ({
+                              value,
+                              itemStyle: { color: series.automaticPointFill ?? chart.colors[valueIndex % chart.colors.length] },
+                          }))
+                        : values,
                 // Each type stacks apart from the others, as each is its own chart element.
                 stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,

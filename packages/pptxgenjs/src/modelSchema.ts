@@ -238,6 +238,8 @@ const chart = z.strictObject({
             varyColors: z.boolean(),
             valueAxisIndex: z.union([z.literal(0), z.literal(1)]),
             stack: z.enum(["stacked", "percentStacked"]).optional(),
+            automaticPointFill: cssColor.optional(),
+            pointLineColors: z.array(cssColor).optional(),
         }),
     ),
     colors: z.array(cssColor),

@@ -455,6 +455,10 @@ contract includes:
 - Pie angle, doughnut hole size, radar style, and blank-value behavior.
 - bar3D view: `rotX` 30, `rotY` 30 and perspective 30 (a 15° field of view) project the box, with one
   slot per category and per series, centered with 12.5% of the chart width on each side.
+- A single-series bar3D chart with more than one `chartColors` entry outlines each box in
+  `chartColors[index]` (a 0.4pt hairline, as LibreOffice draws an `<a:ln>` without a width). PptxGenJS
+  writes that point (and each point of a single-series bar chart with `lineSize: 0`) without a fill, so
+  LibreOffice fills it in the theme's accent1, 4472C4, and keys the legend in the series color.
 - Chart/plot borders, gridline defaults, format codes, and both complete color
   palettes used by PptxGenJS.
 

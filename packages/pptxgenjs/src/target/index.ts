@@ -159,6 +159,12 @@ export type RenderingTargetProfile = {
      * ones, or each series in front of the ones before it, in the order PptxGenJS writes them.
      */
     readonly firstAreaSeriesInFront: boolean;
+    /**
+     * Whether a chart point whose `<c:dPt>` has no fill (PptxGenJS's per-point outline on a single-series bar3D chart,
+     * or `lineSize: 0` on a single-series bar chart with chartColors) keeps its series fill, or takes the automatic one
+     * (`NormalizedChartSeries.automaticPointFill`).
+     */
+    readonly chartPointKeepsSeriesFill: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

@@ -509,29 +509,44 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const valueAxisOptions = options.valAxes ?? [];
     const normalizedType: NormalizedChartType = mixed ? "mixed" : (type as NormalizedChartType);
     const palette = options.chartColors?.length ? options.chartColors : normalizedType === "pie" || normalizedType === "doughnut" ? PPTX_DEFAULTS.chart.colors.pie : PPTX_DEFAULTS.chart.colors.bar;
-    // PptxGenJS 4.0.1 writes a `c:dPt` per point of a bar chart's only series, filled with `chartColors[index]`, when the
-    // caller's chartColors has more than one entry, unless `lineSize` is 0 (the c:dPt then has no fill); PowerPoint and
-    // LibreOffice draw each bar in its own color and key the legend entry with the series color (#473).
-    const colorsEachBar = (options.chartColors?.length ?? 0) > 1 && options.lineSize !== 0;
+    // PptxGenJS 4.0.1 writes a `c:dPt` per point of a bar or bar3D group's only series when the caller's chartColors has
+    // more than one entry: a bar's is filled with `chartColors[index]`, a bar3D's has only an outline (`<a:ln>`) in it,
+    // and with `lineSize: 0` either has only `<a:ln><a:noFill/>`. PowerPoint and LibreOffice draw each filled bar in its
+    // own color and key the legend entry with the series color (#473); a point without a fill takes the automatic one,
+    // where the target draws it (chartPointKeepsSeriesFill, #507).
+    const pointColors = options.chartColors && options.chartColors.length > 1 ? options.chartColors : undefined;
+    const withPointStyle = (item: NormalizedChartSeries, colors: readonly string[]): NormalizedChartSeries => {
+        if (item.type === "bar" && options.lineSize !== 0) {
+            return { ...item, varyColors: true };
+        }
+
+        // shortcut: the automatic fill of the first series; a single-series bar group after other series in a combo
+        // chart may take a later accent, measure it when a deck needs it.
+        const automaticPointFill = normalizeColor(PPTX_DEFAULTS.theme.colors.accent1);
+
+        if (item.type === "bar3D" && options.lineSize !== 0) {
+            return { ...item, automaticPointFill, pointLineColors: item.values.map((_, index) => normalizeColor(colors[index % colors.length] ?? "")) };
+        }
+
+        return { ...item, automaticPointFill };
+    };
     let series: NormalizedChartSeries[];
 
     if (!Array.isArray(type)) {
         series = normalizeSeries(normalizedType, data);
 
-        if (normalizedType === "bar" && colorsEachBar && series.length === 1 && series[0]) {
-            series[0] = { ...series[0], varyColors: true };
+        if ((normalizedType === "bar" || normalizedType === "bar3D") && pointColors && series.length === 1 && series[0]) {
+            series[0] = withPointStyle(series[0], pointColors);
         }
     } else {
         series = [];
 
         for (const chart of type) {
             for (const item of normalizeSeries(chart.type as NormalizedChartType, chart.data)) {
-                series.push({
-                    ...item,
-                    // PptxGenJS restarts colors within each mixed chart-type group.
-                    varyColors: chart.type === "bar" && chart.data.length === 1 && colorsEachBar,
-                    valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const),
-                });
+                // PptxGenJS restarts colors within each mixed chart-type group.
+                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const) };
+
+                series.push(chart.type === "bar" && chart.data.length === 1 && pointColors ? withPointStyle(placed, pointColors) : placed);
             }
         }
     }

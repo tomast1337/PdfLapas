@@ -975,6 +975,39 @@ describe("chart normalization and rendering", () => {
         expect(Array.from(svg?.querySelectorAll('path[ecmeta_ssr_type="legend"][ecmeta_silent]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4"]);
     });
 
+    test("outlines each box of a single-series bar3D chart from chartColors and fills points without a c:dPt fill as the target does (#507)", () => {
+        const one = [categoricalData[0]!];
+        const colors = ["FF0000", "00AA00"];
+        const points = (type: PptxGenJS.CHART_NAME, options: PptxGenJS.IChartOpts): { fill: string | undefined; lines: string[] | undefined } => {
+            const [series] = normalizeChart(type, one, options).series;
+
+            return { fill: series?.automaticPointFill, lines: series?.pointLineColors };
+        };
+
+        // PptxGenJS writes each bar3D point an outline in `chartColors[index % length]` and no fill.
+        expect(points("bar3D", { chartColors: colors })).toEqual({ fill: "#4472C4", lines: ["#FF0000", "#00AA00", "#FF0000"] });
+        // With lineSize 0, a bar3D or bar point has `<a:ln><a:noFill/>` only; one color writes no c:dPt.
+        expect(points("bar3D", { chartColors: colors, lineSize: 0 })).toEqual({ fill: "#4472C4", lines: undefined });
+        expect(points("bar", { chartColors: colors, lineSize: 0 })).toEqual({ fill: "#4472C4", lines: undefined });
+        expect(points("bar3D", { chartColors: ["FF0000"] })).toEqual({ fill: undefined, lines: undefined });
+        expect(normalizeChart("bar3D", categoricalData, { chartColors: colors }).series.map(series => series.pointLineColors)).toEqual([undefined, undefined]);
+
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("bar3D", one, { x: 0, y: 0, w: 5, h: 3, chartColors: colors, showLegend: true, legendPos: "b" });
+        slide.addChart("bar", one, { x: 0, y: 3, w: 5, h: 2, chartColors: colors, lineSize: 0 });
+        const [bar3D, bar] = renderedPage(presentation).querySelectorAll(".slide-chart svg");
+        const marks = Array.from(bar3D?.querySelectorAll(".bar3d-mark") ?? []);
+
+        // LibreOffice (chartPointKeepsSeriesFill off) fills every box in accent1 (its side 16% darker) and keys the legend
+        // in the series color.
+        expect(marks.map(mark => mark.getAttribute("stroke"))).toEqual(["#FF0000", "#00AA00", "#FF0000"]);
+        expect(marks.map(mark => mark.querySelector(".bar3d-side")?.getAttribute("fill"))).toEqual(["#3960a5", "#3960a5", "#3960a5"]);
+        expect(bar3D?.querySelector("rect")?.getAttribute("fill")).toBe("#FF0000");
+        expect(Array.from(bar?.querySelectorAll('path[ecmeta_ssr_type="chart"]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4", "#4472C4", "#4472C4"]);
+    });
+
     test("runs a clustered horizontal bar chart's series bottom-up and lists its legend from the last series, as LibreOffice and PowerPoint draw it (#472)", () => {
         // For each fill, the top of each bar (by category) and the legend text in order.
         const drawn = (options: PptxGenJS.IChartOpts) => {

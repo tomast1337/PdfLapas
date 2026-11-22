@@ -621,5 +621,21 @@
     "p2-Text2": 0.0276,
     "p2-Text3": 0.0127,
     "p2-Text4": 0.0222
+  },
+  "chartCategoryOptions": {
+    "p1-Chart0": 0.157,
+    "p1-Chart1": 0.1051,
+    "p1-Chart2": 0.0974,
+    "p1-Chart3": 0.1097
+  },
+  "chartDataTable": {
+    "p1-Chart0": 0.1106,
+    "p1-Chart1": 0.1043,
+    "p1-Chart2": 0.1148,
+    "p1-Chart3": 0.1638
+  },
+  "chartPieBestFit": {
+    "p1-Chart0": 0.0345,
+    "p1-Chart1": 0.063
   }
 }

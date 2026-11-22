@@ -2245,6 +2245,8 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartFixedBoundFixture(presentation);
     populateChartLabelPositionFixture(presentation);
     populateChartBar3DAxisFixture(presentation);
+    populateChartOptionLabelFixture(presentation);
+    populateChartOptionAxisFixture(presentation);
 }
 
 /**
@@ -3259,4 +3261,59 @@ export function populateChartBar3DAxisFixture(presentation: Presentation): void 
 
     slide.addChart("bar3D", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 1 });
     slide.addChart("bar3D", [{ name: "Lorem", labels, values: [12, 30, 48, 25] }], { ...shared, x: 5.8, valAxisMajorUnit: 20 });
+}
+
+/**
+ * Data labels on every chart type (#477): an area chart's value and series name (LibreOffice centers them and joins
+ * them with "; "), a radar chart's values beside its points, a scatter chart's own point labels for showLabel and a
+ * bar3D chart's values above its bars. A parity slide after the others (no page number moves) and the WASM
+ * chartOptionLabels deck, which crops each chart.
+ */
+export function populateChartOptionLabelFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Data labels on every chart type", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, dataLabelFontSize: 10 };
+
+    slide.addChart("area", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 0.4, y: 0.8, showValue: true, showSerName: true });
+    slide.addChart("radar", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 5.2, y: 0.8, showValue: true });
+    slide.addChart(
+        "scatter",
+        [
+            { name: "X", values: [1, 2, 3, 4] },
+            { name: "Lorem", labels: ["Alpha", "Beta", "Gamma", "Delta"], values: [3, 5, 4, 7] },
+        ],
+        { ...shared, x: 0.4, y: 3.2, showLabel: true },
+    );
+    slide.addChart("bar3D", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 5.2, y: 3.2, chartColors: ["BDD7EE"], showValue: true });
+}
+
+/**
+ * Axis options on radar, bar3D and line charts (#561, #479): a radar chart numbers its first spoke 0..10 by 5 and runs
+ * its categories clockwise; a bar3D chart draws its value and category titles, its category labels in their color and
+ * its value gridlines in theirs; a maxMin line chart draws its value axis downwards with the category labels at the
+ * top. A parity slide after the others (no page number moves) and the WASM chartOptionAxes deck, which crops each chart.
+ */
+export function populateChartOptionAxisFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Axis options on every chart type", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4", "Q5"];
+    const data = [{ name: "Lorem", labels, values: [3, 5, 4, 7, 2] }];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 3, h: 2.6 };
+
+    slide.addChart("radar", data, { ...shared, x: 0.2, valGridLine: { color: "A5A5A5" } });
+    slide.addChart("bar3D", data, {
+        ...shared,
+        x: 3.4,
+        chartColors: ["BDD7EE"],
+        showValAxisTitle: true,
+        valAxisTitle: "Units",
+        showCatAxisTitle: true,
+        catAxisTitle: "Quarter",
+        catAxisLabelColor: "C00000",
+        valGridLine: { color: "00B050" },
+    });
+    slide.addChart("line", data, { ...shared, x: 6.6, valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts);
 }

@@ -582,5 +582,16 @@
   "chartBar3DAxis": {
     "p1-Chart0": 0.1398,
     "p1-Chart1": 0.1339
+  },
+  "chartOptionLabels": {
+    "p1-Chart0": 0.1205,
+    "p1-Chart1": 0.1168,
+    "p1-Chart2": 0.1365,
+    "p1-Chart3": 0.1267
+  },
+  "chartOptionAxes": {
+    "p1-Chart0": 0.1373,
+    "p1-Chart1": 0.1651,
+    "p1-Chart2": 0.2126
   }
 }

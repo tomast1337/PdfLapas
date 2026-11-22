@@ -415,41 +415,57 @@ impl Default for Synthesis {
     }
 }
 
+/// A run's underline and strike, as its HTML states them (docs/HTML_PROFILE.md, "Underline and strike geometry").
+#[derive(Clone, Default)]
 pub(crate) struct Decoration {
-    pub(crate) underline: bool,
-    pub(crate) underline_style: UnderlineStyle,
+    /// `underline` in `text-decoration-line`: `data-underline` around the CSS band.
+    pub(crate) underline: Option<DecorationShape>,
     pub(crate) underline_color: Option<Rgba>,
-    /// `text-decoration-thickness: from-font` (the PowerPoint target's): the underline takes PowerPoint's shapes
-    /// around the `post` band, averaged over the line's runs; otherwise LibreOffice's patterns.
-    pub(crate) underline_from_font: bool,
-    /// `text-decoration-thickness` and `text-underline-offset` in em (the model's `underlineBand`): a from-font
-    /// underline's band in place of the face's `post` band.
-    pub(crate) underline_band: Option<EmBand>,
-    /// `data-underline-heavy`: PowerPoint's heavy band, 1.5 times the `post` band's thickness.
-    pub(crate) underline_heavy: bool,
-    pub(crate) strike: bool,
-    pub(crate) double_strike: bool,
+    /// `data-underline-line-band`: the underline takes its line's band, the width-weighted average of its runs'.
+    pub(crate) underline_line_band: bool,
+    /// `line-through` in `text-decoration-line`, or `data-double-strike`: `data-strike` around `data-strike-band`.
+    pub(crate) strike: Option<DecorationShape>,
 }
 
-/// An underline band in em of the run's font size: its top `offset` above the baseline (below when negative), `size` tall.
+/// A decoration's pieces around its band.
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct DecorationShape {
+    /// In em of the run's font size; None for the face's own band (`post` for an underline, OS/2 for a strike).
+    pub(crate) band: Option<EmBand>,
+    pub(crate) pieces: Vec<DecorationPiece>,
+}
+
+impl DecorationShape {
+    /// `line(0 1)` around the face's band: what an omitted `data-underline` or `data-strike` means.
+    pub(crate) fn solid() -> Self {
+        Self {
+            band: None,
+            pieces: vec![DecorationPiece::Line {
+                top: 0.0,
+                height: 1.0,
+                dashes: Vec::new(),
+            }],
+        }
+    }
+}
+
+/// One piece of a decoration; lengths in thicknesses T of its band, measured down from the band's top.
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) enum DecorationPiece {
+    /// A stripe `height` tall from `top`, cut into dashes by `dashes` (on, off, ... from each segment's start) when
+    /// not empty.
+    Line { top: f32, height: f32, dashes: Vec<f32> },
+    /// Cubic half-waves `half` long, `amplitude` off the line at `centre`, the first up, stroked `stroke` px wide.
+    Wave { centre: f32, amplitude: f32, half: f32, stroke: f32 },
+    /// A zigzag of 45-degree slopes filling `height` from `top`, its line `line` px tall.
+    Zigzag { top: f32, height: f32, line: f32 },
+}
+
+/// A band in em of the run's font size: its top `offset` above the baseline (below when negative), `size` tall.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct EmBand {
     pub(crate) offset: f32,
     pub(crate) size: f32,
-}
-
-/// `NormalizedTextDecoration.underlineStyle`: the CSS `text-decoration-style` the PptxGenJS style maps to.
-// shortcut: the HTML carries only these five styles and `data-underline-heavy` (plain `heavy` on the PowerPoint
-// target), so the other `heavy` variants, and every one on the LibreOffice target, draw at the normal thickness and
-// `dashLong`, `dotDash` and `dotDotDash` as plain dashes in both renderers; carry the OOXML style in the
-// profile when a fixture needs them (#397).
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum UnderlineStyle {
-    Solid,
-    Double,
-    Dotted,
-    Dashed,
-    Wavy,
 }
 
 pub(crate) struct Outline {
@@ -592,16 +608,7 @@ pub(crate) mod build {
             color: Rgba(0, 0, 0, 1.0),
             bold: false,
             italic: false,
-            decoration: Decoration {
-                underline: false,
-                underline_style: UnderlineStyle::Solid,
-                underline_color: None,
-                underline_from_font: false,
-                underline_band: None,
-                underline_heavy: false,
-                strike: false,
-                double_strike: false,
-            },
+            decoration: Decoration::default(),
             baseline_offset: 0.0,
             character_spacing: 0.0,
             word_spacing: Vec::new(),

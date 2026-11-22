@@ -29,6 +29,9 @@ const TEXT_BORDER = /(?:^|; )border-color: ([^;]+); border-width: ([^;]+)px; bor
 const FONT_FAMILY = /((?:^|; )font-family: "((?:[^"\\]|\\.)*)"(?:, "(?:[^"\\]|\\.)*")*)/;
 // A run's underline and strike, its decoration style and thickness, as render/text.ts writes them.
 const UNDERLINE_AND_STRIKE = /(?:^|; )text-decoration-line: underline line-through;/;
+// A run's decoration lines, and an underline band stated in em (render/text.ts writes it from the target's rules).
+const DECORATION_LINE = /((?:^|; )text-decoration-line: )([^;]+);/;
+const UNDERLINE_OFFSET_EM = /(?:^|; )text-underline-offset: [^;]+em;/;
 const DECORATION_STYLE = /((?:^|; )text-decoration-style: )[^;]+;/;
 const DECORATION_THICKNESS = /(?:^|; )text-decoration-thickness: ([^;]+);/;
 // U+2011 NON-BREAKING HYPHEN in a run's source text, literal or as a character reference.
@@ -209,6 +212,21 @@ export function printHtml(html: string): string {
 
             const substitute = metricSubstitute(face);
             const fallback = substitute.kind === "none" ? SANS_FALLBACK : substitute.face === "Carlito" ? CALIBRI_FALLBACK : CAMBRIA_FALLBACK;
+
+            // Underline and strike stated in em: prepareForPrint draws them from the profile's geometry (Renderer workarounds),
+            // so Chromium draws none. data-print-decoration keeps the lines for that stage; a run whose band is the font's
+            // keeps Chromium's decorations, below.
+            const lines = style.match(DECORATION_LINE)?.[2];
+
+            if (lines && lines !== "none") {
+                const underline = !lines.includes("underline") || UNDERLINE_OFFSET_EM.test(style);
+                const strike = !lines.includes("line-through") || attribute(element, "data-strike-band") !== undefined;
+
+                if (underline && strike) {
+                    style = style.replace(DECORATION_LINE, "$1none;");
+                    edits.push(setAttribute(element, "data-print-decoration", lines));
+                }
+            }
 
             // Underline and strike: CSS gives every line of one box its text-decoration-color, which the profile gives the
             // underline alone; PowerPoint draws the strike in the text colour (OOXML's <a:uFill> is the underline's) and

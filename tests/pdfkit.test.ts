@@ -539,27 +539,68 @@ describe("PDFKit renderer", () => {
         expect((api?.x ?? 0) - (same?.x ?? 0)).toBeCloseTo(kerned * 24, 3);
     });
 
-    test("fills an underline as pdf-core's band: from the font's underline position down, one thickness tall", async () => {
-        const fonts = await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ });
-        const [file] = fonts;
+    describe("underline and strike geometry (docs/HTML_PROFILE.md)", () => {
+        // "Ab cd" at 24px underlined on the LibreOffice target, its HTML rewritten by `edit`; its band and the drawn rects.
+        const underlined = async (edit: (html: string) => string = html => html, options: PptxGenJS.TextPropsOptions = {}) => {
+            const renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ }), onUnsupported: "warn" });
+            const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
 
-        if (!file) {
-            throw new Error("Liberation Sans is not installed");
-        }
+            pres.addSlide().addText("Ab cd", { x: 1, y: 1, w: 4, h: 1, fontFace: "Arial", fontSize: 18, underline: { style: "sng" }, margin: 0, valign: "top", ...options });
+            const document = await pres.toHtml();
+            const offset = Number(/text-underline-offset: ([\d.-]+)em/.exec(document.html)?.[1]);
+            const thickness = Number(/text-decoration-thickness: ([\d.]+)em/.exec(document.html)?.[1]);
+            const content = pageContents(await renderer.render({ ...document, html: edit(document.html) }))[0] ?? "";
+            const [text] = texts(content);
+            // The first rect is the slide background.
+            const rects = [...content.matchAll(/([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) re/g)].slice(1).map(match => match.slice(1).map(Number));
 
-        const font = createFont(Buffer.from(file)) as Font; // `as`: a .ttf holds one font, not a collection
-        const renderer = await createPdfkitRenderer({ fonts });
-        const pdf = await render(renderer, pres => pres.addSlide().addText("Under", { x: 1, y: 1, w: 4, h: 1, fontFace: "Arial", fontSize: 18, underline: { style: "dbl" }, margin: 0, valign: "top" }));
-        const content = pageContents(pdf)[0] ?? "";
-        const [text] = texts(content);
-        const scale = 24 / font.unitsPerEm;
-        const [top, t] = [(text?.baseline ?? 0) - font.underlinePosition * scale, font.underlineThickness * scale];
-        // Double: two half-thickness lines one thickness apart, centred on the single band.
-        // The first rect is the slide background.
-        const rects = [...content.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re/g)].slice(1).map(match => match.slice(1).map(Number));
+            return { content, rects, x: text?.x ?? 0, top: (text?.baseline ?? 0) + offset * 24, t: thickness * 24, warnings: renderer.warnings() };
+        };
 
-        expect(rects.map(rect => rect[1])).toEqual([expect.closeTo(top - t / 2, 2), expect.closeTo(top + t, 2)]);
-        expect(rects.map(rect => rect[3])).toEqual([expect.closeTo(t / 2, 2), expect.closeTo(t / 2, 2)]);
+        test("draws the band the HTML states with the target's pieces: LibreOffice's double lines", async () => {
+            const double = await underlined(html => html, { underline: { style: "dbl" } });
+
+            expect(double.rects.map(rect => rect[1])).toEqual([expect.closeTo(double.top - 0.46 * double.t, 3), expect.closeTo(double.top + 1.46 * double.t, 3)]);
+            expect(double.rects.map(rect => rect[3])).toEqual([expect.closeTo(0.64 * double.t, 3), expect.closeTo(0.64 * double.t, 3)]);
+            expect(double.warnings).toEqual([]);
+        });
+
+        test("cuts a line into dashes from the run's start, the last one cut at its end", async () => {
+            const solid = await underlined();
+            const [, , width = 0] = solid.rects[0] ?? [];
+            const dashed = await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="line(0 1 4 2)"'));
+            const t = dashed.t;
+
+            expect(dashed.rects.length).toBe(Math.ceil(width / (6 * t)));
+            expect(dashed.rects[1]?.[0]).toBeCloseTo((dashed.rects[0]?.[0] ?? 0) + 6 * t, 3);
+            const last = dashed.rects.at(-1) ?? [];
+
+            expect((last[0] ?? 0) + (last[2] ?? 0)).toBeCloseTo((solid.rects[0]?.[0] ?? 0) + width, 3);
+            expect(last[2]).toBeLessThanOrEqual(4 * t + 1e-6);
+        });
+
+        test("strokes a wave and fills a zigzag around the band", async () => {
+            const wave = await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="wave(0.5 2 4 0.03px)"'));
+
+            // Cubic half-waves stroked 0.03px wide: no filled band.
+            expect(wave.rects).toEqual([]);
+            expect(wave.content).toMatch(/0\.03 w\n/);
+            expect(wave.content).toMatch(/ c\n[^]*\nS\n/);
+            const zigzag = await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="zigzag(-0.5 2 0.16px)"'));
+
+            expect(zigzag.rects).toEqual([]);
+            expect(zigzag.content).toMatch(/ l\nh\n[^]*\nf\n/);
+        });
+
+        test("reports a malformed piece or strike band and draws one stripe filling the face's band", async () => {
+            const malformed = await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="line(0)" data-strike-band="1em"'), { strike: "sngStrike" });
+
+            expect(malformed.warnings).toEqual([
+                "slide 1: object 'Text 0': attribute 'data-strike-band' '1em' is not drawn: it is '<top>em <thickness>em' with a positive thickness (drawn with the face's strikeout band)",
+                "slide 1: object 'Text 0': attribute 'data-underline' 'line(0)' is not drawn: 'line(0)' is not line(<top> <height>) with a height and an even count of dash lengths of at least 0.01 (drawn as line(0 1))",
+            ]);
+            expect(malformed.rects.map(rect => rect[1])[0]).toBeCloseTo(malformed.top, 3);
+        });
     });
 
     test("draws the PowerPoint target's double and heavy underlines and one averaged band per line, as PowerPoint does (#379)", async () => {
@@ -638,10 +679,12 @@ describe("PDFKit renderer", () => {
 
         expect(heavy.tops).toEqual([expect.closeTo(heavy.baseline + p - t, 2)]);
         expect(heavy.heights).toEqual([expect.closeTo(1.5 * t, 2)]);
-        // The face's own post values, given explicitly, draw what the post band draws.
+        // The face's own post values, given explicitly, draw what the post band draws (to the 6 decimals of em the HTML writes).
         const post = await underlined({ position: font.underlinePosition, thickness: font.underlineThickness });
+        const face = await underlined();
 
-        expect(post.content).toBe((await underlined()).content);
+        expect(post.tops).toEqual(face.tops.map(top => expect.closeTo(top, 4)));
+        expect(post.heights).toEqual(face.heights.map(height => expect.closeTo(height, 4)));
         expect(renderer.warnings()).toEqual([]);
     });
 

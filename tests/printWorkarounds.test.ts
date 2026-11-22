@@ -5,6 +5,7 @@ import type PptxGenJS from "pptxgenjs";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
 import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { PRINT_ZOOM, printHtml } from "../packages/puppeteer/src/printWorkarounds";
+import { PuppeteerPdfRenderer } from "../packages/puppeteer/src/puppeteerPdf";
 import { inchesToPixels, inchesToPoints, pixelsToInches } from "@pdflapas/model";
 
 /** The document Puppeteer prints, parsed for structural assertions. */
@@ -328,13 +329,14 @@ describe("Puppeteer print workarounds", () => {
         const slide = presentation.addSlide();
         const underline = { style: "dotted", color: "FF0000" } as const;
 
+        // A face without installed metrics: its bands are the font's, which only Chromium's own decorations draw.
         slide.addText(
             [
                 { text: "Single‑one", options: { strike: "sngStrike", underline } },
                 { text: "Double", options: { strike: "dblStrike", underline } },
                 { text: "Plain", options: { strike: "sngStrike" } },
             ],
-            { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial", color: "0000FF" },
+            { x: 1, y: 1, w: 6, h: 1, fontFace: "Placeholder Sans", color: "0000FF" },
         );
         const [single, double, plain] = (await printedPage(presentation)).querySelectorAll<HTMLElement>(".text-run");
 
@@ -351,6 +353,51 @@ describe("Puppeteer print workarounds", () => {
         expect(single?.textContent).toBe("Single-⁠one");
         expect([plain?.style.textDecorationLine, plain?.children.length]).toEqual(["line-through", 0]);
     });
+
+    test("leaves a run whose decorations state their bands in em to prepareForPrint, and Chromium draws none of them", async () => {
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addText([{ text: "Both", options: { strike: "dblStrike", underline: { style: "dbl" } } }, { text: "Plain" }], { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial" });
+        const [both, plain] = (await printedPage(presentation)).querySelectorAll<HTMLElement>(".text-run");
+
+        expect([both?.style.textDecorationLine, both?.dataset.printDecoration, both?.children.length]).toEqual(["none", "underline line-through", 0]);
+        expect([plain?.style.textDecorationLine, plain?.dataset.printDecoration]).toEqual(["", undefined]);
+    });
+
+    test("draws an underline and a strike at the bands the run states, from its baseline (#396, #489)", async () => {
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addText([{ text: "Underline", options: { strike: "sngStrike", underline: { style: "sng" } } }], { x: 1, y: 1.07, w: 6, h: 1, fontFace: "Arial", fontSize: 24 });
+        const document = await presentation.toHtml();
+        const [, thickness = "", offset = ""] = document.html.match(/text-decoration-thickness: ([\d.]+)em; text-underline-offset: ([\d.]+)em;/) ?? [];
+        const [, strikeOffset = "", strikeThickness = ""] = document.html.match(/data-strike-band="(-[\d.]+)em ([\d.]+)em"/) ?? [];
+        const content = pdfContentStreams(await new PuppeteerPdfRenderer().render(document)).join("\n");
+        // The SVG's `scale 0 0 scale x y cm` and its two fills (underline, strike) in CSS px; the text's baseline is its
+        // `Tm`'s y, at 1 / PRINT_ZOOM of the SVG's scale.
+        const [, scale = "", y = "", underlineTop = "", underlineHeight = "", strikeTop = "", strikeHeight = ""] =
+            content.match(/\n([\d.]+) 0 0 \1 [\d.]+ ([\d.]+) cm\n(?:(?!Q\n).*\n)*?[\d.]+ ([\d.]+) [\d.]+ ([\d.]+) re\nf\n[\d.]+ ([\d.]+) [\d.]+ ([\d.]+) re\nf\n/) ?? [];
+        const [, text = ""] = content.match(/\n1 0 0 -1 [\d.]+ ([\d.]+) Tm\n/) ?? [];
+        const baseline = ((Number(text) * Number(scale)) / PRINT_ZOOM - Number(y)) / Number(scale);
+        const size = inchesToPixels(24 / 72);
+
+        // Chromium paints the baseline at a whole print device px, 1 / PRINT_ZOOM CSS px: half of it, and float noise.
+        expect(Math.abs(Number(underlineTop) - baseline - Number(offset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
+        expect(Math.abs(Number(strikeTop) - baseline - Number(strikeOffset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
+        expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
+    }, 60_000);
+
+    test("names the object when a run's decoration geometry is malformed", async () => {
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addText([{ text: "Run", options: { strike: "sngStrike", underline: { style: "dbl" } } }], { x: 1, y: 1, w: 4, h: 1, fontFace: "Arial", objectName: "Title" });
+        const document = await presentation.toHtml();
+        const renderer = new PuppeteerPdfRenderer();
+
+        await expect(renderer.render({ ...document, html: document.html.replace(/data-underline="[^"]*"/, 'data-underline="line(0)"') })).rejects.toThrow("Cannot print 'Title': a .text-run has data-underline piece 'line(0)'");
+        await expect(renderer.render({ ...document, html: document.html.replace(/data-strike-band="[^"]*"/, 'data-strike-band="1px 2px"') })).rejects.toThrow(
+            `Cannot print 'Title': a .text-run has data-strike-band="1px 2px", which is not '<offset>em <thickness>em'`,
+        );
+    }, 60_000);
 
     test("names the object when a paragraph has no line box", async () => {
         const presentation = new PuppeteerGen();

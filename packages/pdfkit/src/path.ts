@@ -25,6 +25,9 @@ export type StrokeStyle = {
     readonly dashes?: readonly number[];
 };
 
+/** PDF's initial miter limit, which a box line and a decoration wave keep. */
+export const PDF_MITER_LIMIT = 10;
+
 /** Sides of the polygon a round cap or join is approximated with: enough that a blurred silhouette cannot show them. */
 const ROUND_SIDES = 16;
 /** Most points one curve is flattened into. */

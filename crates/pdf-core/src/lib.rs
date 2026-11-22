@@ -81,6 +81,7 @@ pub struct Renderer {
     glyph_ranges: Vec<Range<usize>>,
     positioned: Vec<parley::Glyph>,
     glyphs: Vec<KrillaGlyph>,
+    decoration_segments: Vec<crate::text::draw::Segment>,
 }
 
 impl Default for Renderer {
@@ -119,6 +120,7 @@ impl Renderer {
             glyph_ranges: Vec::new(),
             positioned: Vec::new(),
             glyphs: Vec::new(),
+            decoration_segments: Vec::new(),
         }
     }
 
@@ -927,7 +929,7 @@ mod tests {
             link: build::link("https://example.com"),
             ..build::run("linked words that wrap", "Liberation Sans", 20.0)
         };
-        run.decoration.underline = true;
+        run.decoration.underline = Some(model::DecorationShape::solid());
         let text = build::text_box(vec![build::paragraph(vec![run], 24.0, 20.0)]);
         let pdf = render(&mut r, &build::deck(vec![build::text_object(build::style(10.0, 20.0, 120.0, 200.0), text)])).unwrap();
         assert_eq!(r.warnings(), Vec::<String>::new());
@@ -1032,7 +1034,7 @@ mod tests {
             outline: Some(Outline { color: css(color), width: 1.0 }),
             ..build::run("Ag", "Liberation Sans", 24.0)
         };
-        run.decoration.underline = true;
+        run.decoration.underline = Some(model::DecorationShape::solid());
         run.decoration.underline_color = Some(css(color));
         let mut style = build::style(10.0, 10.0, 300.0, 100.0);
         style.transform.opacity = 0.5;
@@ -1096,12 +1098,22 @@ mod tests {
         Some(layout)
     }
 
+    /// The decoration segments of the first line of `layout`'s first paragraph, and its line band.
+    fn first_line_segments(layout: &crate::text::layout::BoxLayout) -> (Vec<crate::text::draw::Segment>, Option<crate::text::draw::Band>) {
+        let para = &layout.paras[0];
+        let line = para.layout.lines().next().expect("one line");
+        let mut segments = Vec::new();
+        crate::text::draw::line_segments(&line, &layout.paints, (0.0, 0.0), &mut segments);
+        let band = crate::text::draw::line_band(&segments, &layout.paints);
+        (segments, band)
+    }
+
     #[test]
-    fn a_line_of_from_font_underlines_takes_their_post_bands_averaged_by_width() {
+    fn a_line_band_underline_takes_its_runs_post_bands_averaged_by_width() {
         let run = |text, size| {
             let mut run = build::run(text, "Liberation Sans", size);
-            run.decoration.underline = true;
-            run.decoration.underline_from_font = true;
+            run.decoration.underline = Some(model::DecorationShape::solid());
+            run.decoration.underline_line_band = true;
             run
         };
         let text = build::text_box(vec![build::paragraph(vec![run("Small run ", 16.0), run("Large run", 32.0)], 40.0, 32.0)]);
@@ -1117,7 +1129,7 @@ mod tests {
             })
             .collect();
         let [(small, s), (large, l)] = runs[..] else { panic!("two glyph runs") };
-        let band = crate::text::draw::line_underline_band(&line, &layout.paints).expect("an underlined line");
+        let band = first_line_segments(&layout).1.expect("an underlined line");
         let mean = |a: f32, b: f32| (small * a + large * b) / (small + large);
         assert!((band.size - mean(s.underline_size, l.underline_size)).abs() < 1e-4);
         assert!((band.offset - mean(s.underline_offset, l.underline_offset)).abs() < 1e-4);
@@ -1126,12 +1138,14 @@ mod tests {
     }
 
     #[test]
-    fn a_from_font_underline_with_an_em_band_takes_it_in_place_of_the_post_band() {
+    fn an_underline_with_an_em_band_takes_it_in_place_of_the_post_band() {
         let band_of = |band: Option<model::EmBand>| {
             let mut run = build::run("Band", "Liberation Sans", 20.0);
-            run.decoration.underline = true;
-            run.decoration.underline_from_font = true;
-            run.decoration.underline_band = band;
+            run.decoration.underline = Some(model::DecorationShape {
+                band,
+                ..model::DecorationShape::solid()
+            });
+            run.decoration.underline_line_band = true;
             let layout = laid_out(&build::text_box(vec![build::paragraph(vec![run], 40.0, 32.0)]))?;
             let line = layout.paras[0].layout.lines().next().expect("one line");
             let metrics = line
@@ -1141,7 +1155,7 @@ mod tests {
                     parley::PositionedLayoutItem::InlineBox(_) => None,
                 })
                 .expect("a glyph run");
-            let band = crate::text::draw::line_underline_band(&line, &layout.paints).expect("an underlined line");
+            let band = first_line_segments(&layout).1.expect("an underlined line");
             Some((band.offset, band.size, metrics))
         };
         let Some((offset, size, metrics)) = band_of(Some(model::EmBand { offset: -0.045, size: 0.072 })) else {
@@ -1157,6 +1171,22 @@ mod tests {
         let (post_offset, post_size, _) = band_of(None).expect("installed");
         assert!((offset - post_offset).abs() < 1e-4 && (size - post_size).abs() < 1e-4);
         assert!((post_offset - metrics.underline_offset).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_run_is_one_decoration_segment_per_line() {
+        let mut plain = build::run("ab ", "Liberation Sans", 20.0);
+        plain.decoration.underline = Some(model::DecorationShape::solid());
+        // Word spacing splits the run into several glyph runs.
+        plain.word_spacing = vec![(0..2, 1.0)];
+        let mut struck = build::run("cd  ef", "Liberation Sans", 20.0);
+        struck.decoration.strike = Some(model::DecorationShape::solid());
+        struck.decoration.underline = Some(model::DecorationShape::solid());
+        let Some(layout) = laid_out(&build::text_box(vec![build::paragraph(vec![plain, struck], 40.0, 32.0)])) else {
+            return eprintln!("Liberation Sans not installed: decoration segments not checked");
+        };
+        let spans: Vec<_> = first_line_segments(&layout).0.iter().map(|s| (s.paint, s.strike)).collect();
+        assert_eq!(spans, [(0, false), (1, true), (1, false)]);
     }
 
     #[test]
@@ -1396,7 +1426,7 @@ mod tests {
                 color: css("rgb(17, 34, 51)"),
                 ..build::run(text, "Arial", 28.0)
             };
-            run.decoration.strike = true;
+            run.decoration.strike = Some(model::DecorationShape::solid());
             run
         };
         let para = |runs: Vec<model::Run>, bullet: Option<Bullet>| model::Paragraph {

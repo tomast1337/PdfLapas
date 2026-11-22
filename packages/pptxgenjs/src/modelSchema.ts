@@ -67,6 +67,27 @@ const objectStyle = z.strictObject({
     objectName: z.string(),
 });
 
+// A decoration's pieces in band thicknesses and its band in em (docs/HTML_PROFILE.md, `data-underline`).
+const decorationShape = z.strictObject({
+    band: z.strictObject({ position: finite, thickness: z.number().positive() }).optional(),
+    pieces: z.array(
+        z.discriminatedUnion("kind", [
+            z.strictObject({
+                kind: z.literal("line"),
+                top: finite,
+                height: z.number().positive(),
+                dashes: z
+                    .array(z.number().positive())
+                    .min(2)
+                    .refine(dashes => dashes.length % 2 === 0, { error: "must hold on and off lengths in pairs" })
+                    .optional(),
+            }),
+            z.strictObject({ kind: z.literal("wave"), centre: finite, amplitude: finite, halfPeriod: z.number().positive(), stroke: z.number().positive() }),
+            z.strictObject({ kind: z.literal("zigzag"), top: finite, height: z.number().positive(), thickness: z.number().positive() }),
+        ]),
+    ),
+});
+
 const textRun = z
     .strictObject({
         text: z.string(),
@@ -80,11 +101,11 @@ const textRun = z
             underline: z.boolean(),
             underlineStyle: z.enum(["solid", "double", "dashed", "dotted", "wavy"]),
             underlineColor: cssColor.optional(),
-            underlineFromFont: z.boolean().optional(),
-            underlineBand: z.strictObject({ position: finite, thickness: z.number().positive() }).optional(),
-            underlineHeavy: z.boolean().optional(),
+            underlineShape: decorationShape.optional(),
+            underlineLineBand: z.literal(true).optional(),
             strike: z.boolean(),
             doubleStrike: z.boolean(),
+            strikeShape: decorationShape.optional(),
         }),
         verticalAlign: z.enum(["baseline", "sub", "super"]),
         baselineOffset: finite,

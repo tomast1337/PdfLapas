@@ -6,6 +6,7 @@ import { attribute, children, type Element, hasAttribute, hasClass } from "./dom
 import { type Effect, shadowEffect } from "./effect/index";
 import { drawImage } from "./image";
 import { captureFill, captureStroke, dash, fill, type Paint, stroke } from "./paint";
+import { PDF_MITER_LIMIT } from "./path";
 import { drawShapeSvg } from "./shape";
 import { drawTable } from "./table";
 import { drawLayout, type Frame, layoutBox } from "./text/draw";
@@ -15,8 +16,6 @@ const TRANSFORM_PART = /(rotate|scaleX|scaleY)\(([^)]*)\)/g;
 const DROP_SHADOW = /^drop-shadow\((.*)\)$/;
 /** pdf-core's warning for an inner shadow it does not draw (on anything but a picture). */
 const INNER_SHADOW_NOT_DRAWN = "inner shadow not rendered";
-/** PDF's initial miter limit, which a box line keeps. */
-const PDF_MITER_LIMIT = 10;
 /** Object-box properties the renderer does not need to draw: `toHtml()` states them for Chromium's layout. */
 const BOX_LAYOUT: ReadonlySet<string> = new Set(["transform-origin", "position", "overflow", "box-sizing", "white-space", "overflow-wrap"]);
 /** Object classes whose kind the renderer does not draw yet, reported as a whole. */

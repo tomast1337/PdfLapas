@@ -424,7 +424,7 @@ parse5 and draws the [profile](HTML_PROFILE.md) with PDFKit, so HTML outside the
 - Text boxes: runs with their face and its fallback families, size, bold, italic (synthesized when the face has
   none, with the profile's stroke and shear), color, letter spacing (per-word spans included), kerning
   (`font-kerning: none`, and pairs across a break opportunity shaped as one run, as `crates/pdf-core` does),
-  underline (single, double, heavy, dotted, dashed, dot-dash and wavy, the bands pdf-core draws), strike and double strike,
+  underline (every OOXML type, from the pieces around the band the HTML states), strike and double strike,
   superscript and subscript (the profile's baseline offset and size), highlight, outline, hyperlinks and slide
   links; paragraph alignment (left, center, right, justify), line spacing, space before and after, indents,
   bullets and numbers, default and explicit tab stops (left, right, center, decimal), right-to-left paragraphs; insets, vertical anchor, `fit: shrink` and `fit: resize`, rotation and

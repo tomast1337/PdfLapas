@@ -532,5 +532,9 @@
   "chartStacked": {
     "p1-Chart0": 0.1483,
     "p1-Chart1": 0.0996
+  },
+  "chartArea": {
+    "p1-Chart0": 0.0864,
+    "p1-Chart1": 0.0889
   }
 }

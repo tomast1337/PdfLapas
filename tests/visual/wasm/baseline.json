@@ -516,7 +516,7 @@
     "p1-Chart1": 0.1205
   },
   "chartBarColors": {
-    "p1-Chart0": 0.1043,
+    "p1-Chart0": 0.0975,
     "p1-Chart1": 0.0821
   },
   "chartPie": {
@@ -559,5 +559,9 @@
   "chartTopRightLegend": {
     "p1-Chart0": 0.1364,
     "p1-Chart1": 0.0987
+  },
+  "chartValueAxis": {
+    "p1-Chart0": 0.0921,
+    "p1-Chart1": 0.0885
   }
 }

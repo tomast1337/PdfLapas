@@ -174,14 +174,23 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             ["offset", offset],
             ["stop-color", color],
         ]);
+    // A front gradient per chart color, and one per series whose points take their automatic fill.
+    const fronts: [string, string][] = chart.colors.map((color, index) => [`bar3d-front-${index}`, color]);
+
+    for (const [index, series] of chart.series.entries()) {
+        if (series.automaticPointFill) {
+            fronts.push([`bar3d-front-point-${index}`, series.automaticPointFill]);
+        }
+    }
+
     const gradients = element(
         "defs",
         [],
-        chart.colors.map((color, index) =>
+        fronts.map(([id, color]) =>
             element(
                 "linearGradient",
                 [
-                    ["id", `bar3d-front-${index}`],
+                    ["id", id],
                     ["x1", "0"],
                     ["y1", "0"],
                     ["x2", "0"],
@@ -259,8 +268,10 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         const value = Math.max(minimum, Math.min(maximum, bar.value));
         const low = Math.min(base, value);
         const high = Math.max(base, value);
-        const color = chart.colors[bar.series % chart.colors.length] ?? "#4472C4";
-        const frontColor = `url(#bar3d-front-${bar.series % chart.colors.length})`;
+        const series = chart.series[bar.series];
+        const color = series?.automaticPointFill ?? chart.colors[bar.series % chart.colors.length] ?? "#4472C4";
+        const frontColor = series?.automaticPointFill ? `url(#bar3d-front-point-${bar.series})` : `url(#bar3d-front-${bar.series % chart.colors.length})`;
+        const outline = series?.pointLineColors?.[bar.category];
         const topColor = shade(color, PPTX_DEFAULTS.chart.bar3DLighting.topLighten);
         const sideColor = shade(color, -PPTX_DEFAULTS.chart.bar3DLighting.sideDarken);
         const opacity = n(chart.colorOpacity);
@@ -279,6 +290,11 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             ["data-category", String(bar.category)],
             ["opacity", opacity],
         ];
+
+        // The point's outline along every edge of its faces.
+        if (outline) {
+            group.push(["stroke", outline], ["stroke-width", n(pointsToPixels(PPTX_DEFAULTS.chart.pointLineWidthPt))], ["stroke-linejoin", "round"]);
+        }
 
         if (chart.bar3DShape === "pyramid" || chart.bar3DShape === "pyramidToMax") {
             const apex = project(cx, (z0 + z1) / 2, high);

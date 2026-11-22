@@ -17,6 +17,7 @@ import {
     populateChartPieFixture,
     populateChartPlotAreaFixture,
     populateChartPlotBandFixture,
+    populateChartPointColorFixture,
     populateChartScatterFixture,
     populateChartStackedFixture,
     populateComponentFixture,
@@ -212,6 +213,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartAreaOrder: {
         populate: presentation => {
             populateChartAreaOrderFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartPointColors: the shared fixture's point outlines slide (#507); every chart gets a crop.
+    chartPointColors: {
+        populate: presentation => {
+            populateChartPointColorFixture(presentation);
 
             return presentation;
         },

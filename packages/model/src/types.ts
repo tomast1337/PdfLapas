@@ -316,6 +316,10 @@ export type NormalizedChartSeries = {
      * absent: it is drawn on its own.
      */
     stack?: "stacked" | "percentStacked";
+    /** Each point's fill in place of the series color (a `<c:dPt>` without a fill); absent: the series color. */
+    automaticPointFill?: CssColor;
+    /** Each point's outline color, by point index (a `<c:dPt>` `<a:ln>`); absent: no outline. */
+    pointLineColors?: CssColor[];
 };
 
 export type NormalizedChartValueAxis = {

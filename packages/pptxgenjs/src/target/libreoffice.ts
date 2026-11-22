@@ -35,6 +35,11 @@ import type { RenderingTargetProfile } from "./index";
  * export of PptxGenJS area charts with two series (Lorem [3, 5, 4, 7], Ipsum [5, 2, 6, 4]) and three (with Dolor
  * [4, 4, 4, 4]), Lorem fills everything below its line, Ipsum shows only above it and Dolor only above both, though
  * PptxGenJS writes them in that order (`<c:idx>` and `<c:order>` 0, 1, 2) in one `<c:areaChart>`.
+ * A chart point whose `<c:dPt>` has no fill takes the automatic one, the theme's accent1, not its series fill
+ * (`chartPointKeepsSeriesFill` off, #507): in LibreOffice 26.2.6's PDF export of single-series PptxGenJS charts with
+ * `chartColors: ["FF0000", "00AA00", "0000FF"]`, every bar3D box (each `<c:dPt>` an outline in its color) and every
+ * bar of a bar chart with `lineSize: 0` (each `<c:dPt>` `<a:ln><a:noFill/>`) is 4472C4 blue, while the legend key
+ * stays FF0000; a bar3D chart with one chartColors entry, which gets no `<c:dPt>`, is red.
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -67,4 +72,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     underlineFromFont: false,
     readsDoughnutHoleSize: false,
     firstAreaSeriesInFront: true,
+    chartPointKeepsSeriesFill: false,
 });

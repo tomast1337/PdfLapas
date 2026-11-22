@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import type { CssColor, NormalizedImage, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
+import type { CssColor, NormalizedChartSeries, NormalizedImage, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
 import type { ChartExtensionInput, ChartExtensionOptions } from "./chart/types";
 import { normalizeComponent } from "./components/normalize";
 import type { ComponentInput, ComponentOptions } from "./components/types";
@@ -236,11 +236,19 @@ export class PuppeteerSlide implements PptxSlide {
         // PptxGenJS writes `<c:holeSize>`, but not every target reads it (readsDoughnutHoleSize).
         const holeSize = target.readsDoughnutHoleSize ? chartOptions.holeSize : undefined;
         const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() });
+        const series: NormalizedChartSeries[] = [];
+
+        // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill).
+        for (const { automaticPointFill, ...item } of normalized.series) {
+            series.push(target.chartPointKeepsSeriesFill || !automaticPointFill ? item : { ...item, automaticPointFill });
+        }
+
         // PptxGenJS always writes a marker outline, but not every target draws it (drawsChartMarkerOutline); an
         // unstacked area chart's series overlap, and the target decides which is in front (firstAreaSeriesInFront).
         // shortcut: a combo chart's area group keeps the series order, as LibreOffice draws it behind the others (#538).
         const chart = {
             ...normalized,
+            series,
             ...(target.drawsChartMarkerOutline ? {} : { lineSymbolLineSize: 0 }),
             ...(target.firstAreaSeriesInFront && normalized.type === "area" && normalized.grouping === "standard" ? { firstSeriesInFront: true } : {}),
         };

@@ -423,6 +423,10 @@ export const PPTX_DEFAULTS = Object.freeze({
         // PptxGenJS writes no plot-area layout for bar3D either. LibreOffice centers the projected 3D box with 12.5%
         // of the chart width on each side (fixture bar3D chart, 576px wide: box from x=70.5 to 501.5).
         bar3DSideMarginRatio: 0.125,
+        // A chart point's `<a:ln>` without a `w` (PptxGenJS's per-point bar3D outline), a hairline: LibreOffice 26.2.6
+        // exports a 3D chart as a 176 ppi picture and draws it one pixel of it wide (1/176in, about 0.4pt); the WASM
+        // crop of the chartPointColors deck is 0.1970 at 0.4pt against 0.2002 at Office's 0.75pt.
+        pointLineWidthPt: 0.4,
         bar3DLighting: Object.freeze({
             topLighten: 0.18,
             sideDarken: 0.16,

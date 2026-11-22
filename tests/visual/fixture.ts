@@ -2238,6 +2238,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartPlotBandFixture(presentation);
     populateChartComboFixture(presentation);
     populateChartAreaOrderFixture(presentation);
+    populateChartPointColorFixture(presentation);
 }
 
 /**
@@ -3083,4 +3084,23 @@ export function populateChartAreaOrderFixture(presentation: Presentation): void 
 
     slide.addChart("area", data.slice(0, 2), { ...shared, x: 0.4 });
     slide.addChart("area", data, { ...shared, x: 5.2 });
+}
+
+/**
+ * Per-point styles without a fill (#507): PptxGenJS writes each point of a single-series bar3D chart with several
+ * chartColors an outline in its color and no fill, and each point of such a bar chart with `lineSize: 0` neither;
+ * LibreOffice outlines each box and fills every point in the automatic accent1 (`chartPointKeepsSeriesFill`), and
+ * keys the legend in the series color. A parity slide after the others (no page number moves) and the WASM
+ * chartPointColors deck, which crops each chart.
+ */
+export function populateChartPointColorFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Point outlines without a fill", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] }];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, chartColors: ["C00000", "00B050", "7030A0"], showLegend: true, legendPos: "b" };
+
+    // The bar3D chart is the smaller one: its projection and axis steps differ from LibreOffice's apart from #507.
+    slide.addChart("bar3D", data, { ...shared, x: 0.4, w: 3.4, h: 2.8 });
+    slide.addChart("bar", data, { ...shared, x: 4.2, w: 5.4, h: 4.1, lineSize: 0 });
 }

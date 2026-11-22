@@ -16,6 +16,15 @@ const categoricalData: PptxGenJS.OptsChartData[] = [
     { name: "First", labels: ["A", "B", "C"], values: [2, 5, 3] },
     { name: "Second", labels: ["A", "B", "C"], values: [4, 1, 6] },
 ];
+// PptxGenJS scatter data: the x values first, then each y series, whose labels are its points' own labels.
+const scatterData: PptxGenJS.OptsChartData[] = [
+    { name: "X", values: [1, 2, 3] },
+    { name: "Lorem", labels: ["Alpha", "Beta", "Gamma"], values: [4, 6, 5] },
+];
+const bubbleData: PptxGenJS.OptsChartData[] = [
+    { name: "X", values: [1, 2, 3] },
+    { name: "Lorem", values: [4, 6, 5], sizes: [11, 22, 33] },
+];
 
 describe("chart normalization and rendering", () => {
     test("normalizes a basic chart without backend-specific options", () => {
@@ -220,13 +229,13 @@ describe("chart normalization and rendering", () => {
 
     test("reports unsupported types and options with structured details", () => {
         try {
-            normalizeChart("bar", categoricalData, { showSerName: true });
+            normalizeChart("bar", categoricalData, { catAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts);
             throw new Error("Expected normalization to fail");
         } catch (error) {
             expect(error).toBeInstanceOf(UnsupportedChartError);
             expect((error as UnsupportedChartError).code).toBe("UNSUPPORTED_CHART");
             expect((error as UnsupportedChartError).reason).toBe("chart-option");
-            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["showSerName"]);
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["catAxisOrientation"]);
         }
     });
 
@@ -279,22 +288,70 @@ describe("chart normalization and rendering", () => {
         expect(normalizeChart("pie", [categoricalData[0]!], { showValue: true }).dataLabels).toMatchObject({ valueFormat: "General" });
     });
 
-    test("rejects data labels it cannot draw, naming the option and the reason", () => {
-        const unsupported = (type: PptxGenJS.CHART_NAME, data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts) => {
-            try {
-                normalizeChart(type, data, options);
-            } catch (error) {
-                return (error as UnsupportedChartError).unsupportedOptions;
-            }
+    test("normalizes data labels on every chart type, with the positions PptxGenJS keeps (#477)", () => {
+        // PptxGenJS deletes every dataLabelPosition on area, radar, bar3D and doughnut charts; LibreOffice centers an
+        // area label, puts a radar one right of its point and a bar3D one above its bar.
+        expect(normalizeChart("area", categoricalData, { showValue: true, dataLabelPosition: "t" }).dataLabels).toMatchObject({ showValue: true, position: "ctr" });
+        expect(normalizeChart("radar", categoricalData, { showValue: true, dataLabelPosition: "t" }).dataLabels).toMatchObject({ showValue: true, position: "r" });
+        expect(normalizeChart("bar3D", categoricalData, { showValue: true, dataLabelPosition: "ctr" }).dataLabels).toMatchObject({ showValue: true, position: "outEnd" });
+        // A scatter point's label: right of it, its y value in General, or its own label for showLabel.
+        expect(normalizeChart("scatter", scatterData, { showValue: true }).dataLabels).toMatchObject({ position: "r", valueFormat: "General" });
+        expect(normalizeChart("scatter", scatterData, { showLabel: true, dataLabelPosition: "t" }).dataLabels).toMatchObject({ showCategory: true, position: "t" });
+        expect(normalizeChart("bubble", bubbleData, { showLabel: true }).dataLabels.showCategory).toBe(false);
+        // showSerName on every chart but pie and doughnut, where PptxGenJS writes 0.
+        expect(normalizeChart("bar", categoricalData, { showSerName: true }).dataLabels.showSeriesName).toBe(true);
+        expect(normalizeChart("pie", [categoricalData[0]!], { showSerName: true }).dataLabels.showSeriesName).toBeUndefined();
+        // showLeaderLines and showLegendKey are accepted: Office draws no leader line to an unmoved label, and
+        // PptxGenJS always writes showLegendKey 0.
+        expect(() => normalizeChart("pie", [categoricalData[0]!], { showValue: true, showLeaderLines: true, showLegendKey: true } as PptxGenJS.IChartOpts)).not.toThrow();
+        expect(() => normalizeChart("bar", categoricalData, { showValue: true, dataLabelFormatCode: "0;[Red]-0" })).toThrow("dataLabelFormatCode[format]");
+    });
 
-            throw new Error("Expected normalization to fail");
+    test("gives each combo chart type its own data labels (#477)", () => {
+        const types = [
+            { type: "bar", data: categoricalData, options: { showValue: true, dataLabelColor: "C00000" } },
+            { type: "line", data: categoricalData, options: { secondaryValAxis: true, showSerName: true, dataLabelPosition: "t" } },
+        ] as PptxGenJS.IChartMulti[];
+        const chart = normalizeChart(types, [], { valAxes: [{}, {}], showValue: false } as PptxGenJS.IChartOpts);
+        const bar = chart.series.find(series => series.type === "bar");
+        const line = chart.series.find(series => series.type === "line");
+
+        expect(bar?.dataLabels).toMatchObject({ showValue: true, color: "#C00000", position: "outEnd" });
+        expect(line?.dataLabels).toMatchObject({ showValue: false, showSeriesName: true, position: "t" });
+    });
+
+    test("draws area, radar, scatter, bubble and bar3D data labels with the series name and the value", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const one = [{ name: "North", labels: ["A", "B", "C"], values: [3, 5, 4] }];
+
+        slide.addChart("area", one, { x: 0, y: 0, w: 3, h: 2, showValue: true, showSerName: true });
+        slide.addChart("radar", one, { x: 3, y: 0, w: 3, h: 2, showValue: true });
+        slide.addChart("scatter", scatterData, { x: 6, y: 0, w: 3, h: 2, showLabel: true });
+        slide.addChart("bubble", bubbleData, { x: 0, y: 2, w: 3, h: 2, showValue: true });
+        slide.addChart("bar3D", one, { x: 3, y: 2, w: 3, h: 2, showValue: true });
+        const charts = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+        const texts = (index: number) => Array.from(charts[index]?.querySelectorAll("text") ?? [], text => text.textContent ?? "");
+
+        expect(texts(0)).toContain("North; 5");
+        expect(texts(1)).toEqual(expect.arrayContaining(["3", "5", "4"]));
+        expect(texts(2)).toEqual(expect.arrayContaining(["Alpha", "Beta", "Gamma"]));
+        // LibreOffice prints a bubble's size for showValue (bubbleValueLabelShowsSize).
+        expect(texts(3)).toEqual(expect.arrayContaining((bubbleData[1]!.sizes ?? []).map(String)));
+        expect(charts[4]?.querySelectorAll(".bar3d-data-label")).toHaveLength(3);
+    });
+
+    test("joins a series name and a value with the target's separator", () => {
+        const one = [{ name: "North", labels: ["A", "B", "C"], values: [3, 5, 4] }];
+        const label = (presentation: PuppeteerGen) => {
+            presentation.addSlide().addChart("bar", one, { x: 0, y: 0, w: 3, h: 2, showValue: true, showSerName: true });
+
+            return Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg text"), text => text.textContent ?? "");
         };
 
-        expect(unsupported("area", categoricalData, { showValue: true })).toEqual(["showValue[area]"]);
-        expect(unsupported("radar", categoricalData, { showValue: true })).toEqual(["showValue[radar]"]);
-        expect(unsupported("bar", categoricalData, { showValue: true, dataLabelFormatCode: "0;[Red]-0" })).toEqual(["dataLabelFormatCode[format]"]);
-        // Styling without a shown label draws nothing in PptxGenJS's output either.
-        expect(normalizeChart("area", categoricalData, { dataLabelColor: "FF0000", showLabel: true }).dataLabels.showValue).toBe(false);
+        // LibreOffice prints "North; 5", PowerPoint "North, 5" (#477, #568).
+        expect(label(new PuppeteerGen())).toContain("North; 5");
+        expect(label(new PuppeteerGenPowerPoint())).toContain("North, 5");
     });
 
     test("draws each bar and line value and each slice's category and percentage in the data-label style", () => {
@@ -445,8 +502,9 @@ describe("chart normalization and rendering", () => {
     });
 
     test("rejects category-axis options on chart types whose category axis it does not draw", () => {
-        expect(() => normalizeChart("bar3D", categoricalData, { catAxisLabelColor: "FF0000" })).toThrow("catAxisLabelColor[bar3D]");
-        expect(() => normalizeChart("radar", categoricalData, { showCatAxisTitle: true })).toThrow("showCatAxisTitle[radar]");
+        expect(() => normalizeChart("radar", categoricalData, { catGridLine: { color: "FF0000" } })).toThrow("catGridLine[radar]");
+        // LibreOffice draws no radar category title: accepted, as it draws nothing.
+        expect(() => normalizeChart("radar", categoricalData, { showCatAxisTitle: true, catAxisTitle: "Lorem" })).not.toThrow();
         expect(() => normalizeChart("bar", categoricalData, { catGridLine: { color: "FF0000", width: 2 } as PptxGenJS.OptsChartGridLine })).toThrow("catGridLine.width");
         expect(() => normalizeChart("bar", categoricalData, { catAxisLabelFontSize: -1 })).toThrow("catAxisLabelFontSize");
     });
@@ -529,10 +587,19 @@ describe("chart normalization and rendering", () => {
 
     test("rejects plot-area options the chart type does not draw and unknown plot-area keys", () => {
         expect(() => normalizeChart("pie", [categoricalData[0]!], { plotArea: { fill: { color: "FF0000" } } })).toThrow("plotArea[pie]");
-        expect(() => normalizeChart("radar", categoricalData, { layout: { x: 0.1 } })).toThrow("layout[radar]");
+        expect(() => normalizeChart("radar", categoricalData, { fill: "FF0000" } as PptxGenJS.IChartOpts)).toThrow("fill[radar]");
         expect(() => normalizeChart("bar", categoricalData, { plotArea: { border: { color: "FF0000", dashType: "dash" } as PptxGenJS.BorderProps } })).toThrow("plotArea.border.dashType");
-        // The deprecated top-level fill and border stay unsupported.
-        expect(() => normalizeChart("bar", categoricalData, { fill: "FF0000" })).toThrow(UnsupportedChartError);
+        expect(() => normalizeChart("bar", categoricalData, { border: { color: "FF0000", dashType: "dash" } } as PptxGenJS.IChartOpts)).toThrow("border.dashType");
+    });
+
+    test("maps the deprecated top-level fill and border onto the plot area as PptxGenJS 4.0.1 does (#479)", () => {
+        const chart = normalizeChart("bar", categoricalData, { fill: "F2F2F2", border: { pt: 2, color: "C00000" } } as PptxGenJS.IChartOpts);
+
+        expect(chart.plotArea).toMatchObject({ fill: { visible: true, color: "#F2F2F2" }, borderVisible: true, borderColor: "#C00000", borderWidth: 2 });
+        // A layout places pie, radar and bar3D charts too.
+        for (const type of ["pie", "radar", "bar3D"] as const) {
+            expect(normalizeChart(type, type === "pie" ? [categoricalData[0]!] : categoricalData, { layout: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } }).plotLayout).toEqual({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 });
+        }
     });
 
     test("draws the plot area fill and border on the plot rectangle and places it by the manual layout", () => {
@@ -1671,5 +1738,196 @@ describe("chart normalization and rendering", () => {
                 { x: 0, y: 0, w: 1, h: 1 },
             ),
         ).toThrow("must not reference external resources");
+    });
+});
+
+describe("chart axis and plot-area options on every chart type (#561, #479)", () => {
+    const quarters = [{ name: "North", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] }];
+    const chartSvgs = (presentation: PuppeteerGen) => Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+    const textsOf = (svg: Element | undefined) => Array.from(svg?.querySelectorAll("text") ?? [], text => text.textContent ?? "");
+    // ECharts places its text by a translate transform.
+    const textY = (svg: Element | undefined, content: string) =>
+        Number(
+            Array.from(svg?.querySelectorAll("text") ?? [])
+                .find(text => text.textContent === content)
+                ?.getAttribute("transform")
+                ?.match(/translate\([\d.]+ ([\d.]+)/)?.[1] ?? Number.NaN,
+        );
+
+    test("scales a radar value axis to at most two steps, as LibreOffice does", () => {
+        const scale = (values: number[], options: PptxGenJS.IChartOpts = {}) => {
+            const axis = normalizeChart("radar", [{ name: "North", labels: ["A", "B", "C", "D", "E"], values }], options).valueAxes[0];
+
+            return [axis?.minimum, axis?.maximum, axis?.majorUnit];
+        };
+
+        // LibreOffice 26.2.6 renders of these PptxGenJS 4.0.1 radar charts at any size or label font.
+        expect(scale([3, 5, 4, 7, 2])).toEqual([0, 10, 5]);
+        expect(scale([13, 5, 23, 17, 2])).toEqual([0, 40, 20]);
+        expect(scale([30, 50, 40, 70, 20])).toEqual([0, 100, 50]);
+        expect(scale([0.3, 0.5, 0.4, 0.8, 0.2])).toEqual([0, 1, 0.5]);
+        expect(scale([3, -5, 4, 7, 2])).toEqual([-10, 10, 10]);
+        expect(scale([3, 5, 4, 7, 2], { valAxisMaxVal: 8, valAxisMajorUnit: 2 })).toEqual([0, 8, 2]);
+    });
+
+    test("scales a radar value axis to at most four steps on the PowerPoint target", () => {
+        const axis = normalizeChart("radar", [{ name: "North", labels: ["A", "B", "C", "D", "E"], values: [3, 5, 4, 7, 2] }], {}, "powerpoint").valueAxes[0];
+
+        // PowerPoint's PDF export of the chartOptionAxes fixture slide: 0..8 by 2 for data up to 7 (#568).
+        expect([axis?.minimum, axis?.maximum, axis?.majorUnit]).toEqual([0, 8, 2]);
+    });
+
+    test("draws a radar chart's value labels, rings, spokes, category labels and series styles", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("radar", quarters, { x: 0, y: 0, w: 4, h: 3, valAxisLabelFormatCode: "0.0", valGridLine: { color: "FF0000" }, valAxisLineColor: "0000FF", catAxisLabelColor: "00B050", lineSize: 4 });
+        slide.addChart("radar", quarters, { x: 4, y: 0, w: 4, h: 3, valAxisHidden: true, radarStyle: "filled", chartColorsOpacity: 40 });
+        slide.addChart("radar", quarters, { x: 0, y: 3, w: 4, h: 2, layout: { x: 0, y: 0, w: 0.5, h: 1 } });
+        const [styled, hidden, placed] = chartSvgs(presentation);
+
+        // Only the first spoke is numbered.
+        expect(textsOf(styled).filter(text => /^\d/.test(text))).toEqual(["0.0", "5.0", "10.0"]);
+        expect(styled?.querySelector('[stroke="#FF0000"]')).not.toBeNull();
+        expect(styled?.querySelector('[stroke="#0000FF"]')).not.toBeNull();
+        expect(styled?.querySelector('text[fill="#00B050"]')?.textContent).toBe("Q1");
+        expect(styled?.querySelector('[stroke-width^="5.33"]')).not.toBeNull();
+        expect(textsOf(hidden)).toEqual(["Q1", "Q2", "Q3", "Q4"]);
+        expect(hidden?.querySelector('[fill-opacity="0.4"]')).not.toBeNull();
+        // Office runs the categories clockwise from the top: Q2 is right of the center.
+        const q2 = Array.from(styled?.querySelectorAll("text") ?? []).find(text => text.textContent === "Q2");
+
+        expect(Number(q2?.getAttribute("transform")?.match(/translate\(([\d.]+)/)?.[1])).toBeGreaterThan(inchesToPixels(4) / 2);
+        // The layout box's center.
+        const q1 = Array.from(placed?.querySelectorAll("text") ?? []).find(text => text.textContent === "Q1");
+
+        expect(Number(q1?.getAttribute("transform")?.match(/translate\(([\d.]+)/)?.[1])).toBeCloseTo(inchesToPixels(4) / 4, 0);
+    });
+
+    test("rejects radar value and category options LibreOffice does not draw, naming them", () => {
+        expect(() => normalizeChart("radar", quarters, { valAxisLabelRotate: 45 })).toThrow("valAxisLabelRotate[radar]");
+        expect(() => normalizeChart("radar", quarters, { valAxisLogScaleBase: 10 })).toThrow("valAxisLogScaleBase[radar]");
+        expect(() => normalizeChart("radar", quarters, { valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisOrientation[radar]");
+        expect(() => normalizeChart("radar", quarters, { valAxisLabelPos: "high" })).toThrow("valAxisLabelPos[high][radar]");
+        expect(() => normalizeChart("radar", quarters, { valAxisLabelPos: "nextTo", valAxisLabelRotate: 0, valAxisOrientation: "minMax", showValAxisTitle: true })).not.toThrow();
+    });
+
+    test("draws a bar3D chart's value axis options and rejects the ones it cannot draw", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("bar3D", quarters, { x: 0, y: 0, w: 4, h: 3, valAxisHidden: true });
+        slide.addChart("bar3D", quarters, { x: 4, y: 0, w: 4, h: 3, showValAxisTitle: true, valAxisTitle: "Units", valAxisLabelRotate: 45, valGridLine: { color: "FF0000", size: 2 } });
+        slide.addChart("bar3D", quarters, { x: 0, y: 3, w: 4, h: 2.5, valGridLine: { style: "none" }, valAxisLabelPos: "high" });
+        const [hidden, titled, high] = chartSvgs(presentation);
+
+        expect(textsOf(hidden)).toEqual(["Q1", "Q2", "Q3", "Q4"]);
+        expect(titled?.querySelector(".bar3d-value-title")?.textContent).toBe("Units");
+        // The title keeps a band of its own inside the chart, left of the value labels (#568).
+        const titleX = Number(titled?.querySelector(".bar3d-value-title")?.getAttribute("x"));
+        const labelXs = Array.from(titled?.querySelectorAll('text[text-anchor="end"]') ?? [], text => Number(text.getAttribute("x")));
+
+        expect(titleX).toBeGreaterThan(0);
+        expect(titleX).toBeLessThan(Math.min(...labelXs));
+        expect(titled?.querySelector('text[transform^="rotate(45 "]')).not.toBeNull();
+        expect(titled?.querySelectorAll('polyline[stroke="#FF0000"]').length).toBeGreaterThan(1);
+        // No gridlines, and the labels at the far edge of the back wall (right of the category labels).
+        expect(high?.querySelectorAll('polyline:not(.bar3d-frame)[stroke="#888888"]')).toHaveLength(0);
+        const zero = Array.from(high?.querySelectorAll("text") ?? []).find(text => text.textContent === "0");
+
+        expect(Number(zero?.getAttribute("x"))).toBeGreaterThan(inchesToPixels(4) / 2);
+        // LibreOffice draws no axis line or tick marks on a 3D wall: accepted, as they draw nothing.
+        expect(() => normalizeChart("bar3D", quarters, { valAxisLineColor: "FF0000", valAxisLineSize: 3, valAxisMinorTickMark: "outside" })).not.toThrow();
+        expect(() => normalizeChart("bar3D", quarters, { valAxisLogScaleBase: 10 })).toThrow("valAxisLogScaleBase[bar3D]");
+        expect(() => normalizeChart("bar3D", quarters, { valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisOrientation[bar3D]");
+        expect(() => normalizeChart("bar3D", quarters, { barDir: "bar" })).toThrow("barDir[bar3D]");
+    });
+
+    test("draws a bar3D chart's category labels, title and gridlines, its legend position and its layout", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("bar3D", quarters, { x: 0, y: 0, w: 4, h: 3, catAxisLabelColor: "C00000", catAxisLabelFontBold: true, showCatAxisTitle: true, catAxisTitle: "Quarter", catGridLine: { color: "00B050" } });
+        slide.addChart("bar3D", quarters, { x: 4, y: 0, w: 4, h: 3, showLegend: true, legendPos: "r" });
+        slide.addChart("bar3D", quarters, { x: 0, y: 3, w: 4, h: 2.5, layout: { x: 0, y: 0, w: 0.5, h: 0.5 } });
+        const [category, legend, placed] = chartSvgs(presentation);
+        const q1 = category?.querySelector('text[fill="#C00000"]');
+
+        expect(q1?.textContent).toBe("Q1");
+        expect(q1?.getAttribute("font-weight")).toBe("bold");
+        expect(category?.querySelector(".bar3d-category-title")?.textContent).toBe("Quarter");
+        // A line at each of the five category boundaries.
+        expect(category?.querySelectorAll(".bar3d-category-grid")).toHaveLength(5);
+        expect(Number(legend?.querySelector(".bar3d-legend")?.getAttribute("x"))).toBeGreaterThan(inchesToPixels(4) * 0.75);
+        // Every category label within the layout's left half.
+        expect(
+            Math.max(
+                ...["Q1", "Q2", "Q3", "Q4"].map(label =>
+                    Number(
+                        Array.from(placed?.querySelectorAll("text") ?? [])
+                            .find(text => text.textContent === label)
+                            ?.getAttribute("x"),
+                    ),
+                ),
+            ),
+        ).toBeLessThan(inchesToPixels(4) / 2);
+    });
+
+    test("reverses a value axis for valAxisOrientation maxMin and validates the value", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("line", quarters, { x: 0, y: 0, w: 4, h: 3, valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts);
+        slide.addChart("line", quarters, { x: 4, y: 0, w: 4, h: 3 });
+        const [reversed, plain] = chartSvgs(presentation);
+
+        expect(textY(reversed, "0")).toBeLessThan(textY(reversed, "8"));
+        expect(textY(reversed, "Q1")).toBeLessThan(textY(reversed, "0"));
+        expect(textY(plain, "0")).toBeGreaterThan(textY(plain, "8"));
+        expect(() => normalizeChart("line", quarters, { valAxisOrientation: "sideways" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisOrientation");
+    });
+
+    test("never smooths an area chart, as PptxGenJS writes <c:smooth> on line series only", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("area", quarters, { x: 0, y: 0, w: 4, h: 3, lineSmooth: true });
+        slide.addChart("line", quarters, { x: 4, y: 0, w: 4, h: 3, lineSmooth: true });
+        const [area, line] = chartSvgs(presentation);
+        const curved = (svg: Element | undefined) => Array.from(svg?.querySelectorAll("path") ?? []).some(path => /C/.test(path.getAttribute("d") ?? ""));
+
+        expect(curved(area)).toBe(false);
+        expect(curved(line)).toBe(true);
+    });
+
+    test("draws a scatter chart's value axis options and its x axis in the category axis style", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("scatter", scatterData, { x: 0, y: 0, w: 4, h: 3, valAxisHidden: true, showCatAxisTitle: true, catAxisTitle: "Width", catAxisLabelColor: "C00000" });
+        slide.addChart("scatter", scatterData, { x: 4, y: 0, w: 4, h: 3, showValAxisTitle: true, valAxisTitle: "Height", valAxisLabelFormatCode: "0.0" });
+        const [hidden, titled] = chartSvgs(presentation);
+
+        expect(textsOf(hidden)).toContain("Width");
+        expect(textsOf(hidden).some(text => text === "6" || text === "7")).toBe(false);
+        expect(hidden?.querySelector('text[fill="#C00000"]')).not.toBeNull();
+        expect(textsOf(titled)).toEqual(expect.arrayContaining(["Height", "6.0"]));
+    });
+
+    test("places a pie chart by its manual layout", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addChart("pie", quarters, { x: 0, y: 0, w: 4, h: 3, layout: { x: 0, y: 0, w: 0.5, h: 0.5 } });
+        const [pie] = chartSvgs(presentation);
+        let right = 0;
+
+        for (const path of Array.from(pie?.querySelectorAll("path") ?? [])) {
+            for (const match of (path.getAttribute("d") ?? "").matchAll(/(?:^|[A-Za-z ])([\d.]+) [\d.]+/g)) {
+                right = Math.max(right, Number(match[1]));
+            }
+        }
+
+        expect(right).toBeLessThanOrEqual(inchesToPixels(4) / 2 + 1);
     });
 });

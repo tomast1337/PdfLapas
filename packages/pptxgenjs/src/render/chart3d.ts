@@ -1,6 +1,8 @@
+import { format } from "echarts/core";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { builtInFontMetrics } from "#src/fontMetrics";
 import { automaticAxisInterval, type AxisScale, bar3DAxisScale } from "#src/chart/axisScale";
+import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import type { NormalizedChart } from "@pdflapas/model";
 import { pointsToPixels } from "@pdflapas/model";
@@ -81,13 +83,50 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     // The same text bands as the 2D plot area (chart.ts chartGrid): the legend and the category labels below the box.
     const gap = height * PPTX_DEFAULTS.chart.plotAreaGapRatio;
     const lineEm = PPTX_DEFAULTS.text.singleLineEm;
-    const top = gap + (chart.showTitle ? pointsToPixels(chart.titleFontSize) * lineEm + gap : 0);
-    const bottom = gap + (chart.showLegend ? pointsToPixels(chart.legendFontSize) * lineEm + gap : 0) + pointsToPixels(chart.fontSize) * lineEm;
+    const legendPx = pointsToPixels(chart.legendFontSize);
+    const keySize = Math.round(legendPx * PPTX_DEFAULTS.chart.legendKeyFontRatio);
+    // Each series in its color, or each point of the only series keyed as the point is drawn (legendListsPoints):
+    // its fill and its outline, as PowerPoint's PDF export draws them (#546).
+    const legendEntries: { name: string; fill: string; stroke?: string }[] = [];
+    const only = chart.series[0];
+
+    if (chart.legendListsPoints && only) {
+        for (const [index] of only.values.entries()) {
+            legendEntries.push({ name: only.labels[index] ?? String(index + 1), fill: only.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4", stroke: only.pointLineColors?.[index] });
+        }
+    } else {
+        for (const [index, series] of chart.series.entries()) {
+            legendEntries.push({ name: series.name, fill: chart.colors[index % chart.colors.length] ?? "#4472C4" });
+        }
+    }
+
+    // A left, right or top-right legend lists its entries in a column beside the plot area, a top or bottom one in a row.
+    const sideLegend = chart.showLegend && chart.legendPosition !== "b" && chart.legendPosition !== "t";
+    let legendColumnWidth = 0;
+
+    if (sideLegend) {
+        for (const entry of legendEntries) {
+            legendColumnWidth = Math.max(legendColumnWidth, format.getTextRect(entry.name, `${legendPx}px ${chart.legendFontFace}`).width);
+        }
+
+        legendColumnWidth += keySize + 5 + 2 * gap;
+    }
+
+    const categoryAxisModel = chart.categoryAxis;
+    const categoryLabelPx = pointsToPixels(categoryAxisModel.labelFontSize);
+    const categoryTitlePx = pointsToPixels(categoryAxisModel.titleFontSize);
+    const categoryTitleBand = categoryAxisModel.showTitle ? categoryTitlePx * lineEm + gap : 0;
+    const top = gap + (chart.showTitle ? pointsToPixels(chart.titleFontSize) * lineEm + gap : 0) + (chart.showLegend && chart.legendPosition === "t" ? legendPx * lineEm + gap : 0);
+    const bottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendPx * lineEm + gap : 0) + categoryLabelPx * lineEm + categoryTitleBand;
     const side = width * PPTX_DEFAULTS.chart.bar3DSideMarginRatio;
+    const leftBand = chart.showLegend && chart.legendPosition === "l" ? legendColumnWidth : 0;
+    const rightBand = sideLegend && chart.legendPosition !== "l" ? legendColumnWidth : 0;
     // Fits the box into the plot area. The depth is fixed (one series slot per category slot); the height is automatic, as
     // in LibreOffice (chart2 BarChart::getPreferredDiagramAspectRatio leaves Y free), so it is chosen to fill the area.
     const boxDepth = (stacked ? 1 : seriesCount) / categoryCount;
-    const area = { x: side, y: top, width: width - 2 * side, height: height - top - bottom };
+    // A manual layout (layoutTarget inner) is the plot area itself.
+    const layout = chart.plotLayout;
+    const area = layout ? { x: layout.x * width, y: layout.y * height, width: layout.w * width, height: layout.h * height } : { x: side + leftBand, y: top, width: width - 2 * side - leftBand - rightBand, height: height - top - bottom };
     const aspect = area.width / Math.max(1e-9, area.height);
     // The box's screen aspect falls as it grows taller: bisect the height on a log scale.
     let low = Math.log(0.02);
@@ -161,6 +200,21 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         ["stroke", `#${chart.gridLineColor.replace(/^#/, "")}`],
         ["stroke-width", n(pointsToPixels(chart.gridLineWidth))],
     ];
+    // The value gridlines take valGridLine (LibreOffice draws them on the walls in its color and width, none with
+    // style none); the wall frame keeps the chart's line.
+    const valueGridStroke: Attribute[] = axis
+        ? [
+              ["fill", "none"],
+              ["stroke", axis.gridLineColor],
+              ["stroke-width", n(pointsToPixels(axis.gridLineWidth))],
+              ["stroke-dasharray", axis.gridLineStyle === "dash" ? n(pointsToPixels(axis.gridLineWidth) * 4) : axis.gridLineStyle === "dot" ? n(pointsToPixels(axis.gridLineWidth)) : undefined],
+          ]
+        : gridStroke;
+    const drawsValueGrid = axis?.gridLineStyle !== "none";
+    // valAxisHidden and valAxisLabelPos none draw no labels; high puts them at the far edge of the back wall.
+    const drawsValueLabels = axis !== undefined && !axis.hidden && axis.labelPosition !== "none";
+    const labelX0 = axis?.labelPosition === "high" ? 1 - sideX : sideX;
+    const labelDepth = axis?.labelPosition === "high" ? backDepth : frontDepth;
     // The value labels take the value axis's font.
     const labelStyle: Attribute[] = [
         ["font-family", labelFontFace],
@@ -184,21 +238,74 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const grid: Html[] = [];
     const tickCount = Math.floor(Number((range / scale.interval).toPrecision(12)));
 
+    let labelEdge = labelX0 === 0 ? Infinity : -Infinity;
+
     for (let index = 0; index <= tickCount; index++) {
         const value = Number((minimum + index * scale.interval).toPrecision(12));
-        const label = project(sideX, frontDepth, value);
-        const line = [label, project(sideX, backDepth, value), project(otherX, backDepth, value)];
-        const labelX: Attribute[] =
-            sideX === 0
-                ? [
-                      ["x", n(label.x - 8)],
-                      ["text-anchor", "end"],
-                  ]
-                : [["x", n(label.x + 8)]];
 
-        const tickLabel = axis ? formatChartNumber(value, axis.labelFormatCode) : String(value);
+        if (drawsValueGrid) {
+            const line = [project(sideX, frontDepth, value), project(sideX, backDepth, value), project(otherX, backDepth, value)];
 
-        grid.push(element("polyline", [["points", line.map(p).join(" ")], ...gridStroke]), element("text", [...labelX, ["y", n(label.y + labelFontSize / 4)], ...labelStyle], escapeText(tickLabel)));
+            grid.push(element("polyline", [["points", line.map(p).join(" ")], ...valueGridStroke]));
+        }
+
+        if (drawsValueLabels) {
+            const label = project(labelX0, labelDepth, value);
+            const x = labelX0 === 0 ? label.x - 8 : label.x + 8;
+            const y = label.y + labelFontSize / 4;
+            const rotate: Attribute[] = axis.labelRotate ? [["transform", `rotate(${n(axis.labelRotate)} ${n(x)} ${n(y)})`]] : [];
+            const tickLabel = formatChartNumber(value, axis.labelFormatCode);
+            const labelWidth = format.getTextRect(tickLabel, `${labelFontSize}px ${labelFontFace}`).width;
+
+            labelEdge = labelX0 === 0 ? Math.min(labelEdge, x - labelWidth) : Math.max(labelEdge, x + labelWidth);
+            grid.push(element("text", [["x", n(x)], ...(labelX0 === 0 ? [["text-anchor", "end"] as Attribute] : []), ["y", n(y)], ...rotate, ...labelStyle], escapeText(tickLabel)));
+        }
+    }
+
+    // The value axis title, turned up, beside its labels (LibreOffice draws it left of the plot area).
+    if (axis?.showTitle) {
+        const titlePx = pointsToPixels(axis.titleFontSize);
+        const middle = (project(sideX, frontDepth, minimum).y + project(sideX, frontDepth, maximum).y) / 2;
+        const edge = Number.isFinite(labelEdge) ? labelEdge : project(labelX0, labelDepth, minimum).x;
+        // Office prints it whole, so where the labels leave too little side margin it stays inside the chart's edge, beside
+        // the middle steps' labels, which are narrower than the widest one (#568).
+        const halfLine = (titlePx * lineEm) / 2;
+        const x = labelX0 === 0 ? Math.max(halfLine, edge - gap - titlePx / 2) : Math.min(width - halfLine, edge + gap + titlePx / 2);
+        const rotation = axis.titleRotate ?? -90;
+
+        grid.push(
+            element(
+                "text",
+                [
+                    ["class", "bar3d-value-title"],
+                    ["x", n(x)],
+                    ["y", n(middle)],
+                    ["text-anchor", "middle"],
+                    ["dominant-baseline", "central"],
+                    ["transform", `rotate(${n(rotation)} ${n(x)} ${n(middle)})`],
+                    ["font-family", axis.titleFontFace],
+                    ["font-size", n(titlePx)],
+                    ["fill", axis.titleColor],
+                ],
+                escapeText(axis.title),
+            ),
+        );
+    }
+
+    // The category gridlines (catGridLine) at each category boundary across the floor and up the back wall.
+    if (categoryAxisModel.gridLineStyle !== "none") {
+        const categoryStroke: Attribute[] = [
+            ["fill", "none"],
+            ["stroke", categoryAxisModel.gridLineColor],
+            ["stroke-width", n(pointsToPixels(categoryAxisModel.gridLineWidth))],
+        ];
+
+        for (let index = 0; index <= categoryCount; index++) {
+            const x = index / categoryCount;
+            const line = [project(x, frontDepth, minimum), project(x, backDepth, minimum), project(x, backDepth, maximum)];
+
+            grid.push(element("polyline", [["class", "bar3d-category-grid"], ["points", line.map(p).join(" ")], ...categoryStroke]));
+        }
     }
 
     const backSideBottom = project(sideX, backDepth, minimum);
@@ -406,20 +513,78 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         barSvg.push(element("g", group, [polygon("bar3d-front", front, frontColor), polygon("bar3d-side", side, sideColor), polygon("bar3d-top", [project(x0, z0, cap), project(x1, z0, cap), project(x1, z1, cap), project(x0, z1, cap)], topColor)]));
     }
 
+    // The data labels above each bar's top (LibreOffice's bar3D labels), in the order the bars are painted.
+    const dataLabelSvg: Html[] = [];
+    const dataLabels = chart.dataLabels;
+
+    if (showsPointLabel(dataLabels)) {
+        const labelPx = pointsToPixels(dataLabels.fontSize);
+
+        for (const { bar } of ordered) {
+            const series = chart.series[bar.series];
+            const value = series?.values[bar.category] ?? 0;
+            const anchor = project((bar.category + 0.5) / categoryCount, slotDepth(bar.series), Math.max(minimum, Math.min(maximum, Math.max(bar.base, bar.value))));
+
+            dataLabelSvg.push(
+                element(
+                    "text",
+                    [
+                        ["class", "bar3d-data-label"],
+                        ["x", n(anchor.x)],
+                        ["y", n(anchor.y - labelPx / 2)],
+                        ["text-anchor", "middle"],
+                        ["font-family", dataLabels.fontFace],
+                        ["font-size", n(labelPx)],
+                        ["fill", dataLabels.color],
+                        ["font-weight", dataLabels.bold ? "bold" : undefined],
+                        ["font-style", dataLabels.italic ? "italic" : undefined],
+                    ],
+                    escapeText(pointLabelText(dataLabels, series?.name ?? "", value, { kind: "none" })),
+                ),
+            );
+        }
+    }
+
+    // The category labels and title take the category axis's text style.
+    const categoryLabelStyle: Attribute[] = [
+        ["font-family", categoryAxisModel.labelFontFace],
+        ["font-size", n(categoryLabelPx)],
+        ["fill", categoryAxisModel.labelColor],
+        ["font-weight", categoryAxisModel.labelBold ? "bold" : undefined],
+        ["font-style", categoryAxisModel.labelItalic ? "italic" : undefined],
+    ];
+    let categoryBottom = 0;
     const categoryLabels = Array.from({ length: categoryCount }, (_, index) => {
         const point = project((index + 0.5) / categoryCount, frontDepth, minimum);
         const label = labels[index] ?? String(index + 1);
 
-        return element(
-            "text",
-            [
-                ["x", n(point.x)],
-                ["y", n(point.y + 20)],
-                ["text-anchor", "middle"],
-            ],
-            escapeText(label),
-        );
+        categoryBottom = Math.max(categoryBottom, point.y + 20);
+
+        return element("text", [["x", n(point.x)], ["y", n(point.y + 20)], ["text-anchor", "middle"], ...categoryLabelStyle], escapeText(label));
     });
+
+    if (categoryAxisModel.showTitle) {
+        const left = project(0, frontDepth, minimum);
+        const right = project(1, frontDepth, minimum);
+
+        categoryLabels.push(
+            element(
+                "text",
+                [
+                    ["class", "bar3d-category-title"],
+                    ["x", n((left.x + right.x) / 2)],
+                    ["y", n(categoryBottom + gap + categoryTitlePx)],
+                    ["text-anchor", "middle"],
+                    ["font-family", categoryAxisModel.titleFontFace],
+                    ["font-size", n(categoryTitlePx)],
+                    ["fill", categoryAxisModel.titleColor],
+                    ["transform", categoryAxisModel.titleRotate ? `rotate(${n(categoryAxisModel.titleRotate)} ${n((left.x + right.x) / 2)} ${n(categoryBottom + gap + categoryTitlePx)})` : undefined],
+                ],
+                escapeText(categoryAxisModel.title),
+            ),
+        );
+    }
+
     // LibreOffice 26.2.6 names the depth slots only when there are several: a single series or a stacked chart, whose
     // series share one slot, gets no depth-axis label. A target may name a single unstacked series (namesSingleDepthSlot).
     const namesSlots = !stacked && (chart.series.length > 1 || chart.namesSingleDepthSlot === true);
@@ -442,29 +607,17 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         ["font-size", n(pointsToPixels(chart.legendFontSize))],
         ["fill", chart.legendColor],
     ];
-    const keySize = Math.round(pointsToPixels(chart.legendFontSize) * PPTX_DEFAULTS.chart.legendKeyFontRatio);
-    // Each series in its color, or each point of the only series keyed as the point is drawn (legendListsPoints):
-    // its fill and its outline, as PowerPoint's PDF export draws them (#546).
-    const legendEntries: { name: string; fill: string; stroke?: string }[] = [];
-    const only = chart.series[0];
-
-    if (chart.legendListsPoints && only) {
-        for (const [index] of only.values.entries()) {
-            legendEntries.push({ name: only.labels[index] ?? String(index + 1), fill: only.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4", stroke: only.pointLineColors?.[index] });
-        }
-    } else {
-        for (const [index, series] of chart.series.entries()) {
-            legendEntries.push({ name: series.name, fill: chart.colors[index % chart.colors.length] ?? "#4472C4" });
-        }
-    }
-
     const legend: Html[] = [];
 
     if (chart.showLegend) {
+        const pitch = legendPx * lineEm;
+        const columnTop = chart.legendPosition === "tr" ? top : height / 2 - (pitch * legendEntries.length) / 2 + pitch / 2;
+
         for (const [index, { name, fill, stroke }] of legendEntries.entries()) {
             const itemWidth = Math.min(100, width / Math.max(2, legendEntries.length + 1));
-            const x = width / 2 + (index - (legendEntries.length - 1) / 2) * itemWidth;
-            const y = height - 12;
+            // A row centered below or above the plot area, or a column centered beside it (top-right: at its top).
+            const x = !sideLegend ? width / 2 + (index - (legendEntries.length - 1) / 2) * itemWidth : chart.legendPosition === "l" ? gap + keySize + 22 : width - legendColumnWidth + gap + keySize + 22;
+            const y = !sideLegend ? (chart.legendPosition === "t" ? top - gap : height - 12) : columnTop + index * pitch;
 
             legend.push(
                 element("rect", [
@@ -515,7 +668,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
                 ["font-size", n(pointsToPixels(chart.fontSize))],
                 ["fill", "#000000"],
             ],
-            [gradients, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...categoryLabels, ...seriesLabels, ...legend],
+            [gradients, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...dataLabelSvg, ...categoryLabels, ...seriesLabels, ...legend],
         ),
     );
 }

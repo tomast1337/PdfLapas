@@ -437,7 +437,12 @@ contract includes:
 - Data labels: 12pt black Arial, `#,##0` (a pie or doughnut: `0%` with `showPercent`, else `General`),
   outside a clustered bar's end, in a stacked bar's or a doughnut ring's center, right of a line point
   and inside a pie slice when PptxGenJS writes no `c:dLblPos`; a pie label puts its category, value and
-  percentage on separate lines, as LibreOffice draws them.
+  percentage on separate lines, as LibreOffice draws them. PptxGenJS deletes every `dataLabelPosition`
+  on area, radar, bar3D and doughnut charts: LibreOffice centers an area label, puts a radar or scatter
+  label right of its point and a bar3D label above its bar. `showSerName` joins the series name and the
+  value with `; ` on the LibreOffice target and `, ` on the PowerPoint one; a scatter chart's `showLabel` draws each point's own label (its series' `labels`),
+  and a bubble chart's `showValue` prints the bubble size on the LibreOffice target (its y value on the
+  PowerPoint one, which is not measured). A combo chart's chart type takes its own label options.
 - Legend keys: a bar, area or pie entry is a filled square at 0.6 of the legend font size (8px at
   10pt), as Office and LibreOffice draw it; a line entry shows its line and marker.
 - Line cap/dash/width, marker shape/size/border, and smoothing.
@@ -451,7 +456,15 @@ contract includes:
   A bubble chart keeps the other charts' defaults: no x gridlines and 888888 y gridlines.
 - Plot area: no fill and no border; a `plotArea.border` without `pt` or `color` is 1pt 363636, and a
   `plotArea.fill` without a color is no fill. `layout` places the inner plot rectangle with `x || 0`,
-  `y || 0`, `w || 1`, `h || 1` of the chart frame; a value outside 0..1 is dropped with a warning.
+  `y || 0`, `w || 1`, `h || 1` of the chart frame (a pie, doughnut or radar chart's box, a bar3D
+  chart's plot area); a value outside 0..1 is dropped with a warning. The deprecated top-level `fill`
+  sets the plot area's fill color and `border` replaces its border, as PptxGenJS 4.0.1 reads them.
+  LibreOffice draws no plot-area fill or border on pie, doughnut, radar or bar3D charts, so those
+  options throw there.
+- Radar value axis: at most two steps on the LibreOffice target, as LibreOffice scales it (0..10 by 5
+  for a maximum of 7, 0..40 by 20 for 23), and at most four on the PowerPoint one (0..8 by 2 for a
+  maximum of 7, one measurement), numbered on the first spoke; its gridlines are the rings, its axis line every
+  spoke, and the categories run clockwise from the top.
 - Pie angle, doughnut hole size, radar style, and blank-value behavior.
 - bar3D view: `rotX` 30, `rotY` 30 and perspective 30 (a 15° field of view) project the box, with one
   slot per category and per series, centered with 12.5% of the chart width on each side.

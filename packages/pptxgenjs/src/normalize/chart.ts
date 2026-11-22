@@ -3,7 +3,8 @@ import { automaticAxisScale, bar3DAxisScale, type FixedAxisBound } from "#src/ch
 import { UnsupportedChartError } from "#src/chart/errors";
 import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
-import type { NormalizedChart, NormalizedChartSeries, NormalizedChartType } from "@pdflapas/model";
+import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
+import type { NormalizedChart, NormalizedChartDataLabels, NormalizedChartSeries, NormalizedChartType } from "@pdflapas/model";
 import { checkedSize } from "./size";
 import { normalizeColor, normalizeFill } from "./style";
 
@@ -98,6 +99,12 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "showValue",
     "showLabel",
     "showPercent",
+    "showSerName",
+    // PptxGenJS 4.0.1 writes `<c:showLeaderLines>` from it on every chart but pie and doughnut (always 1 there), and
+    // Office draws a leader line only to a label moved away from its point, which PptxGenJS never writes.
+    "showLeaderLines",
+    // Not a PptxGenJS 4.0.1 option: every writer prints `<c:showLegendKey val="0"/>` whatever it says.
+    "showLegendKey",
     "dataLabelPosition",
     "dataLabelFormatCode",
     "dataLabelColor",
@@ -108,9 +115,14 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     ...CATEGORY_AXIS_OPTIONS,
     "layout",
     "plotArea",
+    // Deprecated v3.11 aliases PptxGenJS 4.0.1 still reads: `plotArea.fill.color = fill`, `plotArea.border = border`.
+    "fill",
+    "border",
 ] as const);
 
-// The plot rectangle is the ECharts grid, which pie, doughnut, radar and bar3D charts do not use.
+// LibreOffice 26.2.6 draws no plot-area fill or border on a pie, radar or bar3D chart (its PDF export of synthetic
+// PptxGenJS 4.0.1 charts with `plotArea: { fill: { color: "FF0000" }, border: { color: "0000FF", pt: 3 } }`, #479),
+// and PowerPoint is not measured, so they stay rejected there; `layout` places each of them.
 const PLOT_AREA_UNDRAWN_TYPES = new Set<NormalizedChartType>(["bar3D", "doughnut", "pie", "radar"]);
 const SUPPORTED_PLOT_AREA_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
     // genXmlColorSelection reads type, color, transparency and the deprecated alpha.
@@ -121,7 +133,24 @@ const SUPPORTED_PLOT_AREA_OPTIONS: Readonly<Record<string, ReadonlySet<string>>>
 const LAYOUT_KEYS = ["x", "y", "w", "h"] as const;
 
 const SUPPORTED_CHART_OPTION_SET = new Set<string>(SUPPORTED_CHART_OPTIONS);
-const SUPPORTED_MIXED_SERIES_OPTIONS = new Set(["secondaryValAxis"]);
+// A combo chart writes each chart type with `{ ...options, ...type.options }`, so a type's own label options apply to
+// its series.
+const MIXED_LABEL_OPTIONS = [
+    "dataLabelColor",
+    "dataLabelFontBold",
+    "dataLabelFontFace",
+    "dataLabelFontItalic",
+    "dataLabelFontSize",
+    "dataLabelFormatCode",
+    "dataLabelPosition",
+    "showLabel",
+    "showLeaderLines",
+    "showLegendKey",
+    "showPercent",
+    "showSerName",
+    "showValue",
+] as const;
+const SUPPORTED_MIXED_SERIES_OPTIONS = new Set<string>(["secondaryValAxis", ...MIXED_LABEL_OPTIONS]);
 const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "showValAxisTitle",
     "valAxisHidden",
@@ -151,12 +180,22 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "valAxisTitleRotate",
     "valGridLine",
 ]);
-const CATEGORY_AXIS_UNDRAWN_TYPES = new Set<NormalizedChartType>(["bar3D", "bubble", "radar", "scatter"]);
+// A radar chart's category axis is its spokes: LibreOffice 26.2.6 draws its labels in catAxisLabel* and neither a
+// catAxisTitle nor the catGridLine (#479); the gridline stays rejected until PowerPoint is measured.
+const RADAR_UNDRAWN_CATEGORY_OPTIONS = new Set<string>(["catGridLine"]);
+// bar3D draws its value axis on a wall, where LibreOffice 26.2.6 draws neither an axis line nor tick marks whatever
+// valAxisLine* and valAxis*TickMark say (#561); it draws no logarithmic or reversed 3D axis or horizontal 3D bars yet.
+// A radar chart's value axis is its first spoke: LibreOffice draws its labels and rings, the line style on every spoke,
+// and no title (#561).
+const VALUE_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
+    bar3D: new Set(["valAxisLogScaleBase", "valAxisOrientation"]),
+    radar: new Set(["valAxisLogScaleBase", "valAxisOrientation", "valAxisLabelRotate"]),
+});
 const SUPPORTED_GRID_LINE_OPTIONS = new Set(["cap", "color", "size", "style"]);
 const BAR_3D_SHAPES = new Set(["box", "cylinder", "cone", "coneToMax", "pyramid", "pyramidToMax"]);
-const DATA_LABEL_CHART_TYPES = new Set<NormalizedChartType>(["bar", "doughnut", "line", "pie"]);
-// The dataLabelPosition values PptxGenJS 4.0.1 keeps; its option cleanup deletes any other (every one on a doughnut and,
-// a quirk, `outEnd` on a clustered bar), so the chart type's default position applies.
+// The dataLabelPosition values PptxGenJS 4.0.1 keeps; its option cleanup deletes any other (every one on an area, radar,
+// bar3D or doughnut chart and, a quirk, `outEnd` on a clustered bar), so the chart type's default position applies. A
+// combo chart's skips the cleanup, so each chart type keeps the positions valid for it.
 const LINE_LABEL_POSITIONS = new Set(["b", "ctr", "l", "r", "t"]);
 const CLUSTERED_BAR_LABEL_POSITIONS = new Set(["ctr", "inBase", "inEnd"]);
 const STACKED_BAR_LABEL_POSITIONS = new Set(["ctr", "inBase", "inEnd", "outEnd"]);
@@ -301,10 +340,13 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
     return normalized;
 }
 
+/** How a value axis is scaled: LibreOffice's automatic 2D scale, its bar3D scale, or its radar scale in at most `maxIncrements` steps. */
+type ValueAxisScaleKind = { kind: "linear" } | { kind: "bar3D" } | { kind: "radar"; maxIncrements: number };
+
 function normalizeValueAxis(
     axisOptions: PptxGenJS.IChartPropsAxisVal | undefined,
     dataRange: [number, number],
-    bar3D: boolean,
+    scaleKind: ValueAxisScaleKind,
     path: string,
     chartTypes: PptxGenJS.CHART_NAME[],
     defaultGridLine: PptxGenJS.OptsChartGridLine,
@@ -320,11 +362,18 @@ function normalizeValueAxis(
     const fixedMinimum = axisOptions?.valAxisMinVal;
     const fixedMaximum = axisOptions?.valAxisMaxVal;
     const fixed: FixedAxisBound = fixedMinimum !== undefined ? { kind: "minimum", value: fixedMinimum } : fixedMaximum !== undefined ? { kind: "maximum", value: fixedMaximum } : { kind: "none" };
-    // A bar3D axis takes LibreOffice's 3D scale over its data with 0 included; renderBar3DSvg takes a longer step where
-    // the drawn axis is short.
+    // A bar3D or radar axis takes LibreOffice's 3D scale over its data with 0 included; renderBar3DSvg takes a longer
+    // step where the drawn axis is short, and a radar axis takes at most the target's radarMaxIncrements steps.
+    const bar3D = scaleKind.kind === "bar3D";
     const bar3DLow = Math.min(0, dataRange[0]);
     const bar3DHigh = Math.max(0, dataRange[1]);
-    const scale = bar3D ? bar3DAxisScale(bar3DLow, bar3DHigh, { minimum: fixedMinimum, maximum: fixedMaximum, majorUnit }, PPTX_DEFAULTS.chart.automaticScale.maxIncrements) : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
+    const fixedScale = { minimum: fixedMinimum, maximum: fixedMaximum, majorUnit };
+    const scale =
+        scaleKind.kind === "bar3D"
+            ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, PPTX_DEFAULTS.chart.automaticScale.maxIncrements)
+            : scaleKind.kind === "radar"
+              ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, scaleKind.maxIncrements)
+              : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
     const minimum = fixedMinimum ?? scale.minimum;
     const maximum = fixedMaximum ?? scale.maximum;
 
@@ -357,10 +406,20 @@ function normalizeValueAxis(
     // PptxGenJS replaces a missing valGridLine whole (`valGridLine || default`), so a set one keeps no default field.
     const gridLine = axisOptions?.valGridLine ?? defaultGridLine;
 
+    // PptxGenJS writes `<c:orientation val="${valAxisOrientation || 'minMax'}"/>`; its types name only "minMax", but
+    // OOXML's "maxMin" reverses the axis, so the option is read as a string.
+    const orientation: string | undefined = axisOptions?.valAxisOrientation;
+
+    if (orientation !== undefined && orientation !== "minMax" && orientation !== "maxMin") {
+        throw new TypeError(`${path}valAxisOrientation must be "minMax" or "maxMin"; got ${JSON.stringify(orientation)}`);
+    }
+
     return {
         minimum,
         maximum,
-        majorUnit,
+        // A radar axis has no step of its own to fall back on (automaticAxisInterval would take ten), so it keeps the scale's.
+        majorUnit: scaleKind.kind === "radar" ? scale.interval : majorUnit,
+        ...(orientation === "maxMin" ? { reversed: true } : {}),
         ...(bar3D ? { automaticScale: { low: bar3DLow, high: bar3DHigh, fixedMinimum: fixedMinimum !== undefined, fixedMaximum: fixedMaximum !== undefined } } : {}),
         logScaleBase,
         labelFormatCode,
@@ -391,9 +450,88 @@ function normalizeValueAxis(
     };
 }
 
+/**
+ * The data labels PptxGenJS 4.0.1 writes for a chart type (a combo chart's: each of its types) from the label options,
+ * as LibreOffice draws them. It writes showCatName and showPercent only on pie and doughnut points and a custom label
+ * per point for showLabel on scatter, so on other charts showLabel and showPercent draw nothing, as in PowerPoint; and
+ * showSerName on every chart but pie and doughnut.
+ */
+function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChartOpts, grouping: NormalizedChart["grouping"], chartTypes: PptxGenJS.CHART_NAME[], fieldSeparator: string): NormalizedChartDataLabels {
+    const pieLike = type === "pie" || type === "doughnut";
+    const stackedBars = grouping === "stacked" || grouping === "percentStacked";
+    const defaultPositions = PPTX_DEFAULTS.chart.dataLabelPosition;
+    let position: NormalizedChartDataLabels["position"];
+    let keptPositions: ReadonlySet<string> = NO_LABEL_POSITIONS;
+
+    switch (type) {
+        case "line":
+            position = defaultPositions.line;
+            keptPositions = LINE_LABEL_POSITIONS;
+            break;
+        case "scatter":
+        case "bubble":
+            position = defaultPositions.scatter;
+            keptPositions = LINE_LABEL_POSITIONS;
+            break;
+        case "pie":
+            position = defaultPositions.pie;
+            keptPositions = PIE_LABEL_POSITIONS;
+            break;
+        case "doughnut":
+            position = defaultPositions.doughnut;
+            break;
+        case "area":
+            position = defaultPositions.area;
+            break;
+        case "radar":
+            position = defaultPositions.radar;
+            break;
+        case "bar3D":
+            position = defaultPositions.bar3D;
+            break;
+        case "bar":
+        case "mixed":
+            position = stackedBars ? defaultPositions.stacked : defaultPositions.clustered;
+            keptPositions = stackedBars ? STACKED_BAR_LABEL_POSITIONS : CLUSTERED_BAR_LABEL_POSITIONS;
+            break;
+    }
+
+    if (options.dataLabelPosition !== undefined && keptPositions.has(options.dataLabelPosition)) {
+        position = options.dataLabelPosition;
+    }
+
+    // PptxGenJS: `dataLabelFormatCode || (pie or doughnut: showPercent ? '0%' : 'General'; scatter: 'General') || '#,##0'`.
+    // On a pie LibreOffice applies it to the percentage when showPercent is set and draws the value in General (renders
+    // of PptxGenJS pies: `0.0` with showPercent draws 0.5; showValue with showPercent draws 50.25 and 50%).
+    const pieFormatCode = options.showPercent ? PPTX_DEFAULTS.chart.piePercentFormatCode : PPTX_DEFAULTS.chart.pieDataLabelFormatCode;
+    const formatCode = options.dataLabelFormatCode || (pieLike ? pieFormatCode : type === "scatter" ? PPTX_DEFAULTS.chart.scatterDataLabelFormatCode : PPTX_DEFAULTS.chart.dataLabelFormatCode);
+
+    if (!isSupportedChartNumberFormat(formatCode)) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["dataLabelFormatCode[format]"] });
+    }
+
+    const showSeriesName = !pieLike && (options.showSerName ?? PPTX_DEFAULTS.chart.showSeriesName);
+
+    return {
+        showValue: options.showValue ?? PPTX_DEFAULTS.chart.showValue,
+        showCategory: (pieLike || type === "scatter") && (options.showLabel ?? PPTX_DEFAULTS.chart.showLabel),
+        ...(showSeriesName ? { showSeriesName, fieldSeparator } : {}),
+        showPercent: pieLike && (options.showPercent ?? PPTX_DEFAULTS.chart.showPercent),
+        position,
+        valueFormat: pieLike && options.showPercent ? PPTX_DEFAULTS.chart.pieDataLabelFormatCode : formatCode,
+        percentFormat: formatCode,
+        color: normalizeColor(options.dataLabelColor || PPTX_DEFAULTS.chart.dataLabelColor),
+        fontFace: options.dataLabelFontFace || PPTX_DEFAULTS.chart.fontFace,
+        fontSize: checkedSize(options.dataLabelFontSize || PPTX_DEFAULTS.chart.dataLabelFontSizePt, "dataLabelFontSize", PPTX_DEFAULTS.limits.fontSizePt),
+        bold: options.dataLabelFontBold ?? false,
+        italic: options.dataLabelFontItalic ?? false,
+    };
+}
+
 type ChartInputType = PptxGenJS.CHART_NAME | PptxGenJS.IChartMulti[];
 
-export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts = {}): NormalizedChart {
+export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts = {}, target: RenderingTarget = DEFAULT_RENDERING_TARGET): NormalizedChart {
+    const profile = RENDERING_TARGETS[target];
     const mixed = Array.isArray(type);
     const chartTypes = mixed ? type.map(chart => chart.type) : [type];
 
@@ -453,17 +591,45 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
-    // PptxGenJS writes no axes on a pie or doughnut, so the category-axis options draw nothing there; on the other
-    // chart types without a 2D category axis (bar3D, radar, scatter, bubble) they are not drawn yet.
-    if (!mixed && CATEGORY_AXIS_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
+    // PptxGenJS writes no axes on a pie or doughnut, so the category-axis options draw nothing there.
+    if (type === "radar") {
         for (const key of CATEGORY_AXIS_OPTIONS) {
-            if (options[key] !== undefined) {
-                unsupportedAxisOptions.push(`${key}[${String(type)}]`);
+            if (options[key] !== undefined && RADAR_UNDRAWN_CATEGORY_OPTIONS.has(key)) {
+                unsupportedAxisOptions.push(`${key}[radar]`);
             }
         }
     }
 
-    for (const [key, value] of Object.entries(options.plotArea ?? {})) {
+    // The value-axis options a chart type does not draw, on the chart or a valAxes entry.
+    const undrawnValueOptions = mixed ? undefined : VALUE_AXIS_UNDRAWN_OPTIONS[type as NormalizedChartType];
+    const valueAxisOptionSets: [string, PptxGenJS.IChartPropsAxisVal][] = [["", options]];
+
+    for (const [index, axis] of requestedValueAxes.entries()) {
+        valueAxisOptionSets.push([`valAxes[${index}].`, axis]);
+    }
+
+    for (const [prefix, axis] of valueAxisOptionSets) {
+        for (const key of undrawnValueOptions ?? []) {
+            const value = axis[key as keyof PptxGenJS.IChartPropsAxisVal];
+
+            // A minMax orientation and a 0 rotation are the defaults, drawn as they are.
+            if (value !== undefined && value !== "minMax" && !(key === "valAxisLabelRotate" && value === 0)) {
+                unsupportedAxisOptions.push(`${prefix}${key}[${String(type)}]`);
+            }
+        }
+
+        // A radar chart draws its value labels beside the first spoke or none.
+        if (type === "radar" && axis.valAxisLabelPos !== undefined && axis.valAxisLabelPos !== "nextTo" && axis.valAxisLabelPos !== "none") {
+            unsupportedAxisOptions.push(`${prefix}valAxisLabelPos[${axis.valAxisLabelPos}][radar]`);
+        }
+    }
+
+    if (type === "bar3D" && options.barDir === "bar") {
+        unsupportedAxisOptions.push("barDir[bar3D]");
+    }
+
+    // The deprecated top-level border is checked as plotArea.border is.
+    for (const [key, value] of Object.entries({ ...options.plotArea, ...(options.border ? { border: options.border } : {}) })) {
         const supported = SUPPORTED_PLOT_AREA_OPTIONS[key];
 
         if (!supported) {
@@ -479,7 +645,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     if (!mixed && PLOT_AREA_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
-        for (const key of ["layout", "plotArea"] as const) {
+        for (const key of ["plotArea", "fill", "border"] as const) {
             if (options[key] !== undefined) {
                 unsupportedAxisOptions.push(`${key}[${String(type)}]`);
             }
@@ -533,6 +699,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         return { ...item, automaticPointFill };
     };
     let series: NormalizedChartSeries[];
+    // A combo chart series' chart type options, by series index.
+    const seriesOptions: PptxGenJS.IChartOpts[] = [];
 
     if (!Array.isArray(type)) {
         series = normalizeSeries(normalizedType, data);
@@ -549,6 +717,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
                 const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const) };
 
                 series.push(chart.type === "bar" && chart.data.length === 1 && pointColors ? withPointStyle(placed, pointColors) : placed);
+                seriesOptions.push(chart.options ?? {});
             }
         }
     }
@@ -613,60 +782,15 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         throw new UnsupportedChartError({ reason: "chart-combination", chartTypes, unsupportedOptions: ["valAxes[secondary-without-series]"] });
     }
 
-    // The data labels. PptxGenJS writes showCatName and showPercent only on pie and doughnut points (and custom labels
-    // for showLabel on scatter), so on a bar or line chart showLabel and showPercent draw nothing, as in PowerPoint.
-    const pieLike = normalizedType === "pie" || normalizedType === "doughnut";
-    const drawingLabelOptions: string[] = [];
+    // The data labels: a combo chart's chart types each take their own (`{ ...options, ...type.options }`).
+    const dataLabels = normalizeDataLabels(normalizedType, options, normalizedGrouping, chartTypes, profile.dataLabelFieldSeparator);
 
-    if (options.showValue) {
-        drawingLabelOptions.push("showValue");
+    if (mixed) {
+        for (const [index, item] of series.entries()) {
+            series[index] = { ...item, dataLabels: normalizeDataLabels(item.type, { ...options, ...seriesOptions[index] }, normalizedGrouping, chartTypes, profile.dataLabelFieldSeparator) };
+        }
     }
 
-    if (options.showLabel && (pieLike || normalizedType === "scatter")) {
-        drawingLabelOptions.push("showLabel");
-    }
-
-    if (options.showPercent && pieLike) {
-        drawingLabelOptions.push("showPercent");
-    }
-
-    if (drawingLabelOptions.length && !DATA_LABEL_CHART_TYPES.has(normalizedType)) {
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: drawingLabelOptions.map(option => `${option}[${normalizedType}]`) });
-    }
-
-    const stackedBars = normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked";
-    const defaultPositions = PPTX_DEFAULTS.chart.dataLabelPosition;
-    let labelPosition: NormalizedChart["dataLabels"]["position"] =
-        normalizedType === "line" ? defaultPositions.line : normalizedType === "pie" ? defaultPositions.pie : normalizedType === "doughnut" ? defaultPositions.doughnut : stackedBars ? defaultPositions.stacked : defaultPositions.clustered;
-    const keptPositions = normalizedType === "line" ? LINE_LABEL_POSITIONS : normalizedType === "pie" ? PIE_LABEL_POSITIONS : normalizedType !== "bar" ? NO_LABEL_POSITIONS : stackedBars ? STACKED_BAR_LABEL_POSITIONS : CLUSTERED_BAR_LABEL_POSITIONS;
-
-    if (options.dataLabelPosition !== undefined && keptPositions.has(options.dataLabelPosition)) {
-        labelPosition = options.dataLabelPosition;
-    }
-
-    // PptxGenJS: `dataLabelFormatCode || (pie or doughnut: showPercent ? '0%' : 'General'; scatter: 'General') || '#,##0'`.
-    // On a pie LibreOffice applies it to the percentage when showPercent is set and draws the value in General (renders
-    // of PptxGenJS pies: `0.0` with showPercent draws 0.5; showValue with showPercent draws 50.25 and 50%).
-    const pieFormatCode = options.showPercent ? PPTX_DEFAULTS.chart.piePercentFormatCode : PPTX_DEFAULTS.chart.pieDataLabelFormatCode;
-    const labelFormatCode = options.dataLabelFormatCode || (pieLike ? pieFormatCode : normalizedType === "scatter" ? PPTX_DEFAULTS.chart.scatterDataLabelFormatCode : PPTX_DEFAULTS.chart.dataLabelFormatCode);
-
-    if (!isSupportedChartNumberFormat(labelFormatCode)) {
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["dataLabelFormatCode[format]"] });
-    }
-
-    const dataLabels: NormalizedChart["dataLabels"] = {
-        showValue: options.showValue ?? PPTX_DEFAULTS.chart.showValue,
-        showCategory: pieLike && (options.showLabel ?? PPTX_DEFAULTS.chart.showLabel),
-        showPercent: pieLike && (options.showPercent ?? PPTX_DEFAULTS.chart.showPercent),
-        position: labelPosition,
-        valueFormat: pieLike && options.showPercent ? PPTX_DEFAULTS.chart.pieDataLabelFormatCode : labelFormatCode,
-        percentFormat: labelFormatCode,
-        color: normalizeColor(options.dataLabelColor || PPTX_DEFAULTS.chart.dataLabelColor),
-        fontFace: options.dataLabelFontFace || PPTX_DEFAULTS.chart.fontFace,
-        fontSize: checkedSize(options.dataLabelFontSize || PPTX_DEFAULTS.chart.dataLabelFontSizePt, "dataLabelFontSize", PPTX_DEFAULTS.limits.fontSizePt),
-        bold: options.dataLabelFontBold ?? false,
-        italic: options.dataLabelFontItalic ?? false,
-    };
     const axisSeries = (axisIndex: 0 | 1) => series.filter(item => item.valueAxisIndex === axisIndex);
     const primaryDataRange = valueAxisDataRange(normalizedType, axisSeries(0));
     const secondaryDataRange = hasSecondaryValueAxis ? valueAxisDataRange(normalizedType, axisSeries(1)) : undefined;
@@ -692,17 +816,19 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
-    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, normalizedType === "bar3D", valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
+    const primaryScale: ValueAxisScaleKind = normalizedType === "bar3D" ? { kind: "bar3D" } : normalizedType === "radar" ? { kind: "radar", maxIncrements: profile.radarMaxIncrements } : { kind: "linear" };
+    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, primaryScale, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
     const valueAxes = [primaryAxis];
 
     if (secondaryDataRange) {
-        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, false, "valAxes[1].", chartTypes, {}));
+        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, { kind: "linear" }, "valAxes[1].", chartTypes, {}));
     }
 
     // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing
-    // color to DEF_CHART_BORDER (1pt 363636). The deprecated `fill` and `border` options stay rejected above.
-    const plotFill = options.plotArea?.fill;
-    const plotBorder = options.plotArea?.border;
+    // color to DEF_CHART_BORDER (1pt 363636). The deprecated top-level `fill` sets the fill's color and `border` replaces
+    // the border.
+    const plotFill = options.fill ? { ...options.plotArea?.fill, color: options.fill } : options.plotArea?.fill;
+    const plotBorder = options.border ?? options.plotArea?.border;
     const plotArea: NormalizedChart["plotArea"] = {
         fill: normalizeFill(plotFill?.color ? plotFill : undefined),
         borderVisible: plotBorder !== undefined,
@@ -757,7 +883,10 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         // Bar options.
         barDirection: options.barDir === "bar" ? ("bar" as const) : PPTX_DEFAULTS.chart.barDirection,
         // PptxGenJS 4.0.1 sets a stacked grouping's `barGapWidthPct` to 50 when it is unset or 0 (`if (!barGapWidthPct)`).
-        barGapWidthPercent: Math.max(0, Math.min(1000, (stackedBars && !options.barGapWidthPct ? PPTX_DEFAULTS.chart.stackedGapWidthPct : options.barGapWidthPct) ?? PPTX_DEFAULTS.chart.barGapWidthPct)),
+        barGapWidthPercent: Math.max(
+            0,
+            Math.min(1000, ((normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked") && !options.barGapWidthPct ? PPTX_DEFAULTS.chart.stackedGapWidthPct : options.barGapWidthPct) ?? PPTX_DEFAULTS.chart.barGapWidthPct),
+        ),
         barGapDepthPercent: Math.max(0, Math.min(1000, options.barGapDepthPct ?? PPTX_DEFAULTS.chart.barGapDepthPct)),
         bar3DShape: BAR_3D_SHAPES.has(options.bar3DShape ?? "") ? (options.bar3DShape as NormalizedChart["bar3DShape"]) : PPTX_DEFAULTS.chart.bar3DShape,
         perspective3D: Math.max(0, Math.min(240, options.v3DPerspective ?? PPTX_DEFAULTS.chart.v3DPerspective)),

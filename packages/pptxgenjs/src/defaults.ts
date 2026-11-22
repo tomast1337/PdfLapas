@@ -399,9 +399,25 @@ export const PPTX_DEFAULTS = Object.freeze({
         // With no `<c:dLblPos>` (PptxGenJS writes one only for dataLabelPosition) LibreOffice places a clustered
         // bar's label outside its end, a stacked bar's in its center, a line point's to its right and a slice's inside it
         // (checked on LibreOffice renders of PptxGenJS output).
-        dataLabelPosition: Object.freeze({ clustered: "outEnd" as const, stacked: "ctr" as const, line: "r" as const, pie: "bestFit" as const, doughnut: "ctr" as const }),
-        // PptxGenJS writes no `<c:separator>`; LibreOffice puts each shown field (category, value, percent) on its own line.
+        // PptxGenJS deletes every dataLabelPosition on an area, radar or bar3D chart; LibreOffice 26.2.6 draws an area
+        // label inside the area below its point, a radar label beside its point, a bar3D label above its bar and a scatter
+        // or bubble label right of its point (its PDF export of synthetic PptxGenJS 4.0.1 charts, #477).
+        dataLabelPosition: Object.freeze({
+            clustered: "outEnd" as const,
+            stacked: "ctr" as const,
+            line: "r" as const,
+            pie: "bestFit" as const,
+            doughnut: "ctr" as const,
+            area: "ctr" as const,
+            radar: "r" as const,
+            bar3D: "outEnd" as const,
+            scatter: "r" as const,
+        }),
+        // PptxGenJS writes no `<c:separator>`; LibreOffice puts each shown field (category, value, percent) of a slice on
+        // its own line. A series name and a value on another chart are joined by the target's dataLabelFieldSeparator;
+        // a model without one (another producer's) takes PowerPoint's ", " ("Lorem, 5" in its PDF export, #568).
         dataLabelSeparator: "\n",
+        dataLabelFieldSeparator: ", ",
         scatterDataLabelFormat: "custom" as const,
         showLabel: false,
         showLeaderLines: false,

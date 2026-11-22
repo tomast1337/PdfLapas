@@ -58,7 +58,7 @@ function words(...values: number[]): Uint8Array {
 }
 
 /** A minimal sfnt with head, hhea (numberOfHMetrics = advances.length), maxp, hmtx and the given cmap; `omit` leaves a table out. */
-function sfnt({ cmap, advances, glyphs, omit = "", kern }: { cmap: Uint8Array; advances: number[]; glyphs: number; omit?: string; kern?: Uint8Array }): Uint8Array {
+function sfnt({ cmap, advances, glyphs, omit = "", kern, extra = [] }: { cmap: Uint8Array; advances: number[]; glyphs: number; omit?: string; kern?: Uint8Array; extra?: { tag: string; bytes: Uint8Array }[] }): Uint8Array {
     const tables = [
         { tag: "cmap", bytes: cmap },
         ...(kern ? [{ tag: "kern", bytes: kern }] : []),
@@ -66,6 +66,7 @@ function sfnt({ cmap, advances, glyphs, omit = "", kern }: { cmap: Uint8Array; a
         { tag: "hhea", bytes: new Uint8Array(36) },
         { tag: "hmtx", bytes: words(...advances.flatMap(advance => [advance, 0])) },
         { tag: "maxp", bytes: words(0x0000, 0x5000, glyphs) },
+        ...extra,
     ].filter(table => table.tag !== omit);
     const directory = 12 + 16 * tables.length;
     let tableBytes = 0;
@@ -437,6 +438,18 @@ describe("readGlyphAdvances", () => {
         expect(readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4 }))).not.toHaveProperty("kerning");
         // A pair list past the table's end is a truncated font.
         expect(() => readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4, kern: words(0, 1, 0, 20, 0x0001, 3, 0, 0, 0, 1, 2, 3) }))).toThrow(FontFileError);
+    });
+
+    test("reads the face's post underline and OS/2 strikeout bands, signed, and leaves out a band without thickness", () => {
+        // post: version, italicAngle, then underlinePosition and underlineThickness; OS/2: yStrikeoutSize at 26, yStrikeoutPosition at 28.
+        const post = (position: number, thickness: number) => ({ tag: "post", bytes: words(3, 0, 0, 0, position, thickness, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) });
+        const os2 = (position: number, size: number) => ({ tag: "OS/2", bytes: words(...new Array<number>(13).fill(0), size, position, ...new Array<number>(24).fill(0)) });
+        const bands = readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4, extra: [post(-217, 150), os2(530, 102)] }));
+
+        expect(bands.underline).toEqual({ position: -217, thickness: 150 });
+        expect(bands.strikeout).toEqual({ position: 530, thickness: 102 });
+        expect(readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4, extra: [post(-217, 0), os2(530, 0)] }))).not.toContainAnyKeys(["underline", "strikeout"]);
+        expect(readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4 }))).not.toContainAnyKeys(["underline", "strikeout"]);
     });
 
     test("throws FontFileError naming readGlyphAdvances on a font it cannot read", () => {

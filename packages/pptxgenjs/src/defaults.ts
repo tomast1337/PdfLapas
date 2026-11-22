@@ -547,7 +547,7 @@ export type FontWinMetrics = {
      * height (> 0). For a face whose `post` band PowerPoint does not draw (#391): measure it in PowerPoint's PDF export.
      * Omitted: the `post` band. `readFontWinMetrics` never sets it.
      */
-    readonly underline?: { readonly position: number; readonly thickness: number };
+    readonly underline?: FontBand;
 };
 /** Font metrics keyed by lower-case face name. */
 export type FontMetricsTable = Readonly<Record<string, FontWinMetrics>>;
@@ -572,7 +572,13 @@ export type GlyphAdvances = {
     readonly unitsPerEm: number;
     readonly advances: ReadonlyMap<number, number>;
     readonly kerning?: ReadonlyMap<number, ReadonlyMap<number, number>>;
+    /** The face's `post` underline band: its top above the baseline (negative below) and its height, in font units. */
+    readonly underline?: FontBand;
+    /** Its OS/2 strikeout band (yStrikeoutPosition, yStrikeoutSize), in font units. */
+    readonly strikeout?: FontBand;
 };
+/** A decoration band in font units: its top above the baseline (negative below) and its height (> 0). */
+export type FontBand = { readonly position: number; readonly thickness: number };
 /** What a lookup found for a face in a weight and style: its `advances`, or `unknown` when they are not known. */
 export type GlyphAdvancesResult = { readonly kind: "advances"; readonly advances: GlyphAdvances } | { readonly kind: "unknown" };
 /** A face's advances in a weight and style. */

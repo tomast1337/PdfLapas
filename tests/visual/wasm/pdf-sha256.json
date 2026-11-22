@@ -29,11 +29,12 @@
   "chartPlotBand": "c5b0a8578a68aac6c84a80738341f09e95462eff19e60ad8106be3bf978b70a2",
   "chartCombo": "6222bc31173d64c30ffe18dece49a56ec23ef41a9aad46045366561fa1ece5fb",
   "chartAreaOrder": "50db6e5e1ab98e524ce763a25108a3cdaf22dd854ab73f2e4c644911a7b80836",
-  "chartPointColors": "959ed958450086332868c616b38e4d8542e7df6770fd88c42b75603101c340c5",
+  "chartPointColors": "ded07465de32824fdc2c10d1dd2e16a089e226c9d075fe150a183a5cfb09705d",
   "chartScatterAxes": "50b599b287f90115d78bd2bbbd3876687bf8bd42bda25f148d41fa6aa91cfe1c",
   "chartTopRightLegend": "13bfd7faa205ea47ec3cf26289355942798bc6ec8bcbb73648ed0afab5d790af",
   "chartValueAxis": "d9083174ccb7c8fc92b531e7380ca3aa63246033088586e1f2d15954e5ecead6",
   "bulletType": "cf2758440dd2eac6d3eeaecf45ed310562f619d9625d9b3268bf531a13b7b38c",
   "chartFixedBound": "2289ddcf0330d9fcad8930f1e36f7f397d254c40ea6f4f489ec95220cb2ada37",
-  "chartLabelPositions": "af6f6bd45f87ee34898d4da4c97f225ea56a16fb6235482b11b30be962fbbbd0"
+  "chartLabelPositions": "af6f6bd45f87ee34898d4da4c97f225ea56a16fb6235482b11b30be962fbbbd0",
+  "chartBar3DAxis": "0eefb83675c1d9f338e07737d9c98a43b751f5c210eb99aff56dab696249d6eb"
 }

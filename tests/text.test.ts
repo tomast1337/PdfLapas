@@ -339,6 +339,35 @@ describe("text normalization", () => {
         }
     });
 
+    // #513: PptxGenJS 4.0.1 tests `bullet.type` first and writes a marker only for "number", so any other truthy type
+    // writes no <a:pPr> (characterCode, code and indent are never read); a falsy type falls through as before.
+    test("draws no bullet for a truthy bullet.type other than number, as PptxGenJS writes none", async () => {
+        const cases = [
+            { config: { type: "bullet" }, ooxml: "<a:p><a:r>", marker: "none" },
+            { config: { type: "BULLET" }, ooxml: "<a:p><a:r>", marker: "none" },
+            { config: { type: 1 }, ooxml: "<a:p><a:r>", marker: "none" },
+            { config: { type: "bullet", characterCode: "25BA", indent: 10 }, ooxml: "<a:p><a:r>", marker: "none" },
+            { config: { type: "bullet", code: "25BA" }, ooxml: "<a:p><a:r>", marker: "none" },
+            { config: { type: false, characterCode: "25BA" }, ooxml: '<a:buChar char="&#x25BA;"/>', marker: "►" },
+            { config: { type: 0 }, ooxml: '<a:buChar char="&#x2022;"/>', marker: "•" },
+            { config: { type: "" }, ooxml: '<a:buChar char="&#x2022;"/>', marker: "•" },
+        ] as const;
+
+        for (const { config, ooxml, marker } of cases) {
+            const pptx = new PptxGenJSRuntime();
+
+            // `as`: the PptxGenJS types allow only "bullet" | "number" for `type`, which the runtime does not check.
+            pptx.addSlide().addText("item", { x: 1, y: 1, w: 2, h: 1, bullet: config as PptxGenJS.TextPropsOptions["bullet"] });
+            // `as`: write() returns a Buffer for the nodebuffer output type.
+            const zip = await JSZip.loadAsync((await pptx.write({ outputType: "nodebuffer" })) as Buffer);
+            const xml = (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+            const bullet = normalizeText("item", { bullet: config as PptxGenJS.TextPropsOptions["bullet"] }).paragraphs[0]?.bullet;
+
+            expect(xml).toContain(ooxml);
+            expect(bullet?.marker ?? "none").toBe(marker);
+        }
+    });
+
     // PowerPoint starts a new list at its own startAt when <a:buAutoNum>'s type or startAt changes (sequenceIndex).
     describe("restarts the numbering when the scheme changes", () => {
         const item = (text: string, style: "arabicPeriod" | "alphaUcPeriod" | "alphaLcPeriod" | "romanUcPeriod", numberStartAt: number) => ({ text, options: { bullet: { type: "number" as const, style, numberStartAt }, breakLine: true } });

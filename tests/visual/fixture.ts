@@ -2233,6 +2233,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartBarOrderFixture(presentation);
     populateChartLegendOrderFixture(presentation);
     populateChartStackedFixture(presentation);
+    populateBulletTypeFixture(presentation);
 }
 
 /**
@@ -2977,4 +2978,20 @@ export function populateChartStackedFixture(presentation: Presentation): void {
 
     slide.addChart("bar", data, { ...shared, x: 0.4, barDir: "bar" });
     slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "col" });
+}
+
+/**
+ * A non-number bullet type (#513): PptxGenJS 4.0.1 writes bullet properties for `bullet: { type }` only when the type is
+ * "number", so `type: "bullet"` (even with a characterCode) is a plain paragraph, beside a `bullet: true` one for
+ * contrast. A parity slide after the others (no page number moves).
+ */
+export function populateBulletTypeFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    const box = { y: 1.25, w: 4, h: 1.25, fontFace: "Arial", fontSize: 14, color: "363636", valign: "top", fill: { color: "F2F2F2" } } as const;
+
+    slide.addText("Bullet type other than number", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    slide.addText('type "bullet", characterCode 25BA: no bullet', { x: 0.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
+    slide.addText("Plain paragraph", { ...box, x: 0.5, bullet: { type: "bullet", characterCode: "25BA" } });
+    slide.addText("bullet: true", { x: 5.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
+    slide.addText("Bulleted paragraph", { ...box, x: 5.5, bullet: true });
 }

@@ -2244,6 +2244,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartValueAxisFixture(presentation);
     populateChartFixedBoundFixture(presentation);
     populateChartLabelPositionFixture(presentation);
+    populateChartBar3DAxisFixture(presentation);
 }
 
 /**
@@ -3240,4 +3241,22 @@ export function populateChartLabelPositionFixture(presentation: Presentation): v
 
     slide.addChart("pie", [{ name: "Share", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }], { ...shared, x: 0.4, dataLabelPosition: "outEnd" });
     slide.addChart("bar", [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, -3, 7, -6] }], { ...shared, x: 5.2, chartColors: ["4472C4"] });
+}
+
+/**
+ * 3D value axis steps (#541): LibreOffice scales a bar3D value axis without the extra step a 2D axis takes near its
+ * data, so 3, 5, 4, 7 runs 0..7 by 1, and steps by valAxisMajorUnit, rounding the automatic maximum up to a whole step
+ * (12..48 by 20 runs 0..60). A parity slide after the others (no page number moves) and the WASM chartBar3DAxis deck,
+ * which crops each chart. The boxes are light and the charts small: the projection still differs from LibreOffice's
+ * (#541), and in the default accent its boxes alone take the slide to 0.15.
+ */
+export function populateChartBar3DAxisFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Three-dimensional value axis", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const shared: PptxGenJS.IChartOpts = { y: 1.3, w: 3.2, h: 3, chartColors: ["BDD7EE"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("bar3D", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 1 });
+    slide.addChart("bar3D", [{ name: "Lorem", labels, values: [12, 30, 48, 25] }], { ...shared, x: 5.8, valAxisMajorUnit: 20 });
 }

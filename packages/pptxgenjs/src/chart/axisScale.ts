@@ -17,7 +17,7 @@ function decimal(value: number): number {
  * LibreOffice's automatic interval of a linear axis from minimum to maximum (PPTX_DEFAULTS.chart.automaticScale): the
  * smallest 1, 2 or 5 times a power of ten that splits the range into at most maxIncrements steps.
  */
-export function automaticAxisInterval(minimum: number, maximum: number): number {
+export function automaticAxisInterval(minimum: number, maximum: number, maxIncrements: number = PPTX_DEFAULTS.chart.automaticScale.maxIncrements): number {
     const range = maximum - minimum;
 
     if (!(range > 0) || !Number.isFinite(range)) {
@@ -31,7 +31,7 @@ export function automaticAxisInterval(minimum: number, maximum: number): number 
         for (const factor of INTERVAL_FACTORS) {
             const interval = decimal(factor * power);
 
-            if (range / interval <= PPTX_DEFAULTS.chart.automaticScale.maxIncrements + STEP_EPSILON) {
+            if (range / interval <= maxIncrements + STEP_EPSILON) {
                 return interval;
             }
         }
@@ -132,6 +132,37 @@ export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBo
 
         // The next of 1, 2 and 5 x 10^k.
         interval = decimal(interval * (interval.toExponential(0).startsWith("2") ? 2.5 : 2));
+    }
+
+    return scale;
+}
+
+/** The bounds and step a caller set on a value axis; each one left out is automatic. */
+export type FixedAxisScale = { minimum?: number; maximum?: number; majorUnit?: number };
+
+/**
+ * LibreOffice's scale of a 3D bar chart's value axis whose data runs from low to high (0 included): the automatic
+ * interval in at most maxIncrements steps (from the axis's drawn length, see renderBar3DSvg), the automatic bounds
+ * rounded out to whole intervals from the minimum, with no extra interval near the data, unlike a 2D axis (chart2
+ * BarChart: no border expansion in 3D). Measured in LibreOffice 26.2.6: 3, 5, 4, 7 gives 0..7 by 1 on a tall axis and
+ * 0..10 by 5 for 3, 5, 4, 8 on a short one; valAxisMajorUnit 2 gives 0..8, and 1..9 from a valAxisMinVal of 1.
+ */
+export function bar3DAxisScale(low: number, high: number, fixed: FixedAxisScale, maxIncrements: number): AxisScale {
+    let interval = fixed.majorUnit ?? automaticAxisInterval(fixed.minimum ?? low, fixed.maximum ?? high, maxIncrements);
+    let scale: AxisScale = { minimum: low, maximum: high, interval };
+
+    // As in automaticAxisScale, a scale whose rounded bounds make too many steps takes the next interval.
+    for (let pass = 0; pass < 3; pass++) {
+        const minimum = fixed.minimum ?? Math.floor(low / interval + STEP_EPSILON) * interval;
+        const maximum = fixed.maximum ?? minimum + Math.max(1, Math.ceil((high - minimum) / interval - STEP_EPSILON)) * interval;
+
+        scale = { minimum: decimal(minimum), maximum: decimal(maximum), interval };
+
+        if (fixed.majorUnit !== undefined || (maximum - minimum) / interval <= maxIncrements + STEP_EPSILON) {
+            return scale;
+        }
+
+        interval = automaticAxisInterval(minimum, maximum, maxIncrements);
     }
 
     return scale;

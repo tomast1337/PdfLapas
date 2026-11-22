@@ -262,6 +262,12 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // lists Q1 to Q4 in the legend, each keyed in its point's color, where LibreOffice lists the series.
     chartLegendListsUnfilledPoints: true,
     topRightLegend: { kind: "above" as const, firstKeyCenterEm: 1.55, pitchEm: 1.725, bandBelowEm: 0.98 },
+    // PowerPoint's PDF export of a synthetic deck (the chartBar3DAxis fixture slide, 12pt Arial value labels, 17.9px
+    // tall) steps 3, 5, 4, 7 0..10 by 5 on a value axis about 83px long, and 12, 30, 48, 25 with valAxisMajorUnit 20
+    // 0..60. Its projection is flatter than ours (#541): it keeps 41.5px steps and drops 20.75px ones (1.16 to 2.32
+    // label heights), and the same scale on our 153px axis needs 2.14 to 4.29; 2.25 sits in both.
+    // shortcut: fitted to that one automatic chart; measure more lengths and sizes when a deck steps differently (#541).
+    bar3DLabelHeightsPerStep: 2.25,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

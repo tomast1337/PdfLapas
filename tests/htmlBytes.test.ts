@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "54bd790574e4b7662305b9924a5061a71e17cfc4fa00d22f9fad070b9884995a",
+    fixture: "9b4918cc6bfe20d7feac8200a30d68b356ef6ea97906cb5e679ef2062b95a623",
     "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
     "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -22,7 +22,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-tables": "9db006ff1efc30aadf23d6a778a023f8f365eff14875d520687566383e68a917",
     "wasm-images": "acedb8d02711e608c7933252c27af2c6b534fecb709e45d621ca170a3ef0d6ce",
     "wasm-effects": "c66bddedfa6557470ca3ff722723e60f28892ce2815af183d8afdc680a427207",
-    "wasm-charts": "eefc565502e772c83a88f549c3eacace4f9ff2f37ff02b5845151aaf43f92843",
+    "wasm-charts": "0dd2dc321406829303679a2cd695d90de5ebf4da3c16afea026d2262f0230837",
     "wasm-chartAxis": "a72341cda5ffdf46ac0dd0dea2a19ae6ce7040cb6aee0269df7ea28621f0ece6",
     "wasm-chartPlot": "668c51abc25242f70dd8f63b5dfe5d732d746d2fcd6cf4b19585f49355ee0bb6",
     "wasm-placeholders": "3010682db4a0a542a254c4866a24b695c4b53c879a1ad9ab5e645f6c2956a792",
@@ -37,13 +37,14 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartPlotBand": "3c56ce5a82ad53e1698e01a34d6363d06f4cafcf5e7a09103d67911133cc899d",
     "wasm-chartCombo": "829a549da8cbbd4058f8784413e26e11c655e18e75fb0db8e74cbe8859ada863",
     "wasm-chartAreaOrder": "0dd7b361670052c66972165c2b144408162cf669dfeb2fc6c473c78022155e4b",
-    "wasm-chartPointColors": "6c691e8bc07e0a1eddbb38d5907c9e6333b48d9a9bec3a5e8158142620b53f2d",
+    "wasm-chartPointColors": "edba25b5312ea0bc5daedb88c0a5637ea399fac1200a2d548717b0b562ab6438",
     "wasm-chartScatterAxes": "cccfe2aca9150f8f64e25931e78cdac2c83a1a7d0f6873c3cdf8e803ddb5837e",
     "wasm-chartTopRightLegend": "aaf39b16e26a813435a919b18fdc3fe34472d21b639f684f6f6f23fb62a7cab3",
     "wasm-chartValueAxis": "f10bcbcfa7b15b0dc6e084b343249e1cd7ba7201dbbea188eb85f8d365923073",
     "wasm-chartLabelPositions": "61abdeabe26269e349d5ce986c6f4cffc245d90aff4174918ec1d322509ce14d",
     "wasm-bulletType": "00f6f3cdb9a058f0278081965f24fb3e7663cbc96ce4b11ddff3160652ec1898",
     "wasm-chartFixedBound": "27d96ad337427a785c8d5cef3b5f9a3567956ffa404038c6361390e56d220766",
+    "wasm-chartBar3DAxis": "b0443aa8156cab90a94124334e8bb5662981544735a001af4706c767b68e21fe",
     "wasm-svg": "0ed2222573f3ffa6ec6b887907d3f26a2343fe30f2c4a44a4608df6e0b5fba31",
     "wasm-gif": "cc044a43bcdaa50876fc2da1fedc3d3ede74d271b7a8ce406191ddd96b4dc71e",
     "wasm-webp": "389927c7c8b1506b25d5dece837d9f0131d4af29ad94ee0b361719c07798f1b8",

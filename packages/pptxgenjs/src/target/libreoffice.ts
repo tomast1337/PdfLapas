@@ -45,6 +45,9 @@ import type { RenderingTargetProfile } from "./index";
  * (`topRightLegend`): in LibreOffice 26.2's PDF export of synthetic PptxGenJS 4.0.1 column charts (1.6 to 5in tall,
  * with and without a title, 1 to 5 entries, 10 to 20pt), the first key's center is 0.83 legend font sizes below the
  * chart's top edge whatever the height, the title or the entry count, and the plot area's top does not move (#536).
+ * A bar3D value axis takes about as many steps as its labels' height fits along its drawn length
+ * (`bar3DLabelHeightsPerStep` 1): in LibreOffice 26.2.6's PDF export of 3, 5, 4, 8 in 14pt Arial, 0..8 by 1 on a
+ * 136.5pt axis, by 2 on a 95pt one and 0..10 by 5 on a 54pt one (#541).
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -80,4 +83,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     chartPointKeepsSeriesFill: false,
     chartLegendListsUnfilledPoints: false,
     topRightLegend: { kind: "beside" as const },
+    bar3DLabelHeightsPerStep: 1,
 });

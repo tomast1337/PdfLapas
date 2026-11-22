@@ -1,5 +1,5 @@
 import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts/charts";
-import { GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
+import { GraphicComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
 import { type EChartsCoreOption, format, init, use } from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { automaticAxisInterval, automaticAxisScale } from "#src/chart/axisScale";
@@ -14,7 +14,7 @@ import { attributeName, descendants, firstElementChild, getAttribute, parseMarku
 import { element, type Html } from "./markup";
 import { applyObjectStyle } from "./style";
 
-use([BarChart, LineChart, PieChart, RadarChart, ScatterChart, GridComponent, LegendComponent, RadarComponent, TitleComponent, SVGRenderer]);
+use([BarChart, LineChart, PieChart, RadarChart, ScatterChart, GraphicComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent, SVGRenderer]);
 
 // LibreOffice draws OOXML's `dot` marker as its right-pointing arrow (oox maps XML_dot to chart2 StandardSymbol 4,
 // Symbol_Right) and `dash` as its horizontal bar (Symbol_HorizontalBar), 0.2 of the marker size tall: measured in its
@@ -81,6 +81,11 @@ type LabelPositions = Readonly<Partial<Record<NormalizedChart["dataLabels"]["pos
 const COLUMN_LABEL_POSITIONS: LabelPositions = { outEnd: "top", inEnd: "insideTop", ctr: "inside", inBase: "insideBottom" };
 const BAR_LABEL_POSITIONS: LabelPositions = { outEnd: "right", inEnd: "insideRight", ctr: "inside", inBase: "insideLeft" };
 const POINT_LABEL_POSITIONS: LabelPositions = { t: "top", b: "bottom", l: "left", r: "right", ctr: "inside" };
+// A negative bar's: its end is at the bottom (left), its base at the zero line, as LibreOffice 26.2 draws them (measured
+// on its PDF export of synthetic PptxGenJS 4.0.1 column and horizontal bar charts with values 5, -3, 7, -6).
+// shortcut: PowerPoint is not measured; both targets take these (#559).
+const NEGATIVE_COLUMN_LABEL_POSITIONS: LabelPositions = { outEnd: "bottom", inEnd: "insideBottom", ctr: "inside", inBase: "insideTop" };
+const NEGATIVE_BAR_LABEL_POSITIONS: LabelPositions = { outEnd: "left", inEnd: "insideLeft", ctr: "inside", inBase: "insideRight" };
 
 /** The ECharts `label` of a series; `text` gives each data point's label. */
 function dataLabelOption(labels: NormalizedChart["dataLabels"], position: string, text: (dataIndex: number) => string) {
@@ -509,24 +514,167 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         const boxWidth = width - left - right;
         const boxHeight = height - top - bottom;
-        const radius = Math.max(0, Math.min(boxWidth, boxHeight) / 2);
+        let radius = Math.max(0, Math.min(boxWidth, boxHeight) / 2);
+        let centerX = left + boxWidth / 2;
+        let centerY = top + boxHeight / 2;
+        const showLabels = labels.showCategory || labels.showValue || labels.showPercent;
+        // inEnd and outEnd labels sit at the rim of each slice (PPTX_DEFAULTS.chart.pieLabel); ECharts' pie label
+        // positions have neither, so they are drawn as text at their anchors.
+        const rimLabels = showLabels && (labels.position === "inEnd" || labels.position === "outEnd");
+        const rimTexts: Record<string, unknown>[] = [];
+
+        if (rimLabels) {
+            const pieLabel = PPTX_DEFAULTS.chart.pieLabel;
+            const outside = labels.position === "outEnd";
+            const offset = pointsToPixels(pieLabel.offsetPt) * (outside ? 1 : -1);
+            const labelPx = pointsToPixels(labels.fontSize);
+            const lineHeight = labelPx * pieLabel.lineEm;
+            const font = `${labels.italic ? "italic " : ""}${labels.bold ? "bold " : ""}${labelPx}px ${labels.fontFace}`;
+            const band = pieLabel.axisBandDeg;
+            // Each slice's label text, size, bisector (degrees counterclockwise from 3 o'clock; ECharts lays the slices
+            // out clockwise from startAngle) and its side of the anchor.
+            const slices: { text: string; width: number; height: number; cos: number; sin: number; align: "left" | "center" | "right"; verticalAlign: "top" | "middle" | "bottom" }[] = [];
+            let before = 0;
+
+            for (const [index, value] of series.values.entries()) {
+                const text = sliceLabel(index);
+                const lines = text.split(PPTX_DEFAULTS.chart.dataLabelSeparator);
+                let textWidth = 0;
+
+                for (const line of lines) {
+                    textWidth = Math.max(textWidth, format.getTextRect(line, font).width);
+                }
+
+                const share = total === 0 ? 1 / series.values.length : value / total;
+                const degrees = (((90 - chart.firstSliceAngle - (before + share / 2) * 360) % 360) + 360) % 360;
+                // LibreOffice puts an outEnd label right of its anchor on the right half and above it on the upper
+                // half, an inEnd label on the other side, and centers it on the bisector near an axis.
+                const rightHalf = degrees < 90 - band || degrees > 270 + band;
+                const leftHalf = degrees > 90 + band && degrees < 270 - band;
+                const upperHalf = degrees > band && degrees < 180 - band;
+                const lowerHalf = degrees > 180 + band && degrees < 360 - band;
+                const radians = (degrees * Math.PI) / 180;
+
+                before += share;
+                slices.push({
+                    text,
+                    width: textWidth,
+                    height: lines.length * lineHeight,
+                    cos: Math.cos(radians),
+                    sin: Math.sin(radians),
+                    align: (outside ? rightHalf : leftHalf) ? "left" : (outside ? leftHalf : rightHalf) ? "right" : "center",
+                    verticalAlign: (outside ? upperHalf : lowerHalf) ? "bottom" : (outside ? lowerHalf : upperHalf) ? "top" : "middle",
+                });
+            }
+
+            // LibreOffice's first layout: a ring 1 / firstPassDivisor of the plot area, centered in a box that size
+            // placed at the plot area's far corner (VDiagram::reduceToMinimumSize), and the rect its labels and ring
+            // cover there.
+            const firstWidth = boxWidth / pieLabel.firstPassDivisor;
+            const firstHeight = boxHeight / pieLabel.firstPassDivisor;
+            const firstSide = Math.min(firstWidth, firstHeight);
+            const firstX = left + firstWidth + (firstWidth - firstSide) / 2;
+            const firstY = top + firstHeight + (firstHeight - firstSide) / 2;
+            let minX = firstX;
+            let maxX = firstX + firstSide;
+            let minY = firstY;
+            let maxY = firstY + firstSide;
+
+            for (const slice of slices) {
+                const anchorX = firstX + firstSide / 2 + (firstSide / 2 + offset) * slice.cos;
+                const anchorY = firstY + firstSide / 2 - (firstSide / 2 + offset) * slice.sin;
+                const labelLeft = slice.align === "left" ? anchorX : slice.align === "right" ? anchorX - slice.width : anchorX - slice.width / 2;
+                const labelTop = slice.verticalAlign === "top" ? anchorY : slice.verticalAlign === "bottom" ? anchorY - slice.height : anchorY - slice.height / 2;
+
+                minX = Math.min(minX, labelLeft);
+                maxX = Math.max(maxX, labelLeft + slice.width);
+                minY = Math.min(minY, labelTop);
+                maxY = Math.max(maxY, labelTop + slice.height);
+            }
+
+            // VDiagram::adjustInnerSize: the ring's box grows by the room left beside that rect, to at least a third of
+            // the plot area, and moves to keep the labels in the plot area; the ring is the box's centered square.
+            let deltaWidth = boxWidth - (maxX - minX);
+            let deltaHeight = boxHeight - (maxY - minY);
+
+            if (firstSide + deltaWidth < boxWidth / 3) {
+                deltaWidth = boxWidth / 3 - firstSide;
+            }
+
+            if (firstSide + deltaHeight < boxHeight / 3) {
+                deltaHeight = boxHeight / 3 - firstSide;
+            }
+
+            const diffLeft = minX - left;
+            const diffRight = left + boxWidth - maxX;
+            const diffUp = minY - top;
+            const diffDown = top + boxHeight - maxY;
+            let innerX = firstX;
+            let innerY = firstY;
+
+            if (diffLeft >= 0) {
+                innerX -= diffLeft;
+            } else if (diffRight >= 0) {
+                innerX += diffRight > -diffLeft ? -diffLeft : diffRight > Math.abs(deltaWidth) ? diffRight : Math.abs(deltaWidth);
+            }
+
+            if (diffUp >= 0) {
+                innerY -= diffUp;
+            } else if (diffDown >= 0) {
+                innerY += diffDown > -diffUp ? -diffUp : diffDown > Math.abs(deltaHeight) ? diffDown : Math.abs(deltaHeight);
+            }
+
+            // Clipped to the plot area (VDiagram::adjustPosAndSize).
+            const innerLeft = Math.max(left, innerX);
+            const innerTop = Math.max(top, innerY);
+            const innerWidth = Math.max(0, Math.min(left + boxWidth, innerX + firstSide + deltaWidth) - innerLeft);
+            const innerHeight = Math.max(0, Math.min(top + boxHeight, innerY + firstSide + deltaHeight) - innerTop);
+
+            radius = Math.min(innerWidth, innerHeight) / 2;
+            centerX = innerLeft + innerWidth / 2;
+            centerY = innerTop + innerHeight / 2;
+
+            for (const slice of slices) {
+                rimTexts.push({
+                    type: "text",
+                    x: centerX + (radius + offset) * slice.cos,
+                    y: centerY - (radius + offset) * slice.sin,
+                    silent: true,
+                    // Over the slices, which ECharts draws at z 2.
+                    z: 3,
+                    style: {
+                        text: slice.text,
+                        fill: labels.color,
+                        fontFamily: labels.fontFace,
+                        fontSize: labelPx,
+                        fontWeight: labels.bold ? "bold" : "normal",
+                        fontStyle: labels.italic ? "italic" : "normal",
+                        lineHeight,
+                        align: slice.align,
+                        verticalAlign: slice.verticalAlign,
+                    },
+                });
+            }
+        }
 
         option = {
             ...common,
+            ...(rimTexts.length ? { graphic: rimTexts } : {}),
             series: [
                 {
                     name: series.name,
                     type: "pie",
-                    center: [left + boxWidth / 2, top + boxHeight / 2],
+                    center: [centerX, centerY],
                     // OOXML's c:holeSize is a percentage of the outer diameter.
                     radius: chart.type === "doughnut" ? [(radius * chart.doughnutHoleSize) / 100, radius] : radius,
                     startAngle: 90 - chart.firstSliceAngle,
                     itemStyle: { opacity: chart.colorOpacity },
                     // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent
                     // off unless showLabel, showValue or showPercent is set, so PowerPoint and LibreOffice draw no
-                    // slice labels by default; ECharts would draw category names on leaders. Normalization keeps the
-                    // positions inside the slice (bestFit and ctr; LibreOffice places a bestFit label inside).
-                    label: labels.showCategory || labels.showValue || labels.showPercent ? dataLabelOption(labels, "inside", sliceLabel) : { show: false },
+                    // slice labels by default; ECharts would draw category names on leaders. bestFit and ctr labels
+                    // sit inside the slice (LibreOffice places a bestFit label inside).
+                    // shortcut: LibreOffice puts a bestFit label nearer the rim than ctr's mid-radius (#558).
+                    label: showLabels && !rimLabels ? dataLabelOption(labels, "inside", sliceLabel) : { show: false },
                     labelLine: { show: false },
                     data: series.values.map((value, index) => ({
                         value,
@@ -752,24 +900,35 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             }
 
             // Normalization allows value labels only on bar and line charts, whose positions the tables map.
-            // shortcut: a negative column's outEnd label sits above the zero line, not below the bar; flip it per point when needed (#478).
             const positions = series.type === "line" ? POINT_LABEL_POSITIONS : horizontal ? BAR_LABEL_POSITIONS : COLUMN_LABEL_POSITIONS;
             const labelPosition = positions[chart.dataLabels.position] ?? "inside";
             // The series' own value, also on a percent-stacked chart that draws its share.
             const label = chart.dataLabels.showValue ? dataLabelOption(chart.dataLabels, labelPosition, dataIndex => formatChartNumber(series.values[dataIndex] ?? 0, chart.dataLabels.valueFormat)) : undefined;
+            // A negative bar's label takes its own position, as its end points the other way (#478).
+            const negativePosition = label && series.type === "bar" ? ((horizontal ? NEGATIVE_BAR_LABEL_POSITIONS : NEGATIVE_COLUMN_LABEL_POSITIONS)[chart.dataLabels.position] ?? "inside") : labelPosition;
+            const pointFill = series.varyColors || series.automaticPointFill;
+            let data: readonly unknown[] = values;
+
+            // Each point in its own fill (the series color keys the legend) or with its own label position.
+            if (pointFill || (negativePosition !== labelPosition && values.some(value => value < 0))) {
+                const points: unknown[] = [];
+
+                for (const [valueIndex, value] of values.entries()) {
+                    points.push({
+                        value,
+                        ...(pointFill ? { itemStyle: { color: series.automaticPointFill ?? chart.colors[valueIndex % chart.colors.length] } } : {}),
+                        ...(value < 0 && negativePosition !== labelPosition ? { label: { position: negativePosition } } : {}),
+                    });
+                }
+
+                data = points;
+            }
 
             cartesian.push({
                 label,
                 name: series.name,
                 type: seriesType,
-                // Each point in its own fill; the series color keys the legend.
-                data:
-                    series.varyColors || series.automaticPointFill
-                        ? values.map((value, valueIndex) => ({
-                              value,
-                              itemStyle: { color: series.automaticPointFill ?? chart.colors[valueIndex % chart.colors.length] },
-                          }))
-                        : values,
+                data,
                 // Each type stacks apart from the others, as each is its own chart element.
                 stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,

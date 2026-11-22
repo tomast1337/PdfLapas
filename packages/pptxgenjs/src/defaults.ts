@@ -375,6 +375,18 @@ export const PPTX_DEFAULTS = Object.freeze({
         // slide 6 is within 4px of it. The left or right legend band is the same beside a bar, line or area plot area
         // (#517: LibreOffice's plot edge within 2 to 9px of it on synthetic stacked column and line charts).
         pieLayout: Object.freeze({ insetPt: 9.75, titleBandEm: 1.7, titleBandPt: 14, legendBandEm: 1.05 }),
+        // A pie's inEnd and outEnd labels as LibreOffice 26.2 places them (chart2 PolarLabelPositionHelper, PieChart,
+        // ChartView): each label's corner on the slice's bisector at the rim, offsetPt (150 hundredths of a mm) outside
+        // for outEnd or inside for inEnd, the label beside that point on the side away from (outEnd) or toward (inEnd)
+        // the center, centered on the bisector within 5 degrees of an axis. LibreOffice lays a labeled pie out twice:
+        // first as a ring 1 / firstPassDivisor of the plot area, then grown by the room its labels left in the plot
+        // area (VDiagram::adjustInnerSize), so outEnd labels shrink the pie. Label lines are lineEm font sizes apart
+        // (Arial's ascent and descent). Measured on its PDF export of synthetic PptxGenJS 4.0.1 pies (4.4 x 4.1in,
+        // 12pt values, 96 dpi): outEnd ring 332.5px wide centered at (213.2, 192.5), this model 331.4px at (213.4,
+        // 192.5); inEnd labels within 1px of their anchors, the ring unchanged.
+        // shortcut: PowerPoint's placement is not measured, so both targets take LibreOffice's (#559); LibreOffice wraps a
+        // long outEnd label to the room beside the ring, which this model does not (#558).
+        pieLabel: Object.freeze({ offsetPt: 4.252, firstPassDivisor: 2.2, lineEm: 1.117, axisBandDeg: 5 }),
         dataBorderWidthPt: 0.75,
         dataLabelFormatCode: "#,##0",
         scatterDataLabelFormatCode: "General",

@@ -632,10 +632,6 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         labelPosition = options.dataLabelPosition;
     }
 
-    if (normalizedType === "pie" && (labelPosition === "inEnd" || labelPosition === "outEnd") && drawingLabelOptions.length) {
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`dataLabelPosition[${labelPosition}]`] });
-    }
-
     // PptxGenJS: `dataLabelFormatCode || (pie or doughnut: showPercent ? '0%' : 'General'; scatter: 'General') || '#,##0'`.
     // On a pie LibreOffice applies it to the percentage when showPercent is set and draws the value in General (renders
     // of PptxGenJS pies: `0.0` with showPercent draws 0.5; showValue with showPercent draws 50.25 and 50%).

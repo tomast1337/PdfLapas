@@ -26,6 +26,7 @@
     "test:visual:pdfkit:docker": "sh scripts/test-visual-docker.sh test:visual:pdfkit",
     "bench": "bun run scripts/bench.ts",
     "bench:renderers": "bun run scripts/bench-renderers.ts",
+    "bench:load": "bun run scripts/bench-load.ts",
     "bench:wasm": "bun run bench:renderers",
     "fonts:check": "bun run scripts/check-fonts.ts",
     "compare:pdfs": "bun run scripts/compare-pdfs.ts",

@@ -10,6 +10,7 @@ import {
     populateChartCategoryAxisFixture,
     populateChartFixture,
     populateChartAreaFixture,
+    populateChartComboFixture,
     populateChartLegendOrderFixture,
     populateChartMarkerFixture,
     populateChartPieFixture,
@@ -190,6 +191,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartPlotBand: {
         populate: presentation => {
             populateChartPlotBandFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartCombo: the shared fixture's combo chart grouping slide (#529); the chart gets a crop.
+    chartCombo: {
+        populate: presentation => {
+            populateChartComboFixture(presentation);
 
             return presentation;
         },

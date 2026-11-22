@@ -311,6 +311,11 @@ export type NormalizedChartSeries = {
     colorIndex: number;
     varyColors: boolean;
     valueAxisIndex: 0 | 1;
+    /**
+     * How the series stacks with the other series of its type on its value axis (its chart element's `<c:grouping>`);
+     * absent: it is drawn on its own.
+     */
+    stack?: "stacked" | "percentStacked";
 };
 
 export type NormalizedChartValueAxis = {

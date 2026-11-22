@@ -220,47 +220,60 @@ function normalizeSeries(type: NormalizedChartType, data: readonly PptxGenJS.Opt
     return normalized;
 }
 
-function automaticValueBounds(type: NormalizedChartType, series: readonly NormalizedChartSeries[], grouping: NormalizedChart["grouping"]): [number, number] {
-    let values = type === "scatter" || type === "bubble" ? series.slice(1).flatMap(item => item.values) : series.flatMap(item => item.values);
+function automaticValueBounds(type: NormalizedChartType, series: readonly NormalizedChartSeries[]): [number, number] {
+    const values: number[] = [];
+    // The stacked series by type: each type stacks apart from the others.
+    const stacks = new Map<NormalizedChartType, NormalizedChartSeries[]>();
 
-    if (grouping === "stacked" || grouping === "percentStacked") {
-        const categoryCount = Math.max(0, ...series.map(item => item.values.length));
-        const stacked: number[] = [];
+    for (const [index, item] of series.entries()) {
+        // A scatter or bubble chart's first series holds the X values.
+        if ((type === "scatter" || type === "bubble") && index === 0) {
+            continue;
+        }
+
+        if (!item.stack) {
+            values.push(...item.values);
+            continue;
+        }
+
+        const stack = stacks.get(item.type);
+
+        if (stack) {
+            stack.push(item);
+        } else {
+            stacks.set(item.type, [item]);
+        }
+    }
+
+    // Each stack's positive and negative totals per category, or their shares of the category's absolute total.
+    for (const stack of stacks.values()) {
+        const percent = stack[0]?.stack === "percentStacked";
+        const categoryCount = Math.max(0, ...stack.map(item => item.values.length));
 
         for (let index = 0; index < categoryCount; index++) {
-            const categoryValues = series.map(item => item.values[index] ?? 0);
             let positive = 0;
             let negative = 0;
 
-            for (const value of categoryValues) {
+            for (const item of stack) {
+                const value = item.values[index] ?? 0;
+
                 if (value >= 0) {
                     positive += value;
-                }
-
-                if (value < 0) {
+                } else {
                     negative += value;
                 }
             }
 
-            if (grouping !== "percentStacked") {
-                stacked.push(positive, negative);
-                continue;
-            }
+            const total = positive - negative;
 
-            let total = 0;
-
-            for (const value of categoryValues) {
-                total += Math.abs(value);
-            }
-
-            if (total === 0) {
-                stacked.push(0, 0);
+            if (!percent) {
+                values.push(positive, negative);
+            } else if (total === 0) {
+                values.push(0, 0);
             } else {
-                stacked.push((positive / total) * 100, (negative / total) * 100);
+                values.push((positive / total) * 100, (negative / total) * 100);
             }
         }
-
-        values = stacked;
     }
 
     const minimum = Math.min(0, ...values);
@@ -557,8 +570,20 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     } else if (normalizedType === "area") {
         normalizedGrouping = grouping === "stacked" ? grouping : PPTX_DEFAULTS.chart.grouping.area;
     } else if (normalizedType === "mixed") {
-        // shortcut: a combo chart keeps one grouping for all its series, where PptxGenJS writes one per chart type (#529).
+        // The bar group's `barGrouping || 'clustered'`: addChartDefinition checks no grouping on a combo chart.
         normalizedGrouping = grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : PPTX_DEFAULTS.chart.grouping.bar;
+    }
+
+    // Each series stacks as its chart element's <c:grouping> says, also in a combo chart, where PptxGenJS writes one
+    // element per type: the bar grouping on the bars, "stacked" on the areas only for "stacked", none on the lines (#529).
+    const barStack = normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked" ? normalizedGrouping : undefined;
+
+    for (const [index, item] of series.entries()) {
+        const stack = item.type === "line" ? undefined : item.type === "area" ? (normalizedGrouping === "stacked" ? normalizedGrouping : undefined) : barStack;
+
+        if (stack) {
+            series[index] = { ...item, stack };
+        }
     }
 
     const hasSecondaryValueAxis = series.some(item => item.valueAxisIndex === 1);
@@ -630,8 +655,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         italic: options.dataLabelFontItalic ?? false,
     };
     const axisSeries = (axisIndex: 0 | 1) => series.filter(item => item.valueAxisIndex === axisIndex);
-    const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0), normalizedGrouping);
-    const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1), normalizedGrouping) : undefined;
+    const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0));
+    const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1)) : undefined;
     const catDefaults = PPTX_DEFAULTS.chart.categoryAxis;
     // PptxGenJS 4.0.1 gives a scatter chart (not a bubble chart) `{ color: 'D9D9D9', size: 1 }` gridlines on both axes
     // when catGridLine or valGridLine is unset.

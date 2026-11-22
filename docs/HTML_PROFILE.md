@@ -980,6 +980,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartSeries.colorIndex`         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.varyColors`         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.valueAxisIndex`     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeries.stack`              | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colors`                   | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colorOpacity`             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.showLegend`               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

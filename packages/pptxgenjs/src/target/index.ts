@@ -220,6 +220,20 @@ export type RenderingTargetProfile = {
      * scale, the bar3D rounding over the data).
      */
     readonly radarMaxIncrements: number;
+    /**
+     * Where a pie's labels go when PptxGenJS writes no `<c:dLblPos>` (dataLabelPosition unset, or one it drops):
+     * "bestFit" near the rim, or "ctr" at mid-radius.
+     */
+    readonly pieUnsetLabelPosition: "bestFit" | "ctr";
+    /** Whether a combo chart's legend lists its area series first, or every series in call order (`NormalizedChart.legendListsAreasFirst`). */
+    readonly comboLegendListsAreasFirst: boolean;
+    /**
+     * Whether a combo chart whose first type is bar keeps its categories between the tick marks, though PptxGenJS writes
+     * `<c:crossBetween val="midCat"/>` on a combo with an area type, or puts them on the ticks (`NormalizedChart.categoriesOnTicks`).
+     */
+    readonly barComboKeepsCategoriesBetweenTicks: boolean;
+    /** How wide a pie's outEnd label may be before it wraps (`NormalizedChart.outsidePieLabelWidth`); undefined: it never wraps. */
+    readonly outsidePieLabelWidth: NormalizedChart["outsidePieLabelWidth"];
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

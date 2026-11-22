@@ -114,6 +114,18 @@ const LIBREOFFICE_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * label (`bar3DNamesSingleSeries` off): its PDF export of the chartBar3DAxis fixture slide prints none (#541).
  * A bubble's value label prints its size (`bubbleValueLabelShowsSize`): in LibreOffice 26.2.6's PDF export of a
  * synthetic PptxGenJS 4.0.1 bubble chart with `showValue` (y 3, 5, 4, 7, sizes 1, 2, 3, 4) the labels read 1 to 4 (#477).
+ * A pie whose `<c:dPt>`s have no `<c:dLblPos>` gets its labels at mid-radius, as `ctr` (`pieUnsetLabelPosition`,
+ * #558): in LibreOffice 26.2.6's PDF export of a synthetic PptxGenJS 4.0.1 pie (4.4 x 4.1in, 40/25/20/15, 12pt Arial
+ * values) the "40" label's center is 91px from the ring's center without dataLabelPosition and 167px with "bestFit".
+ * It wraps an outEnd pie label to 80% of the room beside its slice's rim point, at most a fifth of the plot area's
+ * width (`outsidePieLabelWidth`, PieChart::createTextLabelShape, whose room on the right is the plot area's width less
+ * the point's x from the chart's edge): on the same pie with showLabel and showPercent, "Lorem" / "40%" on the right
+ * becomes "Lor" / "em" / "40" / "%", so its lines are under 24pt (the width of "40%") and at least 17.3pt ("Lor").
+ * A combo chart's legend lists its area series first (`comboLegendListsAreasFirst`, #538): in its PDF export of
+ * synthetic bars A, B then areas R, S, and a line L then areas R, S, the legends read R, S, A, B and R, S, L. A combo
+ * whose first type is bar keeps its categories between the ticks (`barComboKeepsCategoriesBetweenTicks`) though
+ * PptxGenJS writes `<c:crossBetween val="midCat"/>`: Q1's label is centered half a category step (35.5pt) right of the
+ * value axis, where the line and area combo puts it on the axis.
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -158,4 +170,8 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // and 14pt labels, 0..40 by 20 for 2..23, 0..100 by 50 for 20..70, 0..1 by 0.5 for 0.2..0.8, -10..10 by 10 for
     // -5..7, and 2..7 with valAxisMinVal 2 (its PDF export of synthetic PptxGenJS 4.0.1 radar charts, #561).
     radarMaxIncrements: 2,
+    pieUnsetLabelPosition: "ctr",
+    comboLegendListsAreasFirst: true,
+    barComboKeepsCategoriesBetweenTicks: true,
+    outsidePieLabelWidth: { room: 0.8, plotWidth: 0.2 },
 });

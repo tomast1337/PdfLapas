@@ -351,6 +351,16 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // with four rings (#568); at most 4, 5 or 6 steps all give that scale.
     // shortcut: one measurement; measure other ranges and sizes when a deck steps differently (#565).
     radarMaxIncrements: 4,
+    // PowerPoint's PDF export of a synthetic deck (#558: a 4.4 x 4.1in pie, 40/25/20/15, 12pt Arial values, no
+    // dataLabelPosition) puts each label 162 to 168px from the center of a 182px ring, as LibreOffice's bestFit rule
+    // gives (PPTX_DEFAULTS.chart.pieLabel.bestFitRimRatio: 166, 167, 165 and 168px), and keeps "Lorem" / "40%" of an
+    // outEnd label on two lines where LibreOffice wraps it.
+    pieUnsetLabelPosition: "bestFit",
+    outsidePieLabelWidth: undefined,
+    // The same export of a combo of stacked bars A, B and areas R, S (#538) lists A, B, R, S, and puts Q1 on the value
+    // axis (`<c:crossBetween val="midCat"/>`), its bars cut at the plot area's edges, as in a line and area combo.
+    comboLegendListsAreasFirst: false,
+    barComboKeepsCategoriesBetweenTicks: false,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

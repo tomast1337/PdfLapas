@@ -235,7 +235,12 @@ export class PuppeteerSlide implements PptxSlide {
         const target = RENDERING_TARGETS[this.context.target];
         // PptxGenJS writes `<c:holeSize>`, but not every target reads it (readsDoughnutHoleSize).
         const holeSize = target.readsDoughnutHoleSize ? chartOptions.holeSize : undefined;
-        const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() }, this.context.target);
+        const { categoriesOnTicks, ...normalized } = normalizeChart(
+            type,
+            Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [],
+            { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() },
+            this.context.target,
+        );
         const series: NormalizedChartSeries[] = [];
 
         // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill).
@@ -245,13 +250,15 @@ export class PuppeteerSlide implements PptxSlide {
 
         // PptxGenJS always writes a marker outline, but not every target draws it (drawsChartMarkerOutline); an
         // unstacked area chart's series overlap, and the target decides which is in front (firstAreaSeriesInFront).
-        // shortcut: a combo chart's area group keeps the series order, as LibreOffice draws it behind the others (#538).
         const chart = {
             ...normalized,
             series,
             topRightLegend: target.topRightLegend,
             ...(target.drawsChartMarkerOutline ? {} : { lineSymbolLineSize: 0 }),
-            ...(target.firstAreaSeriesInFront && normalized.type === "area" && normalized.grouping === "standard" ? { firstSeriesInFront: true } : {}),
+            // A combo chart's unstacked area group overlaps the same way (#538).
+            ...(target.firstAreaSeriesInFront && ((normalized.type === "area" && normalized.grouping === "standard") || (normalized.type === "mixed" && normalized.series.some(item => item.type === "area" && !item.stack)))
+                ? { firstSeriesInFront: true }
+                : {}),
             // Normalization sets automaticPointFill only on a bar or bar3D group's only series, whose <c:dPt>s have no
             // fill; with no other series the target may list its points in the legend (chartLegendListsUnfilledPoints).
             // shortcut: a bar chart whose <c:dPt>s are filled (varyColors) keeps the series entry, and a combo chart's
@@ -263,6 +270,12 @@ export class PuppeteerSlide implements PptxSlide {
             ...(target.bar3DNamesSingleSeries && normalized.type === "bar3D" ? { namesSingleDepthSlot: true } : {}),
             // A bubble's value label prints its y value or, on some targets, its size (bubbleValueLabelShowsSize).
             ...(target.bubbleValueLabelShowsSize && normalized.type === "bubble" ? { dataLabels: { ...normalized.dataLabels, valueIsBubbleSize: true } } : {}),
+            // A combo chart's legend may list its areas first (comboLegendListsAreasFirst), and a target may keep a combo's
+            // categories between the ticks when its first type is bar (barComboKeepsCategoriesBetweenTicks).
+            ...(target.comboLegendListsAreasFirst && normalized.type === "mixed" && normalized.series.some(item => item.type === "area") ? { legendListsAreasFirst: true } : {}),
+            ...(categoriesOnTicks && !(target.barComboKeepsCategoriesBetweenTicks && normalized.series[0]?.type === "bar") ? { categoriesOnTicks } : {}),
+            // A pie's outEnd labels wrap where the target wraps them (outsidePieLabelWidth).
+            ...(target.outsidePieLabelWidth && normalized.type === "pie" ? { outsidePieLabelWidth: target.outsidePieLabelWidth } : {}),
         };
 
         chartSize(style);

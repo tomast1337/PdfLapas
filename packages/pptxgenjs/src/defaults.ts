@@ -384,9 +384,13 @@ export const PPTX_DEFAULTS = Object.freeze({
         // (Arial's ascent and descent). Measured on its PDF export of synthetic PptxGenJS 4.0.1 pies (4.4 x 4.1in,
         // 12pt values, 96 dpi): outEnd ring 332.5px wide centered at (213.2, 192.5), this model 331.4px at (213.4,
         // 192.5); inEnd labels within 1px of their anchors, the ring unchanged.
-        // shortcut: PowerPoint's placement is not measured, so both targets take LibreOffice's (#559); LibreOffice wraps a
-        // long outEnd label to the room beside the ring, which this model does not (#558).
-        pieLabel: Object.freeze({ offsetPt: 4.252, firstPassDivisor: 2.2, lineEm: 1.117, axisBandDeg: 5 }),
+        // A bestFit label is centered on the bisector with its outer corner on the ring shrunk to bestFitRimRatio of its
+        // radius, or outside as outEnd when a corner then leaves the slice (PieChart::performLabelBestFitInnerPlacement):
+        // on the same pie with explicit bestFit, LibreOffice 26.2.6 centers the labels 167 to 170px from the center of a
+        // 183.5px ring, and PowerPoint (with no dataLabelPosition) 162 to 168px from a 182px one, where this rule gives
+        // 165 to 168px (#558).
+        // shortcut: PowerPoint's inEnd and outEnd placement is not measured, so both targets take LibreOffice's (#559).
+        pieLabel: Object.freeze({ offsetPt: 4.252, firstPassDivisor: 2.2, lineEm: 1.117, axisBandDeg: 5, bestFitRimRatio: 0.975 }),
         dataBorderWidthPt: 0.75,
         dataLabelFormatCode: "#,##0",
         scatterDataLabelFormatCode: "General",
@@ -398,7 +402,8 @@ export const PPTX_DEFAULTS = Object.freeze({
         dataLabelColor: "000000",
         // With no `<c:dLblPos>` (PptxGenJS writes one only for dataLabelPosition) LibreOffice places a clustered
         // bar's label outside its end, a stacked bar's in its center, a line point's to its right and a slice's inside it
-        // (checked on LibreOffice renders of PptxGenJS output).
+        // (checked on LibreOffice renders of PptxGenJS output). A pie's is OOXML's bestFit, as PowerPoint draws it; LibreOffice
+        // draws it at ctr's mid-radius (RenderingTargetProfile.pieUnsetLabelPosition, #558).
         // PptxGenJS deletes every dataLabelPosition on an area, radar or bar3D chart; LibreOffice 26.2.6 draws an area
         // label inside the area below its point, a radar label beside its point, a bar3D label above its bar and a scatter
         // or bubble label right of its point (its PDF export of synthetic PptxGenJS 4.0.1 charts, #477).

@@ -281,10 +281,16 @@ export type RenderingTargetProfile = {
      */
     readonly drawsDataTableBorders: boolean;
     /**
-     * Whether a combo chart's percent-stacked bars (`<c:grouping val="percentStacked"/>` on its bar element) are stacked
-     * by value, as `stacked` bars, or each drawn as its share of its category.
+     * How a combo chart's percent-stacked bars (`<c:grouping val="percentStacked"/>` on its bar element) stack
+     * (`NormalizedChartSeries.stack`): by value, as `stacked` bars, or each as its share of its category, a fraction of
+     * 1 on the axis it shares with the other types (`shareStacked`).
      */
-    readonly stacksComboPercentBarsByValue: boolean;
+    readonly comboPercentBarStack: "stacked" | "shareStacked";
+    /**
+     * Whether a bestFit pie label that does not fit in its slice of the first, small ring shrinks the ring, as an
+     * outside label does (`NormalizedChart.bestFitLabelsShrinkPie`), or the ring keeps its full size.
+     */
+    readonly bestFitLabelsShrinkPie: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

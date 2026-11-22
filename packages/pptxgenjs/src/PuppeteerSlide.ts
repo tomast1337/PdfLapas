@@ -276,6 +276,8 @@ export class PuppeteerSlide implements PptxSlide {
             ...(categoriesOnTicks && !(target.barComboKeepsCategoriesBetweenTicks && normalized.series[0]?.type === "bar") ? { categoriesOnTicks } : {}),
             // A pie's outEnd labels wrap where the target wraps them (outsidePieLabelWidth).
             ...(target.outsidePieLabelWidth && normalized.type === "pie" ? { outsidePieLabelWidth: target.outsidePieLabelWidth } : {}),
+            // A bestFit label that misses the first, small ring may shrink the ring (bestFitLabelsShrinkPie, #572).
+            ...(target.bestFitLabelsShrinkPie && normalized.type === "pie" ? { bestFitLabelsShrinkPie: true } : {}),
         };
 
         chartSize(style);

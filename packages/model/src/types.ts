@@ -335,9 +335,10 @@ export type NormalizedChartSeries = {
     valueAxisIndex: 0 | 1;
     /**
      * How the series stacks with the other series of its type on its value axis (its chart element's `<c:grouping>`);
-     * absent: it is drawn on its own.
+     * `shareStacked`: each value as its share of the category's total, a fraction of 1 on the axis's own scale.
+     * Absent: it is drawn on its own.
      */
-    stack?: "stacked" | "percentStacked";
+    stack?: "stacked" | "percentStacked" | "shareStacked";
     /** Each point's fill in place of the series color (a `<c:dPt>` without a fill); absent: the series color. */
     automaticPointFill?: CssColor;
     /** Each point's outline color, by point index (a `<c:dPt>` `<a:ln>`); absent: no outline. */
@@ -589,6 +590,8 @@ export type NormalizedChart = {
      * per field.
      */
     outsidePieLabelWidth?: { room: number; plotWidth: number };
+    /** Whether a bestFit pie label that does not fit in its slice of a small first ring shrinks the ring; absent: no. */
+    bestFitLabelsShrinkPie?: boolean;
     altText: string;
 };
 

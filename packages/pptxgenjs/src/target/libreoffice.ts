@@ -258,5 +258,9 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     drawsDataTableBorders: false,
     // Its PDF export of a combo chart with two percentStacked bar series ([3, 5, 4, 7] and [5, 2, 6, 4]) and a line
     // ([6, 9, 7, 10]) stacks the bars to 8, 7, 10 and 11 on a 0 to 12 axis, as with "stacked" (#537).
-    stacksComboPercentBarsByValue: true,
+    comboPercentBarStack: "stacked",
+    // Its PDF export of 6 x 4.4in bestFit pies (12pt Arial) draws a 70/15/8/4/3 ring with percentages, all inside their
+    // slices, 373px wide at 96 dpi and a 40/25/20/15 one 395px: VDiagram::reduceToMinimumSize tests the labels on a
+    // small first ring (#572).
+    bestFitLabelsShrinkPie: true,
 });

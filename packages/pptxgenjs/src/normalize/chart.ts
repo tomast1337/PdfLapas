@@ -361,9 +361,10 @@ function valueAxisDataRange(type: NormalizedChartType, series: readonly Normaliz
         }
     }
 
-    // Each stack's positive and negative totals per category, or their shares of the category's absolute total.
+    // Each stack's positive and negative totals per category, or their shares of the category's absolute total (in
+    // percent, or as fractions of 1).
     for (const stack of stacks.values()) {
-        const percent = stack[0]?.stack === "percentStacked";
+        const share = stack[0]?.stack === "percentStacked" ? 100 : stack[0]?.stack === "shareStacked" ? 1 : undefined;
         const categoryCount = Math.max(0, ...stack.map(item => item.values.length));
 
         for (let index = 0; index < categoryCount; index++) {
@@ -382,12 +383,12 @@ function valueAxisDataRange(type: NormalizedChartType, series: readonly Normaliz
 
             const total = positive - negative;
 
-            if (!percent) {
+            if (share === undefined) {
                 values.push(positive, negative);
             } else if (total === 0) {
                 values.push(0, 0);
             } else {
-                values.push((positive / total) * 100, (negative / total) * 100);
+                values.push((positive / total) * share, (negative / total) * share);
             }
         }
     }
@@ -903,9 +904,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
 
     // Each series stacks as its chart element's <c:grouping> says, also in a combo chart, where PptxGenJS writes one
     // element per type: the bar grouping on the bars, "stacked" on the areas only for "stacked", none on the lines (#529).
-    // A target may stack a combo chart's percentStacked bars by value (stacksComboPercentBarsByValue, #537).
-    const comboBarsByValue = mixed && normalizedGrouping === "percentStacked" && profile.stacksComboPercentBarsByValue;
-    const barStack = comboBarsByValue ? "stacked" : normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked" ? normalizedGrouping : undefined;
+    // A target stacks a combo chart's percentStacked bars by value or as shares of 1 (comboPercentBarStack, #537).
+    const barStack = mixed && normalizedGrouping === "percentStacked" ? profile.comboPercentBarStack : normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked" ? normalizedGrouping : undefined;
 
     for (const [index, item] of series.entries()) {
         const stack = item.type === "line" ? undefined : item.type === "area" ? (normalizedGrouping === "stacked" ? normalizedGrouping : undefined) : barStack;

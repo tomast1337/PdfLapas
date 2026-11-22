@@ -381,18 +381,23 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // axis (`<c:crossBetween val="midCat"/>`), its bars cut at the plot area's edges, as in a line and area combo.
     comboLegendListsAreasFirst: false,
     barComboKeepsCategoriesBetweenTicks: false,
-    // ECMA-376 21.2.2.207 `tickLblSkip`: a label every that many categories.
-    // shortcut: not measured on PowerPoint's PDF export; the deck waits for a conversion (#566).
+    // PowerPoint's PDF export of synthetic PptxGenJS 4.0.1 decks (6 x 4.4in charts, Arial; #586):
+    // A column chart with eight categories A..H and `catAxisLabelFrequency: 2` labels A, C, E and G only (#566).
     readsCategoryLabelSkip: true,
-    // ECMA-376 21.2.2.46 `dispUnits`: the axis values divided by the built-in unit, `dispUnitsLbl` prints its name.
-    // shortcut: not measured on PowerPoint's PDF export, nor where it puts the name; the deck waits (#566).
+    // Column charts with `valAxisDisplayUnit: "thousands"` (values 3000 to 7000) and `"hundreds"` (300 to 700) number
+    // both axes 0..8, and `valAxisDisplayUnitLabel` prints "Thousands" beside the axis (#566).
+    // shortcut: the name is drawn level above the axis, where PowerPoint turns it upright left of the axis; turn it when
+    // a deck needs it.
     readsValueAxisDisplayUnits: true,
-    // ECMA-376 21.2.2.54 `dTable`: `showHorzBorder`, `showVertBorder`, `showOutline` and `showKeys`.
-    // shortcut: not measured on PowerPoint's PDF export; the deck waits for a conversion (#567).
+    // `showDataTable` with each border and the keys on draws the grid, the outline and a key before each series name;
+    // with each off, the text alone (#567).
     drawsDataTableBorders: true,
-    // Draws the bars as their share of each category, as the bar element's `<c:grouping>` says (#529).
-    // shortcut: not measured on PowerPoint's PDF export (#537).
-    stacksComboPercentBarsByValue: false,
+    // A combo chart with two percentStacked bar series ([3, 5, 4, 7] and [5, 2, 6, 4]) and a line ([6, 9, 7, 10]) draws
+    // the bars as their shares, up to 1, on the line's 0..10 axis (#537).
+    comboPercentBarStack: "shareStacked",
+    // The same pies as LibreOffice's (#572) all keep a 393px ring at 96 dpi; the 70/15/8/4/3 label "Amet 3%" sits on
+    // the rim.
+    bestFitLabelsShrinkPie: false,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

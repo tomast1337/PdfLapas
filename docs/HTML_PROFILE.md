@@ -1116,6 +1116,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChart.outsidePieLabelWidth`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.outsidePieLabelWidth.room`                   | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.outsidePieLabelWidth.plotWidth`              | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChart.bestFitLabelsShrinkPie`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSymbolLineSize`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.lineSize`                                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.dataLabels`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

@@ -85,6 +85,9 @@ type Matrix = [number, number, number, number, number, number];
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
+/** Below this a derivative coefficient counts as zero, in pt: far below the shape tolerance. */
+const CUBIC_EPSILON = 1e-9;
+
 const PAGE_PATTERN = /<page width="([\d.]+)" height="([\d.]+)">([\s\S]*?)<\/page>/g;
 const LINE_PATTERN = /<line [^>]*>([\s\S]*?)<\/line>/g;
 const WORD_PATTERN = /<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">([^<]*)<\/word>/g;
@@ -92,7 +95,10 @@ const SUBPATH_PATTERN = /(?=M)/;
 const ENTITY_PATTERN = /&(amp|lt|gt|quot|apos);/g;
 const ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 const TAG_PATTERN = /<(\/?)(g|path|use|image)\b([^>]*?)(\/?)>/g;
-const NUMBER_PATTERN = /-?\d*\.?\d+(?:e-?\d+)?/g;
+// cairo writes path data with absolute M, L, C and Z only.
+const PATH_TOKEN_PATTERN = /[MLCZ]|-?\d*\.?\d+(?:e-?\d+)?/g;
+/** Numbers each path command takes per segment. */
+const PATH_ARGUMENTS: Readonly<Record<string, number>> = { M: 2, L: 2, C: 6, Z: 0 };
 const PNG_PAGE_PATTERN = /-(\d+)\.png$/;
 const ID_ATTRIBUTE = / id="([^"]+)"/;
 const WIDTH_ATTRIBUTE = / width="([\d.]+)"/;
@@ -212,16 +218,43 @@ export function readGraphics(svg: string, width: number, height: number): { boxe
         }
 
         const matrix = multiply(parent, attributes);
-        const subpaths: number[][] = [];
+        const [a, b, c, d, e, f] = matrix;
+        const at = (x: number, y: number): Point => ({ x: a * x + c * y + e, y: b * x + d * y + f });
+        // Each subpath's extreme points in page space: its line ends, and for a Bézier its end and the points where it
+        // turns, so the box is the curve's, not its control points'.
+        const subpaths: Point[][] = [];
         let kind: Box["kind"] = "shape";
 
         if (tag === "path") {
             // Each subpath is its own box: one pipeline draws a chart's gridlines as one path, another as one path each.
             for (const subpath of (attributes.match(PATH_DATA_ATTRIBUTE)?.[1] ?? "").split(SUBPATH_PATTERN)) {
-                const points: number[] = [];
+                const points: Point[] = [];
+                const numbers: number[] = [];
+                let command = "M";
 
-                for (const [value] of subpath.matchAll(NUMBER_PATTERN)) {
-                    points.push(Number(value));
+                for (const [token] of subpath.matchAll(PATH_TOKEN_PATTERN)) {
+                    if (token in PATH_ARGUMENTS) {
+                        command = token;
+                        numbers.length = 0;
+                        continue;
+                    }
+
+                    numbers.push(Number(token));
+                    if (numbers.length < (PATH_ARGUMENTS[command] ?? 0)) {
+                        continue;
+                    }
+
+                    const [x1 = 0, y1 = 0, x2 = 0, y2 = 0, x3 = 0, y3 = 0] = numbers;
+                    const start = points[points.length - 1];
+
+                    numbers.length = 0;
+                    if (command === "C" && start) {
+                        const end = at(x3, y3);
+
+                        points.push(...cubicTurns(start, at(x1, y1), at(x2, y2), end), end);
+                    } else {
+                        points.push(at(x1, y1));
+                    }
                 }
 
                 subpaths.push(points);
@@ -235,35 +268,23 @@ export function readGraphics(svg: string, width: number, height: number): { boxe
             }
 
             if (!size) {
-                const [a, b, c, d, e, f] = matrix;
-                const gx = Number(attributes.match(X_ATTRIBUTE)?.[1] ?? 0);
-                const gy = Number(attributes.match(Y_ATTRIBUTE)?.[1] ?? 0);
-
-                origins.push({ x: a * gx + c * gy + e, y: b * gx + d * gy + f });
+                origins.push(at(Number(attributes.match(X_ATTRIBUTE)?.[1] ?? 0), Number(attributes.match(Y_ATTRIBUTE)?.[1] ?? 0)));
                 continue;
             }
 
             kind = "image";
-            subpaths.push([0, 0, size[0], size[1]]);
+            subpaths.push([at(0, 0), at(size[0], size[1])]);
         }
 
         for (const points of subpaths) {
             // A lone moveto (cairo ends a closed path with one) draws nothing.
-            if (points.length < 4) {
+            if (points.length < 2) {
                 continue;
             }
 
             let box: Box = { kind, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
 
-            // shortcut: Bézier control points count as points of the box, exact for the arcs PdfLapas and cairo draw,
-            // loose for a curve that bulges less than its control points; bound the curve if that misleads a report.
-            for (let index = 0; index + 1 < points.length; index += 2) {
-                const [a, b, c, d, e, f] = matrix;
-                const px = points[index] ?? 0;
-                const py = points[index + 1] ?? 0;
-                const x = a * px + c * py + e;
-                const y = b * px + d * py + f;
-
+            for (const { x, y } of points) {
                 box = { kind, x0: Math.min(box.x0, x), y0: Math.min(box.y0, y), x1: Math.max(box.x1, x), y1: Math.max(box.y1, y) };
             }
 
@@ -277,6 +298,36 @@ export function readGraphics(svg: string, width: number, height: number): { boxe
     }
 
     return { boxes, origins };
+}
+
+/**
+ * The points strictly inside a cubic Bézier where it turns in x or in y: where a coordinate's derivative,
+ * 3(at² + bt + c), is zero for t in (0, 1). The box of the curve is the box of these and its two ends.
+ */
+export function cubicTurns(p0: Point, p1: Point, p2: Point, p3: Point): Point[] {
+    const turns: Point[] = [];
+
+    for (const axis of ["x", "y"] as const) {
+        const a = -p0[axis] + 3 * p1[axis] - 3 * p2[axis] + p3[axis];
+        const b = 2 * (p0[axis] - 2 * p1[axis] + p2[axis]);
+        const c = p1[axis] - p0[axis];
+        const discriminant = b * b - 4 * a * c;
+        // A linear derivative (a = 0) has one root; a quadratic has two, or none below a zero discriminant.
+        const roots = Math.abs(a) < CUBIC_EPSILON ? (Math.abs(b) < CUBIC_EPSILON ? [] : [-c / b]) : discriminant < 0 ? [] : [(-b + Math.sqrt(discriminant)) / (2 * a), (-b - Math.sqrt(discriminant)) / (2 * a)];
+
+        for (const t of roots) {
+            if (t > 0 && t < 1) {
+                const u = 1 - t;
+
+                turns.push({
+                    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+                    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+                });
+            }
+        }
+    }
+
+    return turns;
 }
 
 /** The parent matrix times the element's own `transform="matrix(...)"`, if it has one. */

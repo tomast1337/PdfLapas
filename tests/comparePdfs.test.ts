@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
-import { alignBaselines, comparePdfs, MOVE_TOLERANCE_PT, PIXEL_THRESHOLD, readGraphics, readPages, SHAPE_TOLERANCE_PT } from "../scripts/compare-pdfs";
+import { alignBaselines, comparePdfs, cubicTurns, MOVE_TOLERANCE_PT, PIXEL_THRESHOLD, readGraphics, readPages, SHAPE_TOLERANCE_PT } from "../scripts/compare-pdfs";
 
 const OPTIONS = { moveTolerance: MOVE_TOLERANCE_PT, shapeTolerance: SHAPE_TOLERANCE_PT, pixelThreshold: PIXEL_THRESHOLD };
 const TEXT = "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod";
@@ -180,6 +180,31 @@ describe("readGraphics", () => {
 
         expect(readGraphics(joined, 100, 50).boxes).toEqual(readGraphics(separate, 100, 50).boxes);
         expect(readGraphics(separate, 100, 50).boxes).toHaveLength(2);
+    });
+
+    test("bounds a Bézier by the curve, not by its control points", () => {
+        // An arch from (10, 30) to (50, 30) whose control points sit at y = 10: the curve peaks at y = 15.
+        const svg = '<svg><defs></defs><path d="M 10 30 C 10 10 50 10 50 30 Z M 10 30"/></svg>';
+
+        expect(readGraphics(svg, 100, 50).boxes).toEqual([{ kind: "shape", x0: 10, y0: 15, x1: 50, y1: 30 }]);
+    });
+
+    test("cubicTurns finds where a curve turns in x and in y", () => {
+        // A quarter-circle-like arc turns nowhere strictly inside; the arch turns once in y, at its middle; an S curve
+        // whose control points pull it past both ends turns twice in x and never in y, which runs straight.
+        expect(cubicTurns({ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 5 }, { x: 10, y: 10 })).toEqual([]);
+        expect(cubicTurns({ x: 10, y: 30 }, { x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 30 })).toEqual([{ x: 30, y: 15 }]);
+
+        const turns = cubicTurns({ x: 0, y: 0 }, { x: 60, y: 10 }, { x: -50, y: 20 }, { x: 10, y: 30 });
+
+        expect(turns).toHaveLength(2);
+        for (const turn of turns) {
+            expect(turn.y).toBeGreaterThan(0);
+            expect(turn.y).toBeLessThan(30);
+        }
+
+        expect(Math.max(turns[0]?.x ?? 0, turns[1]?.x ?? 0)).toBeGreaterThan(10);
+        expect(Math.min(turns[0]?.x ?? 0, turns[1]?.x ?? 0)).toBeLessThan(0);
     });
 
     test("applies group and element matrices, reads image sizes and glyph origins and skips the page background", () => {

@@ -773,13 +773,16 @@ export function normalizeText(
         const level = paragraphLevel(first);
         let bullet: NormalizedTextBullet | undefined;
 
-        if (first.bullet) {
-            const config = typeof first.bullet === "object" ? first.bullet : {};
-            // PptxGenJS 4.0.1 (genXmlTextBody) reads these with `||`: a falsy indent, numberStartAt, startAt, style or
-            // characterCode falls through to the next one or the default (numberStartAt 0 writes startAt="1", #491). It never
-            // reads the deprecated marginPt (#498), and matches `type.toString().toLowerCase() === 'number'` (#501).
+        const config = typeof first.bullet === "object" ? first.bullet : {};
+        // PptxGenJS 4.0.1 (genXmlTextBody) matches `type.toString().toLowerCase() === 'number'` (#501) inside
+        // `if (bullet.type)`, so any other truthy type ("bullet", 1) writes no marL, indent or marker at all (#513).
+        const kind = config.type?.toString().toLowerCase() === "number" ? "number" : "bullet";
+
+        if (first.bullet && !(config.type && kind === "bullet")) {
+            // PptxGenJS 4.0.1 reads these with `||`: a falsy indent, numberStartAt, startAt, style or characterCode falls
+            // through to the next one or the default (numberStartAt 0 writes startAt="1", #491). It never reads the
+            // deprecated marginPt (#498).
             const indentPt = config.indent || PPTX_DEFAULTS.bullet.indentPt;
-            const kind = config.type?.toString().toLowerCase() === "number" ? "number" : "bullet";
             const start = config.numberStartAt || config.startAt || PPTX_DEFAULTS.bullet.numberStartAt;
             const numberType = config.style || PPTX_DEFAULTS.bullet.numberType;
             const code = config.characterCode || config.code;

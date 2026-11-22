@@ -2235,6 +2235,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartStackedFixture(presentation);
     populateBulletTypeFixture(presentation);
     populateChartAreaFixture(presentation);
+    populateChartPlotBandFixture(presentation);
 }
 
 /**
@@ -2924,8 +2925,8 @@ export function populateChartPieFixture(presentation: Presentation): void {
 /**
  * Horizontal bar series order (#472): a clustered chart runs its series bottom-up in each band and lists the legend from
  * the last series. A parity slide after the others (no page number moves) and the WASM chartBarOrder deck, which crops
- * the chart. The stacked chart has its own slide (populateChartStackedFixture): beside this one the plot area's top
- * edge, about 8px lower than LibreOffice's, puts the page over the limit; tests/chart.test.ts checks its legend order.
+ * the chart. The stacked chart has its own slide (populateChartStackedFixture), added while its plot area's top edge
+ * was 8px lower than LibreOffice's (#528); tests/chart.test.ts checks its legend order.
  */
 export function populateChartBarOrderFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -3016,4 +3017,24 @@ export function populateChartAreaFixture(presentation: Presentation): void {
 
     slide.addChart("area", data, { ...shared, x: 0.4 });
     slide.addChart("area", data, { ...shared, x: 5.2, chartColorsOpacity: 50 });
+}
+
+/**
+ * Plot-area bands (#528): a column chart with a title and a top legend, whose plot area starts below both bands and half
+ * a value label, and a horizontal bar chart with a bottom legend, whose plot area starts one gap below the chart's top
+ * edge (no value label above it). A parity slide after the others (no page number moves) and the WASM chartPlotBand
+ * deck, which crops each chart.
+ */
+export function populateChartPlotBandFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Plot-area bands", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, showTitle: true, title: "Lorem ipsum", legendPos: "t" });
+    slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "bar", legendPos: "b" });
 }

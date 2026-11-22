@@ -611,27 +611,76 @@ describe("chart normalization and rendering", () => {
         expect(perspective.sideX).toBeLessThan(576 / 2);
     });
 
-    test("sizes the automatic plot-area margins from the text, not the chart height", () => {
-        const plotBounds = (hInches: number, options: PptxGenJS.IChartOpts) => {
+    test("sizes the automatic plot-area bands from the text, not the chart height, as LibreOffice lays them out (#528)", () => {
+        const chartPlot = (hInches: number, options: PptxGenJS.IChartOpts) => {
             const presentation = new PuppeteerGen();
 
             presentation.addSlide().addChart("bar", categoricalData, { x: 0, y: 0, w: 5, h: hInches, ...options });
-            const rows = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart path"), path => path.getAttribute("d")?.match(/^M[\d.]+ ([\d.]+)L[\d.]+ \1$/)?.[1]).filter(y => y !== undefined);
-            const ys = rows.map(Number);
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const rows: number[] = [];
+            const columns: number[] = [];
 
-            return { top: Math.min(...ys), bottom: hInches * 96 - Math.max(...ys) };
+            // The gridlines and axis lines: horizontal ones give a column chart's plot top and bottom, vertical ones a
+            // horizontal bar chart's top.
+            for (const path of svg?.querySelectorAll("path") ?? []) {
+                const segment = /^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/.exec(path.getAttribute("d") ?? "");
+
+                if (!segment) {
+                    continue;
+                }
+
+                const [, x1, y1, x2, y2] = segment.map(Number);
+
+                if (y1 === y2 && Number(x2) - Number(x1) > 100) {
+                    rows.push(Number(y1));
+                }
+
+                if (x1 === x2 && Number(y2) - Number(y1) > 100) {
+                    columns.push(Number(y1));
+                }
+            }
+
+            // The first legend key's center.
+            const key = svg?.querySelector('path[ecmeta_ssr_type="legend"][d^="M0 0"]');
+            const keyY = Number(/translate\([-\d.]+ ([-\d.]+)\)/.exec(key?.getAttribute("transform") ?? "")?.[1]);
+            const keySize = Math.round(pointsToPixels(10) * PPTX_DEFAULTS.chart.legendKeyFontRatio);
+
+            return { top: Math.min(...rows), bottom: hInches * 96 - Math.max(...rows), columnTop: Math.min(...columns), keyCenter: keyY + keySize / 2 };
         };
+        const band = PPTX_DEFAULTS.chart.plotBand;
+        const legendPx = pointsToPixels(10);
+        // LibreOffice 26.2's bands (#528): the bottom axis's 1.5mm ticks, 1mm label spacing and label line; a top or
+        // bottom legend's row of 1.58 legend font sizes and 6pt; a title's gap, 1.7 title font sizes and 4.25pt; half the
+        // 12pt value label above a column chart. Within 1px: zrender snaps lines to half pixels.
+        const labelBand = pointsToPixels(band.tickLengthPt) + pointsToPixels(band.labelSpacingPt) + 16 * band.labelLineEm;
+        const legendBand = legendPx * band.legendBandEm + pointsToPixels(band.legendBandPt);
+        const rowCenter = (legendPx * band.legendBandEm) / 2;
 
-        // Below: 2% gap, 10pt legend line (1.2em) and 2% gap, 5px ticks, 8px label margin, 12pt label line (1.2em).
-        // Above: 2% gap and half of the 12pt value label. Within 1px: zrender snaps lines to half pixels.
-        for (const h of [3, 4.5]) {
-            const gap = h * 96 * 0.02;
-            const withLegend = plotBounds(h, { showLegend: true, legendPos: "b" });
+        for (const h of [2.6, 4.1]) {
+            const gap = h * 96 * PPTX_DEFAULTS.chart.plotAreaGapRatio;
+            const titleBand = gap + 24 * PPTX_DEFAULTS.chart.pieLayout.titleBandEm + pointsToPixels(band.titleBandPt);
+            const plain = chartPlot(h, {});
+            const bottomLegend = chartPlot(h, { showLegend: true, legendPos: "b" });
+            const topLegend = chartPlot(h, { showLegend: true, legendPos: "t" });
+            const titled = chartPlot(h, { showTitle: true, title: "Lorem", showLegend: true, legendPos: "t" });
 
-            expect(Math.abs(withLegend.bottom - (2 * gap + 16 + 5 + 8 + 19.2))).toBeLessThanOrEqual(1);
-            expect(Math.abs(withLegend.top - (gap + 8))).toBeLessThanOrEqual(1);
-            expect(Math.abs(plotBounds(h, {}).bottom - (gap + 5 + 8 + 19.2))).toBeLessThanOrEqual(1);
+            expect(Math.abs(plain.top - (gap + 8))).toBeLessThanOrEqual(1);
+            expect(Math.abs(plain.bottom - (gap + labelBand))).toBeLessThanOrEqual(1);
+            expect(Math.abs(bottomLegend.bottom - (gap + legendBand + labelBand))).toBeLessThanOrEqual(1);
+            expect(Math.abs(topLegend.top - (gap + legendBand + 8))).toBeLessThanOrEqual(1);
+            expect(Math.abs(titled.top - (gap + titleBand + legendBand + 8))).toBeLessThanOrEqual(1);
+            // A horizontal bar chart's top is a category band: no value label above it.
+            expect(Math.abs(chartPlot(h, { barDir: "bar" }).columnTop - gap)).toBeLessThanOrEqual(1);
+            // The legend entries are centered in their row: 6pt below the title band, or legendBottomPt above the bottom edge.
+            expect(topLegend.keyCenter).toBeCloseTo(pointsToPixels(band.legendBandPt) + rowCenter, 1);
+            expect(titled.keyCenter).toBeCloseTo(titleBand + pointsToPixels(band.legendBandPt) + rowCenter, 1);
+            expect(bottomLegend.keyCenter).toBeCloseTo(h * 96 - pointsToPixels(band.legendBottomPt) - rowCenter, 1);
         }
+
+        // Without outside ticks on the bottom axis there is no tick band.
+        const noTicks = chartPlot(4.1, { barDir: "bar", valAxisMajorTickMark: "none" });
+
+        expect(Math.abs(noTicks.bottom - (4.1 * 96 * PPTX_DEFAULTS.chart.plotAreaGapRatio + labelBand - pointsToPixels(band.tickLengthPt)))).toBeLessThanOrEqual(1);
     });
 
     test("reserves a side legend's band beside the plot area, as LibreOffice narrows it (#517)", () => {
@@ -988,7 +1037,7 @@ describe("chart normalization and rendering", () => {
         const ticks = paths.filter(d => {
             const match = d.match(/^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/);
 
-            return match !== null && match[1] === match[3] && Number(match[4]) - Number(match[2]) === 5;
+            return match !== null && match[1] === match[3] && Math.abs(Number(match[4]) - Number(match[2]) - 5) < 0.01;
         });
 
         expect(ticks).toHaveLength(4);

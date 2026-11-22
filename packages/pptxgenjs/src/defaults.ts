@@ -313,6 +313,18 @@ export const PPTX_DEFAULTS = Object.freeze({
         // LibreOffice (the visual reference) keeps 2% of the chart height between the chart edge, the legend and the
         // axis labels (chart2 lcl_getPageLayoutDistancePercentage), so the bands keep their text size as the chart grows.
         plotAreaGapRatio: 0.02,
+        // The bands above and below the automatic plot area of a bar, line, area or scatter chart in LibreOffice 26.2,
+        // fitted on its PDF exports of PptxGenJS 4.0.1 column, horizontal bar and line charts (96 dpi, 1.6 to 5in tall,
+        // 10 to 36pt titles, 8 to 20pt labels and legends; within 1px, #528):
+        // - above: the gap; a title adds a gap, 1.7 title font sizes and 4.25pt (the pie's title band less its inset);
+        //   a top legend adds legendBandPt and a row of legendBandEm legend font sizes, its entries centered in it; a
+        //   column or line chart then adds half a value label, centered on the top gridline (a horizontal bar chart's top
+        //   is a category band, with none);
+        // - below: the gap, a bottom legend's band as above (its row legendBottomPt above the chart's edge, whatever the
+        //   chart height; 0.75pt scores best on the WASM chart decks, 1.5pt on the probes, both within 1px), then the
+        //   bottom axis's outside ticks (LibreOffice's 1.5mm, 4.25pt), its 1mm (2.83pt) label spacing and a line of
+        //   labelLineEm label font sizes, the labels centered in it.
+        plotBand: Object.freeze({ titleBandPt: 4.25, legendBandEm: 1.58, legendBandPt: 6, legendBottomPt: 0.75, tickLengthPt: 4.25, labelSpacingPt: 2.83, labelLineEm: 1.14 }),
         displayBlanksAs: "span" as const,
         radarStyle: "standard" as const,
         chartAreaRoundedCorners: true,

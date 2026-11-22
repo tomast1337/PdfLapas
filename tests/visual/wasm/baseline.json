@@ -385,15 +385,15 @@
     "p2-Text4": 0.0414
   },
   "charts": {
-    "p1-Chart0": 0.0895,
-    "p1-Chart1": 0.0903,
+    "p1-Chart0": 0.0847,
+    "p1-Chart1": 0.0862,
     "p2-Chart0": 0.118,
-    "p3-Chart0": 0.1339,
-    "p4-Chart0": 0.1182,
-    "p5-Chart0": 0.12,
-    "p5-Chart1": 0.0991,
+    "p3-Chart0": 0.1226,
+    "p4-Chart0": 0.0993,
+    "p5-Chart0": 0.1173,
+    "p5-Chart1": 0.0871,
     "p6-Chart0": 0.0983,
-    "p6-Chart1": 0.1374
+    "p6-Chart1": 0.0802
   },
   "svg": {
     "p1-Image0": 0.0659,
@@ -494,12 +494,12 @@
     "p1-Chart1": 0.1077
   },
   "chartAxis": {
-    "p1-Chart0": 0.1117,
-    "p1-Chart1": 0.1251
+    "p1-Chart0": 0.0986,
+    "p1-Chart1": 0.1159
   },
   "chartPlot": {
-    "p1-Chart0": 0.0867,
-    "p1-Chart1": 0.0868
+    "p1-Chart0": 0.082,
+    "p1-Chart1": 0.0822
   },
   "placeholders": {
     "p1-TitlePlaceholder": 0.0626,
@@ -508,33 +508,37 @@
     "p2-SidePlaceholder": 0.0581
   },
   "chartMarker": {
-    "p1-Chart0": 0.0897,
-    "p1-Chart1": 0.0901
+    "p1-Chart0": 0.0855,
+    "p1-Chart1": 0.0859
   },
   "chartScatter": {
-    "p1-Chart0": 0.1197,
-    "p1-Chart1": 0.1438
+    "p1-Chart0": 0.117,
+    "p1-Chart1": 0.1369
   },
   "chartBarColors": {
-    "p1-Chart0": 0.1082,
-    "p1-Chart1": 0.1029
+    "p1-Chart0": 0.1043,
+    "p1-Chart1": 0.0821
   },
   "chartPie": {
-    "p1-Chart0": 0.0634,
-    "p1-Chart1": 0.0665
+    "p1-Chart0": 0.0623,
+    "p1-Chart1": 0.0654
   },
   "chartBarOrder": {
-    "p1-Chart0": 0.1699
+    "p1-Chart0": 0.0928
   },
   "chartLegendOrder": {
-    "p1-Chart0": 0.1634
+    "p1-Chart0": 0.1377
   },
   "chartStacked": {
-    "p1-Chart0": 0.1483,
-    "p1-Chart1": 0.0996
+    "p1-Chart0": 0.0862,
+    "p1-Chart1": 0.0969
   },
   "chartArea": {
-    "p1-Chart0": 0.0864,
-    "p1-Chart1": 0.0889
+    "p1-Chart0": 0.0826,
+    "p1-Chart1": 0.0844
+  },
+  "chartPlotBand": {
+    "p1-Chart0": 0.1141,
+    "p1-Chart1": 0.0866
   }
 }

@@ -265,6 +265,26 @@ export type RenderingTargetProfile = {
     readonly barComboKeepsCategoriesBetweenTicks: boolean;
     /** How wide a pie's outEnd label may be before it wraps (`NormalizedChart.outsidePieLabelWidth`); undefined: it never wraps. */
     readonly outsidePieLabelWidth: NormalizedChart["outsidePieLabelWidth"];
+    /**
+     * Whether a category axis prints a label every `catAxisLabelFrequency` categories (`<c:tickLblSkip>`), or every
+     * label (`NormalizedChartCatAxis.labelSkip`).
+     */
+    readonly readsCategoryLabelSkip: boolean;
+    /**
+     * Whether a value axis divides its labels by `valAxisDisplayUnit` and prints the unit's name for
+     * `valAxisDisplayUnitLabel` (`<c:dispUnits>`), or prints the values as they are (`NormalizedChartValueAxis.displayUnit`).
+     */
+    readonly readsValueAxisDisplayUnits: boolean;
+    /**
+     * Whether a chart's data table draws its borders and legend keys as `showDataTableHorzBorder`, `VertBorder`,
+     * `Outline` and `Keys` say, or the text alone (`NormalizedChartDataTable`).
+     */
+    readonly drawsDataTableBorders: boolean;
+    /**
+     * Whether a combo chart's percent-stacked bars (`<c:grouping val="percentStacked"/>` on its bar element) are stacked
+     * by value, as `stacked` bars, or each drawn as its share of its category.
+     */
+    readonly stacksComboPercentBarsByValue: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

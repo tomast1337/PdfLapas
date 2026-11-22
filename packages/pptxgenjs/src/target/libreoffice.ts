@@ -247,4 +247,16 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     comboLegendListsAreasFirst: true,
     barComboKeepsCategoriesBetweenTicks: true,
     outsidePieLabelWidth: { room: 0.8, plotWidth: 0.2 },
+    // Its PDF export of a synthetic PptxGenJS 4.0.1 column chart with eight categories and `catAxisLabelFrequency: 2`
+    // (`<c:tickLblSkip val="2"/>`) prints all eight labels (#566).
+    readsCategoryLabelSkip: false,
+    // Its PDF export of column charts with `valAxisDisplayUnit: "thousands"` and `valAxisDisplayUnitLabel` (values
+    // 3000 to 7000) and `"hundreds"` (300 to 700) numbers the axes 0..8000 and 0..800, with no unit name (#566).
+    readsValueAxisDisplayUnits: false,
+    // Its PDF export of column and line charts with `showDataTable` (each border and the keys on, or each off) draws the
+    // same table: the category names, then each series' name and values, with no border and no key (#567).
+    drawsDataTableBorders: false,
+    // Its PDF export of a combo chart with two percentStacked bar series ([3, 5, 4, 7] and [5, 2, 6, 4]) and a line
+    // ([6, 9, 7, 10]) stacks the bars to 8, 7, 10 and 11 on a 0 to 12 axis, as with "stacked" (#537).
+    stacksComboPercentBarsByValue: true,
 });

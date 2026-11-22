@@ -381,6 +381,18 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // axis (`<c:crossBetween val="midCat"/>`), its bars cut at the plot area's edges, as in a line and area combo.
     comboLegendListsAreasFirst: false,
     barComboKeepsCategoriesBetweenTicks: false,
+    // ECMA-376 21.2.2.207 `tickLblSkip`: a label every that many categories.
+    // shortcut: not measured on PowerPoint's PDF export; the deck waits for a conversion (#566).
+    readsCategoryLabelSkip: true,
+    // ECMA-376 21.2.2.46 `dispUnits`: the axis values divided by the built-in unit, `dispUnitsLbl` prints its name.
+    // shortcut: not measured on PowerPoint's PDF export, nor where it puts the name; the deck waits (#566).
+    readsValueAxisDisplayUnits: true,
+    // ECMA-376 21.2.2.54 `dTable`: `showHorzBorder`, `showVertBorder`, `showOutline` and `showKeys`.
+    // shortcut: not measured on PowerPoint's PDF export; the deck waits for a conversion (#567).
+    drawsDataTableBorders: true,
+    // Draws the bars as their share of each category, as the bar element's `<c:grouping>` says (#529).
+    // shortcut: not measured on PowerPoint's PDF export (#537).
+    stacksComboPercentBarsByValue: false,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

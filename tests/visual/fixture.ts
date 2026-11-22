@@ -2286,6 +2286,8 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartOptionAxisFixture(presentation);
     populateChartComboAreaPieLabelFixture(presentation);
     populateFallbackFaceFixture(presentation);
+    populateChartCategoryOptionFixture(presentation);
+    populateChartDataTableFixture(presentation);
 }
 
 /**
@@ -3439,4 +3441,68 @@ export function populateFallbackFaceFixture(presentation: Presentation): void {
     runs.addText("这是这是这是这是这是这是", { ...box, x: 5.1, y: 0.9, w: 2.2, h: 1.3 });
     runs.addText("x☺x ©®™ ↔ ♥ ♠ ‼ ☼ ▲", { ...box, x: 0.4, y: 2.4, w: 4.4, h: 1.3 });
     runs.addText("x1️⃣x x#️⃣x x*️⃣x x2⃣x", { ...box, x: 5.1, y: 2.4, w: 4.4, h: 1.3 });
+}
+
+/**
+ * Category-axis and point options (#566): turned labels on a red dashed axis line, the value axis at the last category,
+ * a reversed category axis with inverted colors (whose points drop the data border), a line crossed at 4 with its
+ * labels at the top, and overlapping outlined bars with series-colored label boxes. A parity slide after the others (no
+ * page number moves) and the WASM chartCategoryOptions deck, which crops each chart.
+ */
+export function populateChartCategoryOptionFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Category axis and point options", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const lorem = { name: "Lorem", labels, values: [3, -2, 4, 7] };
+    const pair = [
+        { name: "Lorem", labels, values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+    ];
+    // No gridlines and a fixed unit: the page scores the options, not gridline offsets or LibreOffice's label thinning.
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, valAxisMajorUnit: 2 };
+
+    slide.addChart("bar", [lorem], { ...shared, x: 0.4, y: 0.8, catAxisLabelRotate: 45, catAxisLineColor: "FF0000", catAxisLineSize: 2, catAxisLineStyle: "dash", catAxisCrossesAt: "max" } as unknown as PptxGenJS.IChartOpts);
+    slide.addChart("bar", [lorem], { ...shared, x: 5.2, y: 0.8, catAxisOrientation: "maxMin", invertedColors: ["FFC000"], dataBorder: { pt: 2, color: "000000" } } as unknown as PptxGenJS.IChartOpts);
+    slide.addChart("line", pair, { ...shared, x: 0.4, y: 3.2, valAxisCrossesAt: 4, catAxisLabelPos: "high" } as PptxGenJS.IChartOpts);
+    slide.addChart("bar", pair, { ...shared, x: 5.2, y: 3.2, barOverlapPct: 50, showValue: true, dataLabelBkgrdColors: true, dataLabelColor: "FFFFFF", dataBorder: { pt: 1, color: "404040" } });
+}
+
+/**
+ * Data tables, title placement and the depth axis (#567, #566): a column and a line chart with data tables (LibreOffice
+ * 26.2 draws their text without borders or keys), a turned title, and a bar3D chart with a placed title, a series-axis
+ * title and colored series names. A parity slide after the others (no page number moves) and the WASM chartDataTable
+ * deck, which crops each chart.
+ */
+export function populateChartDataTableFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Data tables, titles and the depth axis", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const pair = [
+        { name: "Lorem", labels, values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+    ];
+    // As on the category options slide: no gridlines and a fixed unit.
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, valAxisMajorUnit: 2 };
+
+    slide.addChart("bar", pair, { ...shared, x: 0.4, y: 0.8, showDataTable: true, dataTableFontSize: 9 });
+    slide.addChart("line", pair, { ...shared, x: 5.2, y: 0.8, showDataTable: true, dataTableFontSize: 10 });
+    slide.addChart("bar", pair, { ...shared, x: 0.4, y: 3.2, showTitle: true, title: "Lorem", titleRotate: 20 });
+    slide.addChart("bar3D", pair, {
+        ...shared,
+        // Light boxes, as on the bar3D axis slide: the projection still differs from LibreOffice's (#541).
+        x: 5.6,
+        y: 3.2,
+        w: 3.45,
+        valAxisMajorUnit: 5,
+        chartColors: ["BDD7EE", "F8CBAD"],
+        barGrouping: "standard",
+        showTitle: true,
+        title: "Lorem",
+        titlePos: { x: 0.2, y: 0.1 },
+        showSerAxisTitle: true,
+        serAxisTitle: "Series",
+        serAxisLabelColor: "C00000",
+    });
 }

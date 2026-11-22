@@ -229,13 +229,13 @@ describe("chart normalization and rendering", () => {
 
     test("reports unsupported types and options with structured details", () => {
         try {
-            normalizeChart("bar", categoricalData, { catAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts);
+            normalizeChart("bar", categoricalData, { catAxisBaseTimeUnit: "days" } as unknown as PptxGenJS.IChartOpts);
             throw new Error("Expected normalization to fail");
         } catch (error) {
             expect(error).toBeInstanceOf(UnsupportedChartError);
             expect((error as UnsupportedChartError).code).toBe("UNSUPPORTED_CHART");
             expect((error as UnsupportedChartError).reason).toBe("chart-option");
-            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["catAxisOrientation"]);
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["catAxisBaseTimeUnit"]);
         }
     });
 
@@ -587,6 +587,13 @@ describe("chart normalization and rendering", () => {
             labelFontSize: 12,
             labelBold: false,
             labelItalic: false,
+            hidden: false,
+            labelPosition: "low",
+            labelRotate: 0,
+            lineColor: "#888888" as typeof chart.categoryAxis.lineColor,
+            lineWidth: 1,
+            lineStyle: "solid",
+            minorTickMark: "none",
             gridLineColor: "#888888" as typeof chart.categoryAxis.gridLineColor,
             gridLineWidth: 1,
             gridLineStyle: "none",
@@ -779,7 +786,7 @@ describe("chart normalization and rendering", () => {
                 options: {},
             },
         ];
-        const stacks = (barGrouping?: string) => normalizeChart(combo, [], barGrouping === undefined ? {} : { barGrouping }).series.map(series => series.stack);
+        const stacks = (barGrouping?: string) => normalizeChart(combo, [], barGrouping === undefined ? {} : { barGrouping }, "powerpoint").series.map(series => series.stack);
 
         // The bars take the grouping, the areas stack only for "stacked", the line never does.
         expect(stacks("stacked")).toEqual(["stacked", "stacked", undefined, "stacked", "stacked"]);
@@ -789,7 +796,13 @@ describe("chart normalization and rendering", () => {
         // The automatic axis covers the bar stack (6, 6, 9) and the line (6, 9, 7) apart: 9 is the largest, not 9 + 9.
         expect(normalizeChart(combo, [], { barGrouping: "stacked" }).valueAxisMaximum).toBe(10);
         // A percent-stacked bar group shares 100 among the bars only, the areas and the line keep their values.
-        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }).valueAxisMaximum).toBe(120);
+        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }, "powerpoint").valueAxisMaximum).toBe(120);
+        // LibreOffice 26.2 stacks a combo chart's percentStacked bars by value (stacksComboPercentBarsByValue, #537).
+        const libreOffice = normalizeChart(combo, [], { barGrouping: "percentStacked" }, "libreoffice");
+
+        expect(libreOffice.series.map(series => series.stack)).toEqual(["stacked", "stacked", undefined, undefined, undefined]);
+        expect(libreOffice.grouping).toBe("percentStacked");
+        expect(libreOffice.valueAxisMaximum).toBe(10);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
@@ -2057,5 +2070,147 @@ describe("chart axis and plot-area options on every chart type (#561, #479)", ()
         }
 
         expect(right).toBeLessThanOrEqual(inchesToPixels(4) / 2 + 1);
+    });
+});
+
+describe("chart category-axis, data-table and point options (#566, #567, #548, #537)", () => {
+    const quarters = [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, -2, 4, 7] }];
+    const pair = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+    ];
+    const chartSvg = (type: PptxGenJS.CHART_NAME, data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts) => {
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addChart(type, data, { x: 0, y: 0, w: 6, h: 4, ...options });
+
+        return renderedPage(presentation).querySelector(".slide-chart svg");
+    };
+    const textsOf = (svg: Element | null) => Array.from(svg?.querySelectorAll("text") ?? [], text => text.textContent ?? "");
+
+    test("normalizes the category-axis options from PptxGenJS's defaults", () => {
+        const axis = normalizeChart("bar", quarters, {
+            catAxisHidden: true,
+            catAxisLabelPos: "high",
+            catAxisLabelRotate: 45,
+            catAxisLineColor: "FF0000",
+            catAxisLineSize: 3,
+            catAxisLineStyle: "dash",
+            catAxisMinorTickMark: "outside",
+            catAxisOrientation: "maxMin",
+            catAxisCrossesAt: 2,
+        } as unknown as PptxGenJS.IChartOpts).categoryAxis;
+
+        expect(axis).toMatchObject({ hidden: true, labelPosition: "high", labelRotate: 45, lineColor: "#FF0000", lineWidth: 3, lineStyle: "dash", minorTickMark: "outside", reversed: true, valueAxisCrossing: { kind: "category", index: 1 } });
+        // PptxGenJS writes `low` for a column chart's labels and `nextTo` for a bar chart's.
+        expect(normalizeChart("bar", quarters).categoryAxis.labelPosition).toBe("low");
+        expect(normalizeChart("bar", quarters, { barDir: "bar" }).categoryAxis.labelPosition).toBe("nextTo");
+        expect(normalizeChart("bar", quarters, { catAxisCrossesAt: "max" } as unknown as PptxGenJS.IChartOpts).categoryAxis.valueAxisCrossing).toEqual({ kind: "max" });
+        expect(normalizeChart("bar", quarters, { valAxisCrossesAt: 4 } as PptxGenJS.IChartOpts).valueAxes[0]?.categoryAxisCrossing).toEqual({ kind: "value", value: 4 });
+        expect(normalizeChart("bar", [{ name: "Lorem", labels: ["1", "2"], values: [3, 5] }], { catLabelFormatCode: "0.0" }).categoryAxis.labelFormatCode).toBe("0.0");
+    });
+
+    test("reads label frequency and display units only where the target does", () => {
+        const options = { catAxisLabelFrequency: 2, valAxisDisplayUnit: "thousands", valAxisDisplayUnitLabel: true } as unknown as PptxGenJS.IChartOpts;
+        // LibreOffice 26.2 ignores `<c:tickLblSkip>` and `<c:dispUnits>` (readsCategoryLabelSkip, readsValueAxisDisplayUnits).
+        const libreOffice = normalizeChart("bar", quarters, options, "libreoffice");
+        const powerPoint = normalizeChart("bar", quarters, options, "powerpoint");
+
+        expect(libreOffice.categoryAxis.labelSkip).toBeUndefined();
+        expect(libreOffice.valueAxes[0]?.displayUnit).toBeUndefined();
+        expect(powerPoint.categoryAxis.labelSkip).toBe(2);
+        expect(powerPoint.valueAxes[0]?.displayUnit).toEqual({ divisor: 1000, label: PPTX_DEFAULTS.chart.displayUnits.thousands.label });
+        expect(() => normalizeChart("bar", quarters, { valAxisDisplayUnit: "lorem" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisDisplayUnit");
+        expect(() => normalizeChart("bar", quarters, { ...options, showValAxisTitle: true }, "powerpoint")).toThrow("valAxisDisplayUnitLabel[showValAxisTitle]");
+    });
+
+    test("rejects the category-axis options a chart type cannot draw, naming them", () => {
+        expect(() => normalizeChart("radar", quarters, { catAxisLabelRotate: 45 })).toThrow("catAxisLabelRotate[radar]");
+        expect(() => normalizeChart("bar3D", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[bar3D]");
+        expect(() => normalizeChart("bar3D", quarters, { catAxisLabelPos: "high" })).toThrow("catAxisLabelPos[high][bar3D]");
+        expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "cross" })).toThrow("catAxisMajorTickMark[cross]");
+        expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "in" } as unknown as PptxGenJS.IChartOpts)).toThrow(TypeError);
+        expect(() => normalizeChart("line", quarters, { catLabelFormatCode: "mmm-yy" })).toThrow("catLabelFormatCode[format]");
+        expect(() => normalizeChart("bar3D", quarters, { dataLabelBkgrdColors: true })).toThrow("dataLabelBkgrdColors[bar3D]");
+        expect(() => normalizeChart("bar", quarters, { catAxisOrientation: "minMax", valAxisCrossesAt: "autoZero" } as PptxGenJS.IChartOpts)).not.toThrow();
+    });
+
+    test("normalizes the data table, with borders and keys where the target draws them (#567)", () => {
+        const options: PptxGenJS.IChartOpts = { showDataTable: true, showDataTableHorzBorder: true, showDataTableVertBorder: true, showDataTableOutline: true, showDataTableKeys: true, dataTableFontSize: 9 };
+
+        expect(normalizeChart("bar", pair, options, "powerpoint").dataTable).toMatchObject({ horizontalBorder: true, verticalBorder: true, outline: true, keys: true, fontSize: 9 });
+        // LibreOffice 26.2 draws the table's text without borders or keys (drawsDataTableBorders).
+        expect(normalizeChart("bar", pair, options, "libreoffice").dataTable).toMatchObject({ horizontalBorder: false, verticalBorder: false, outline: false, keys: false });
+        expect(normalizeChart("bar", pair).dataTable).toBeUndefined();
+        expect(() => normalizeChart("pie", pair, { showDataTable: true })).toThrow("showDataTable[pie]");
+        expect(() => normalizeChart("bar", pair, { showDataTable: true, barDir: "bar" })).toThrow("showDataTable[barDir bar]");
+    });
+
+    test("draws the data table's rows in place of the category labels", () => {
+        const texts = textsOf(chartSvg("bar", pair, { showDataTable: true }));
+
+        for (const text of ["Lorem", "Ipsum", "Q1", "Q4", "3", "7", "6"]) {
+            expect(texts).toContain(text);
+        }
+
+        // Each category once, in the table's header row.
+        expect(texts.filter(text => text === "Q1")).toHaveLength(1);
+    });
+
+    test("normalizes and draws inverted colors, overlap, the data border and label backgrounds", () => {
+        expect<string | undefined>(normalizeChart("bar", quarters, { invertedColors: ["FF0000"] }).series[0]?.pointFills?.[1]).toBe("#FF0000");
+        expect(normalizeChart("bar", pair, { barOverlapPct: 50 }).barOverlapPercent).toBe(50);
+        expect(normalizeChart("bar", pair, { barOverlapPct: 500 }).barOverlapPercent).toBe(100);
+        expect(normalizeChart("bar", pair, { barOverlapPct: 50, barGrouping: "stacked" }).barOverlapPercent).toBeUndefined();
+        expect<unknown>(normalizeChart("bar", pair, { dataBorder: { pt: 3, color: "FF0000" } }).dataBorder).toEqual({ color: "#FF0000", width: 3 });
+        // PptxGenJS writes a missing border color as F9F9F9.
+        expect<unknown>(normalizeChart("pie", [pair[0]!], { dataBorder: { pt: 2 } } as PptxGenJS.IChartOpts).dataBorder).toEqual({ color: "#F9F9F9", width: 2 });
+        expect(normalizeChart("bar", pair, { showValue: true, dataLabelBkgrdColors: true }).dataLabels.seriesColorBackground).toBe(true);
+
+        const inverted = chartSvg("bar", quarters, { invertedColors: ["FF0000"], dataBorder: { pt: 3, color: "00B050" } });
+
+        expect(inverted?.querySelector('[fill="#FF0000"]')).not.toBeNull();
+        // Each point's `<c:dPt>` replaces the series' shape properties, line included.
+        expect(inverted?.querySelector('[stroke="#00B050"]:not([stroke-width="0"])')).toBeNull();
+        expect(chartSvg("bar", pair, { dataBorder: { pt: 3, color: "00B050" } })?.querySelector('[stroke="#00B050"]')).not.toBeNull();
+    });
+
+    test("places and turns the title", () => {
+        const placed = normalizeChart("bar", quarters, { x: 1, y: 1, showTitle: true, title: "Lorem", titlePos: { x: 1, y: 1 }, titleRotate: 30 });
+
+        expect(placed.titleRotate).toBe(30);
+        expect(placed.titlePosition?.x).toBeGreaterThan(0);
+        expect(placed.titlePosition?.y).toBeGreaterThan(0);
+
+        const title = Array.from(chartSvg("bar", quarters, { showTitle: true, title: "Lorem title", titleRotate: 30 })?.querySelectorAll("text") ?? []).find(text => text.textContent === "Lorem title");
+
+        expect(title?.getAttribute("transform")).toContain("matrix(0.866,0.5,");
+    });
+
+    test("draws a bar3D chart's depth-axis options", () => {
+        const svg = chartSvg("bar3D", pair, { barGrouping: "standard", showSerAxisTitle: true, serAxisTitle: "Series", serAxisLabelColor: "FF0000" });
+
+        expect(svg?.querySelector(".bar3d-series-title")?.textContent).toBe("Series");
+        expect(svg?.querySelector(".bar3d-series-label")?.getAttribute("fill")).toBe("#FF0000");
+        expect(chartSvg("bar3D", pair, { barGrouping: "standard", serAxisHidden: true })?.querySelector(".bar3d-series-label")).toBeNull();
+        expect(normalizeChart("bar3D", pair, { serAxisOrientation: "maxMin" } as PptxGenJS.IChartOpts).seriesAxis?.reversed).toBe(true);
+        expect(normalizeChart("bar", pair).seriesAxis).toBeUndefined();
+    });
+
+    test("scales a bubble chart's x axis to its x values, not its bubbles (#548)", () => {
+        const texts = textsOf(
+            chartSvg(
+                "bubble",
+                [
+                    { name: "X", values: [1, 2, 3, 4] },
+                    { name: "Lorem", values: [3, 5, 4, 7], sizes: [1, 5, 10, 20] },
+                ],
+                {},
+            ),
+        );
+
+        // LibreOffice 26.2 numbers x values 1..4 from 0.5 to 4.5 by 0.5, whatever the sizes.
+        expect(texts).toContain("0.5");
+        expect(texts).toContain("4.5");
     });
 });

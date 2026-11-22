@@ -344,6 +344,8 @@ export type NormalizedChartSeries = {
     pointLineColors?: CssColor[];
     /** The series' own data labels (a combo chart's chart type options); absent: the chart's. */
     dataLabels?: NormalizedChartDataLabels;
+    /** Each point's own fill, by point index (a filled `<c:dPt>`), when `varyColors` is set; absent: the chart's colors. */
+    pointFills?: CssColor[];
 };
 
 export type NormalizedChartValueAxis = {
@@ -380,6 +382,14 @@ export type NormalizedChartValueAxis = {
      */
     automaticScale?: { low: number; high: number; fixedMinimum: boolean; fixedMaximum: boolean; labelHeightsPerStep?: number };
     logScaleBase?: number;
+    /**
+     * Where the category axis crosses this axis, which is also where its unstacked bars and its areas start (the
+     * category axis's `<c:crosses>` or `<c:crossesAt>`): at its minimum, its maximum or a value; absent: at 0, or the
+     * bound nearer it.
+     */
+    categoryAxisCrossing?: { kind: "min" } | { kind: "max" } | { kind: "value"; value: number };
+    /** What each label is divided by, and the unit's name printed by the axis when set (`<c:dispUnits>`); absent: none. */
+    displayUnit?: { divisor: number; label?: string };
     gridLineColor: CssColor;
     gridLineWidth: number;
     gridLineStyle: "solid" | "dash" | "dot" | "none";
@@ -407,6 +417,8 @@ export type NormalizedChartDataLabels = {
     fontSize: number;
     bold: boolean;
     italic: boolean;
+    /** Whether each label is drawn on its series' color (`<c:dLbls><c:spPr>`); absent: on nothing. */
+    seriesColorBackground?: boolean;
 };
 
 /** The category axis of a bar, line or area chart: its labels, title and gridlines. */
@@ -422,10 +434,68 @@ export type NormalizedChartCatAxis = {
     labelFontSize: number;
     labelBold: boolean;
     labelItalic: boolean;
+    /** Whether the axis is deleted (`<c:delete>`): no line, ticks, labels or title; its gridlines stay. */
+    hidden: boolean;
+    /** Where the labels sit (`<c:tickLblPos>`): by the value axis's low or high end, next to the axis line, or nowhere. */
+    labelPosition: "none" | "low" | "high" | "nextTo";
+    /** Degrees clockwise. */
+    labelRotate: number;
+    /** Every how many categories a label is printed (`<c:tickLblSkip>`, where the target reads it); absent: each. */
+    labelSkip?: number;
+    /** The number or date format of numeric categories (`catLabelFormatCode`, a date axis); absent: the labels as text. */
+    labelFormatCode?: string;
+    /** Whether the categories run from the last (`<c:orientation val="maxMin"/>`); absent: from the first. */
+    reversed?: boolean;
+    lineColor: CssColor;
+    /** Points. */
+    lineWidth: number;
+    lineStyle: "solid" | "dash" | "dot";
+    minorTickMark: "none" | "inside" | "outside" | "cross";
+    /**
+     * Where the value axis crosses this axis (the value axis's `<c:crosses>` or `<c:crossesAt>`): after the last
+     * category, or before the one at this 0-based index; absent: before the first.
+     */
+    valueAxisCrossing?: { kind: "max" } | { kind: "category"; index: number };
     gridLineColor: CssColor;
     gridLineWidth: number;
     gridLineStyle: "solid" | "dash" | "dot" | "none";
     gridLineCap: "flat" | "round" | "square";
+};
+
+/** A bar3D chart's depth (series) axis: whether and how it names the series slots, and its title. */
+export type NormalizedChartSeriesAxis = {
+    hidden: boolean;
+    /** Whether the first series is at the back (`<c:orientation val="maxMin"/>`). */
+    reversed: boolean;
+    labelColor: CssColor;
+    labelFontFace: string;
+    labelFontSize: number;
+    labelBold: boolean;
+    labelItalic: boolean;
+    showTitle: boolean;
+    title: string;
+    titleColor: CssColor;
+    titleFontFace: string;
+    titleFontSize: number;
+    titleRotate?: number;
+};
+
+/**
+ * The data table under a chart's plot area (`<c:dTable>`): a row of category names, then one row per series with its
+ * name and its values in its data labels' format.
+ */
+export type NormalizedChartDataTable = {
+    horizontalBorder: boolean;
+    verticalBorder: boolean;
+    outline: boolean;
+    /** Whether each series name has its legend key. */
+    keys: boolean;
+    fontFace: string;
+    fontSize: number;
+    color: CssColor;
+    borderColor: CssColor;
+    /** Points. */
+    borderWidth: number;
 };
 
 export type NormalizedChart = {
@@ -449,12 +519,18 @@ export type NormalizedChart = {
     titleFontSize: number;
     titleBold: boolean;
     titleColor: CssColor;
+    /** The title's top left corner as fractions of the chart frame (a manual layout); absent: centered at the top. */
+    titlePosition?: { x: number; y: number };
+    /** Degrees clockwise; absent: horizontal. */
+    titleRotate?: number;
     legendFontFace: string;
     legendFontSize: number;
     legendColor: CssColor;
     barDirection: "bar" | "col";
     grouping: "clustered" | "stacked" | "percentStacked" | "standard";
     barGapWidthPercent: number;
+    /** How much of its width each bar of a category overlaps the next (`<c:overlap>`), negative for a gap; absent: 0. */
+    barOverlapPercent?: number;
     barGapDepthPercent: number;
     bar3DShape: "box" | "cylinder" | "cone" | "coneToMax" | "pyramid" | "pyramidToMax";
     perspective3D: number;
@@ -469,6 +545,12 @@ export type NormalizedChart = {
     valueAxisMaximum: number;
     valueAxes: NormalizedChartValueAxis[];
     categoryAxis: NormalizedChartCatAxis;
+    /** A bar3D chart's depth axis; absent on every other chart. */
+    seriesAxis?: NormalizedChartSeriesAxis;
+    /** Absent: no data table. */
+    dataTable?: NormalizedChartDataTable;
+    /** The outline of each bar, area, slice or bubble (`dataBorder`), its width in points; absent: none. */
+    dataBorder?: { color: CssColor; width: number };
     doughnutHoleSize: number;
     firstSliceAngle: number;
     radarStyle: "standard" | "marker" | "filled";

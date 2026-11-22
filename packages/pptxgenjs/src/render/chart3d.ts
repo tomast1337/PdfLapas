@@ -254,7 +254,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             const x = labelX0 === 0 ? label.x - 8 : label.x + 8;
             const y = label.y + labelFontSize / 4;
             const rotate: Attribute[] = axis.labelRotate ? [["transform", `rotate(${n(axis.labelRotate)} ${n(x)} ${n(y)})`]] : [];
-            const tickLabel = formatChartNumber(value, axis.labelFormatCode);
+            const tickLabel = formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode);
             const labelWidth = format.getTextRect(tickLabel, `${labelFontSize}px ${labelFontFace}`).width;
 
             labelEdge = labelX0 === 0 ? Math.min(labelEdge, x - labelWidth) : Math.max(labelEdge, x + labelWidth);
@@ -399,7 +399,8 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const halfWidth = 0.5 / (1 + chart.barGapWidthPercent / 100) / categoryCount;
     const depthSlot = stacked ? 1 : 1 / seriesCount;
     const depthThickness = depthSlot / (1 + chart.barGapDepthPercent / 100);
-    const slotDepth = (series: number): number => (stacked ? 0.5 : (series + 0.5) * depthSlot);
+    // serAxisOrientation maxMin puts the first series at the back.
+    const slotDepth = (series: number): number => (stacked ? 0.5 : ((chart.seriesAxis?.reversed ? seriesCount - 1 - series : series) + 0.5) * depthSlot);
     const barCenter = (bar: Bar): CameraPoint => project((bar.category + 0.5) / categoryCount, slotDepth(bar.series), (bar.base + bar.value) / 2);
     // Painter's order: the bar farthest from the camera first.
     const ordered: { bar: Bar; distance: number }[] = [];
@@ -426,7 +427,10 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         const series = chart.series[bar.series];
         const color = series?.automaticPointFill ?? chart.colors[bar.series % chart.colors.length] ?? "#4472C4";
         const frontColor = series?.automaticPointFill ? `url(#bar3d-front-point-${bar.series})` : `url(#bar3d-front-${bar.series % chart.colors.length})`;
-        const outline = series?.pointLineColors?.[bar.category];
+        // A point's own outline (its `<c:dPt>` `<a:ln>`, no width), or the series' dataBorder.
+        const pointOutline = series?.pointLineColors?.[bar.category];
+        const outline = pointOutline ?? chart.dataBorder?.color;
+        const outlineWidth = pointOutline || !chart.dataBorder ? PPTX_DEFAULTS.chart.pointLineWidthPt : chart.dataBorder.width;
         const topColor = shade(color, PPTX_DEFAULTS.chart.bar3DLighting.topLighten);
         const sideColor = shade(color, -PPTX_DEFAULTS.chart.bar3DLighting.sideDarken);
         const opacity = n(chart.colorOpacity);
@@ -448,7 +452,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
 
         // The point's outline along every edge of its faces.
         if (outline) {
-            group.push(["stroke", outline], ["stroke-width", n(pointsToPixels(PPTX_DEFAULTS.chart.pointLineWidthPt))], ["stroke-linejoin", "round"]);
+            group.push(["stroke", outline], ["stroke-width", n(pointsToPixels(outlineWidth))], ["stroke-linejoin", "round"]);
         }
 
         if (chart.bar3DShape === "pyramid" || chart.bar3DShape === "pyramidToMax") {
@@ -554,16 +558,20 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         ["font-style", categoryAxisModel.labelItalic ? "italic" : undefined],
     ];
     let categoryBottom = 0;
-    const categoryLabels = Array.from({ length: categoryCount }, (_, index) => {
+    const categoryLabels: Html[] = [];
+
+    // A deleted axis (catAxisHidden) draws no labels or title, `none` no labels; catAxisLabelRotate turns each label
+    // clockwise about its anchor.
+    for (let index = 0; !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && index < categoryCount; index++) {
         const point = project((index + 0.5) / categoryCount, frontDepth, minimum);
         const label = labels[index] ?? String(index + 1);
+        const rotate: Attribute[] = categoryAxisModel.labelRotate ? [["transform", `rotate(${n(categoryAxisModel.labelRotate)} ${n(point.x)} ${n(point.y + 20)})`]] : [];
 
         categoryBottom = Math.max(categoryBottom, point.y + 20);
+        categoryLabels.push(element("text", [["x", n(point.x)], ["y", n(point.y + 20)], ["text-anchor", "middle"], ...rotate, ...categoryLabelStyle], escapeText(label)));
+    }
 
-        return element("text", [["x", n(point.x)], ["y", n(point.y + 20)], ["text-anchor", "middle"], ...categoryLabelStyle], escapeText(label));
-    });
-
-    if (categoryAxisModel.showTitle) {
+    if (categoryAxisModel.showTitle && !categoryAxisModel.hidden) {
         const left = project(0, frontDepth, minimum);
         const right = project(1, frontDepth, minimum);
 
@@ -587,20 +595,54 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
 
     // LibreOffice 26.2.6 names the depth slots only when there are several: a single series or a stacked chart, whose
     // series share one slot, gets no depth-axis label. A target may name a single unstacked series (namesSingleDepthSlot).
-    const namesSlots = !stacked && (chart.series.length > 1 || chart.namesSingleDepthSlot === true);
+    // A deleted depth axis (serAxisHidden) names none; its labels and title take the serAxis* styles.
+    const seriesAxis = chart.seriesAxis;
+    const namesSlots = !stacked && !seriesAxis?.hidden && (chart.series.length > 1 || chart.namesSingleDepthSlot === true);
+    const seriesLabelStyle: Attribute[] = seriesAxis
+        ? [
+              ["font-family", seriesAxis.labelFontFace],
+              ["font-size", n(pointsToPixels(seriesAxis.labelFontSize))],
+              ["fill", seriesAxis.labelColor],
+              ["font-weight", seriesAxis.labelBold ? "bold" : undefined],
+              ["font-style", seriesAxis.labelItalic ? "italic" : undefined],
+          ]
+        : [];
     const seriesLabels = (namesSlots ? chart.series : []).map((series, index) => {
         const point = project(otherX, slotDepth(index), minimum);
 
-        return element(
-            "text",
-            [
-                ["class", "bar3d-series-label"],
-                ["x", n(point.x + 7)],
-                ["y", n(point.y + 12)],
-            ],
-            escapeText(series.name),
-        );
+        return element("text", [["class", "bar3d-series-label"], ["x", n(point.x + 7)], ["y", n(point.y + 12)], ...seriesLabelStyle], escapeText(series.name));
     });
+
+    // showSerAxisTitle: LibreOffice 26.2 prints it below and right of the front slot's name.
+    if (seriesAxis?.showTitle && !seriesAxis.hidden) {
+        const front = project(otherX, depthSlot / 2, minimum);
+        const titlePx = pointsToPixels(seriesAxis.titleFontSize);
+        let nameWidth = 0;
+
+        for (const series of namesSlots ? chart.series : []) {
+            nameWidth = Math.max(nameWidth, format.getTextRect(series.name, `${pointsToPixels(seriesAxis.labelFontSize)}px ${seriesAxis.labelFontFace}`).width);
+        }
+
+        const end = { x: front.x + nameWidth, y: front.y };
+        const y = end.y + 12 + titlePx * lineEm;
+
+        seriesLabels.push(
+            element(
+                "text",
+                [
+                    ["class", "bar3d-series-title"],
+                    ["x", n(end.x + 7)],
+                    ["y", n(y)],
+                    ["font-family", seriesAxis.titleFontFace],
+                    ["font-size", n(titlePx)],
+                    ["fill", seriesAxis.titleColor],
+                    ["transform", seriesAxis.titleRotate ? `rotate(${n(seriesAxis.titleRotate)} ${n(end.x + 7)} ${n(y)})` : undefined],
+                ],
+                escapeText(seriesAxis.title),
+            ),
+        );
+    }
+
     // The legend has its own font (legendFontFace/legendFontSize/legendColor), not the axis-label font of the <g>.
     const legendFont: Attribute[] = [
         ["font-family", chart.legendFontFace],
@@ -634,15 +676,19 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         }
     }
 
+    // titlePos places the title's top left corner; titleRotate turns it clockwise about its middle.
+    const titleX = chart.titlePosition ? chart.titlePosition.x * width : width / 2;
+    const titleY = chart.titlePosition ? chart.titlePosition.y * height + pointsToPixels(chart.titleFontSize) : pointsToPixels(chart.titleFontSize) + 4;
     const title = chart.showTitle
         ? [
               element(
                   "text",
                   [
                       ["class", "bar3d-title"],
-                      ["x", n(width / 2)],
-                      ["y", n(pointsToPixels(chart.titleFontSize) + 4)],
-                      ["text-anchor", "middle"],
+                      ["x", n(titleX)],
+                      ["y", n(titleY)],
+                      ["text-anchor", chart.titlePosition ? "start" : "middle"],
+                      ["transform", chart.titleRotate ? `rotate(${n(chart.titleRotate)} ${n(titleX)} ${n(titleY - pointsToPixels(chart.titleFontSize) / 2)})` : undefined],
                       ["font-family", chart.titleFontFace],
                       ["font-size", n(pointsToPixels(chart.titleFontSize))],
                       ["font-weight", chart.titleBold ? "bold" : "normal"],

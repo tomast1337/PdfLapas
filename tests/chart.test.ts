@@ -507,6 +507,32 @@ describe("chart normalization and rendering", () => {
         expect(grouping("radar", "stacked")).toBe("standard");
     });
 
+    test("stacks each combo chart type as PptxGenJS writes its chart element's <c:grouping> (#529)", () => {
+        const combo: PptxGenJS.IChartMulti[] = [
+            { type: "bar", data: categoricalData, options: {} },
+            { type: "line", data: [{ name: "Line", labels: ["A", "B", "C"], values: [6, 9, 7] }], options: {} },
+            {
+                type: "area",
+                data: [
+                    { name: "Area 1", labels: ["A", "B", "C"], values: [2, 3, 2] },
+                    { name: "Area 2", labels: ["A", "B", "C"], values: [1, 2, 1] },
+                ],
+                options: {},
+            },
+        ];
+        const stacks = (barGrouping?: string) => normalizeChart(combo, [], barGrouping === undefined ? {} : { barGrouping }).series.map(series => series.stack);
+
+        // The bars take the grouping, the areas stack only for "stacked", the line never does.
+        expect(stacks("stacked")).toEqual(["stacked", "stacked", undefined, "stacked", "stacked"]);
+        expect(stacks("percentStacked")).toEqual(["percentStacked", "percentStacked", undefined, undefined, undefined]);
+        expect(stacks()).toEqual([undefined, undefined, undefined, undefined, undefined]);
+        expect(normalizeChart(combo, [], { barGrouping: "standard" }).grouping).toBe("standard");
+        // The automatic axis covers the bar stack (6, 6, 9) and the line (6, 9, 7) apart: 9 is the largest, not 9 + 9.
+        expect(normalizeChart(combo, [], { barGrouping: "stacked" }).valueAxisMaximum).toBe(10);
+        // A percent-stacked bar group shares 100 among the bars only, the areas and the line keep their values.
+        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }).valueAxisMaximum).toBe(110);
+    });
+
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
         const chart = normalizeChart("bar3D", categoricalData, {
             bar3DShape: "cylinder",

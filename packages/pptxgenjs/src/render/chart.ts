@@ -668,21 +668,23 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const barWidth = `${100 / (visibleSeries + chart.barGapWidthPercent / 100)}%`;
         const cartesian: Record<string, unknown>[] = [];
 
-        for (const [index, series] of chart.series.entries()) {
+        for (const series of chart.series) {
             const seriesType = series.type === "bar" ? "bar" : "line";
             const lineLike = series.type === "line" || series.type === "area";
             const color = chart.colors[series.colorIndex % chart.colors.length];
             let values: readonly number[] = series.values;
 
-            // Each value as its percentage of the category's total over all series.
-            if (chart.grouping === "percentStacked") {
+            // Each value as its percentage of the category's total over the series of its stack.
+            if (series.stack === "percentStacked") {
                 const percent: number[] = [];
 
-                for (const [valueIndex, value] of (chart.series[index]?.values ?? []).entries()) {
+                for (const [valueIndex, value] of series.values.entries()) {
                     let total = 0;
 
                     for (const other of chart.series) {
-                        total += Math.abs(other.values[valueIndex] ?? 0);
+                        if (other.stack === series.stack && other.type === series.type && other.valueAxisIndex === series.valueAxisIndex) {
+                            total += Math.abs(other.values[valueIndex] ?? 0);
+                        }
                     }
 
                     percent.push(total === 0 ? 0 : (value / total) * 100);
@@ -708,7 +710,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                           itemStyle: { color: chart.colors[valueIndex % chart.colors.length] },
                       }))
                     : values,
-                stack: stacked ? "pptx-stack" : undefined,
+                // Each type stacks apart from the others, as each is its own chart element.
+                stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,
                 barGap: seriesType === "bar" ? "0%" : undefined,
                 smooth: lineLike ? chart.lineSmooth : undefined,

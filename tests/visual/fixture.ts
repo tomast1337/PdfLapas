@@ -2236,6 +2236,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateBulletTypeFixture(presentation);
     populateChartAreaFixture(presentation);
     populateChartPlotBandFixture(presentation);
+    populateChartComboFixture(presentation);
 }
 
 /**
@@ -3037,4 +3038,28 @@ export function populateChartPlotBandFixture(presentation: Presentation): void {
 
     slide.addChart("bar", data, { ...shared, x: 0.4, showTitle: true, title: "Lorem ipsum", legendPos: "t" });
     slide.addChart("bar", data, { ...shared, x: 5.2, barDir: "bar", legendPos: "b" });
+}
+
+/**
+ * Combo chart grouping (#529): PptxGenJS writes one chart element per type with its own `<c:grouping>`, so with
+ * `barGrouping: "stacked"` the columns stack and the line does not. A parity slide after the others (no page number
+ * moves) and the WASM chartCombo deck, which crops the chart. Values that keep the automatic axis at 8, where
+ * LibreOffice and we pick the same major unit. No area group, which LibreOffice draws first, behind the others, with
+ * its categories on the tick marks (#538), and not percentStacked, which it draws stacked by value in a combo (#537).
+ */
+export function populateChartComboFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const columns: PptxGenJS.IChartMulti = {
+        type: "bar",
+        data: [
+            { name: "Lorem", labels, values: [2, 3, 2, 4] },
+            { name: "Ipsum", labels, values: [3, 1, 3, 2] },
+        ],
+        options: {},
+    };
+    const line: PptxGenJS.IChartMulti = { type: "line", data: [{ name: "Sit", labels, values: [4, 6, 5, 7] }], options: {} };
+
+    slide.addText("Combo chart grouping", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    (slide.addChart as Function)([columns, line], { x: 0.4, y: 0.9, w: 4.4, h: 4.1, barGrouping: "stacked", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" });
 }

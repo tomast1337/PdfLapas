@@ -2243,6 +2243,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartTopRightLegendFixture(presentation);
     populateChartValueAxisFixture(presentation);
     populateChartFixedBoundFixture(presentation);
+    populateChartLabelPositionFixture(presentation);
 }
 
 /**
@@ -3224,4 +3225,19 @@ export function populateChartFixedBoundFixture(presentation: Presentation): void
         ],
         { ...shared, x: 5.2, lineDataSymbol: "none", valAxisMaxVal: 45 },
     );
+}
+
+/**
+ * Data labels at a pie's rim and past a negative bar's end (#478): a pie's outEnd values outside the ring, which
+ * LibreOffice shrinks to make room for them, and a column chart's default outEnd values below its negative columns.
+ * A parity slide after the others (no page number moves) and the WASM chartLabelPositions deck, which crops each chart.
+ */
+export function populateChartLabelPositionFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Pie rim and negative bar labels", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, showValue: true, dataLabelFontFace: "Arial" };
+
+    slide.addChart("pie", [{ name: "Share", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }], { ...shared, x: 0.4, dataLabelPosition: "outEnd" });
+    slide.addChart("bar", [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, -3, 7, -6] }], { ...shared, x: 5.2, chartColors: ["4472C4"] });
 }

@@ -1125,6 +1125,58 @@ describe("chart normalization and rendering", () => {
         expect(Array.from(bar?.querySelectorAll('path[ecmeta_ssr_type="chart"]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4", "#4472C4", "#4472C4"]);
     });
 
+    test("lists each point of a single-series chart without c:dPt fills in the legend where the target does (chartLegendListsUnfilledPoints, #546)", () => {
+        const one = [categoricalData[0]!];
+        const colors = ["FF0000", "00AA00"];
+        // Each chart's legendListsPoints, and its legend entries as [text, key fill, key outline].
+        const drawn = (target: "libreoffice" | "powerpoint", type: PptxGenJS.CHART_NAME, data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart(type, data, { x: 0, y: 0, w: 5, h: 3, chartColors: colors, showLegend: true, legendPos: "b", ...options });
+            const object = presentation.getModel().slides[0]?.objects[0];
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const entries: (string | null | undefined)[][] = [];
+
+            if (type === "bar3D") {
+                for (const text of svg?.querySelectorAll(".bar3d-legend") ?? []) {
+                    entries.push([text.textContent, text.previousElementSibling?.getAttribute("fill"), text.previousElementSibling?.getAttribute("stroke")]);
+                }
+            } else {
+                for (const key of svg?.querySelectorAll('path[ecmeta_ssr_type="legend"][ecmeta_silent]') ?? []) {
+                    entries.push([key.nextElementSibling?.textContent, key.getAttribute("fill"), key.getAttribute("stroke")]);
+                }
+            }
+
+            return { listsPoints: object?.kind === "chart" ? object.chart.legendListsPoints : undefined, entries };
+        };
+
+        // PowerPoint lists the points of the measured charts, each key drawn as its point: a bar3D box filled in accent1
+        // and outlined in its chartColors entry, a lineSize 0 bar in plain accent1.
+        expect(drawn("powerpoint", "bar3D", one, {})).toEqual({
+            listsPoints: true,
+            entries: [
+                ["A", "#4472C4", "#FF0000"],
+                ["B", "#4472C4", "#00AA00"],
+                ["C", "#4472C4", "#FF0000"],
+            ],
+        });
+        expect(drawn("powerpoint", "bar", one, { lineSize: 0 })).toEqual({
+            listsPoints: true,
+            entries: [
+                ["A", "#4472C4", null],
+                ["B", "#4472C4", null],
+                ["C", "#4472C4", null],
+            ],
+        });
+        // LibreOffice keeps the series entry on the same charts (#545).
+        expect(drawn("libreoffice", "bar3D", one, {})).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        expect(drawn("libreoffice", "bar", one, { lineSize: 0 })).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        // Filled c:dPt (unmeasured, #552), one chartColors entry (no c:dPt) or two series keep the series entries.
+        expect(drawn("powerpoint", "bar", one, {})).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        expect(drawn("powerpoint", "bar3D", one, { chartColors: ["FF0000"] })).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        expect(drawn("powerpoint", "bar", categoricalData, { lineSize: 0 }).listsPoints).toBeUndefined();
+    });
+
     test("runs a clustered horizontal bar chart's series bottom-up and lists its legend from the last series, as LibreOffice and PowerPoint draw it (#472)", () => {
         // For each fill, the top of each bar (by category) and the legend text in order.
         const drawn = (options: PptxGenJS.IChartOpts) => {

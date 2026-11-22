@@ -252,6 +252,11 @@ export class PuppeteerSlide implements PptxSlide {
             topRightLegend: target.topRightLegend,
             ...(target.drawsChartMarkerOutline ? {} : { lineSymbolLineSize: 0 }),
             ...(target.firstAreaSeriesInFront && normalized.type === "area" && normalized.grouping === "standard" ? { firstSeriesInFront: true } : {}),
+            // Normalization sets automaticPointFill only on a bar or bar3D group's only series, whose <c:dPt>s have no
+            // fill; with no other series the target may list its points in the legend (chartLegendListsUnfilledPoints).
+            // shortcut: a bar chart whose <c:dPt>s are filled (varyColors) keeps the series entry, and a combo chart's
+            // single-series bar group too; neither is measured against PowerPoint (#552).
+            ...(target.chartLegendListsUnfilledPoints && normalized.series.length === 1 && normalized.series[0]?.automaticPointFill ? { legendListsPoints: true } : {}),
         };
 
         chartSize(style);

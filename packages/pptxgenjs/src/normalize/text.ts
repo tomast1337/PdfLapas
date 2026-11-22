@@ -7,7 +7,7 @@ import { inchesToPixels, pixelsToPoints, pointsToPixels } from "@pdflapas/model"
 import { inch2EmuToPixels } from "#src/units";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, type GridSpacing, runPieces, wordAfter } from "./advanceGrid";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "./eastAsianLineBreak";
-import { fallbackChain, type FallbackSegment, fallbackSegments } from "./fallback";
+import { fallbackChain, type FallbackHold, type FallbackSegment, fallbackSegments } from "./fallback";
 import { paragraphAlign, verticalAlign } from "./alignment";
 import { normalizeHyperlink } from "./link";
 import { textMarginPixels } from "./margin";
@@ -401,11 +401,11 @@ const TAB_ALIGNMENT_MAP: Record<string, "left" | "right" | "center" | "decimal">
  * The runs of `text`, one per stretch drawn from its own fallback face (normalize/fallback.ts). `kernedText` is the
  * text after `text` that PowerPoint kerns with it; only the last stretch takes it, since a face change ends kerning.
  */
-function fallbackRuns(text: string, options: PptxGenJS.TextPropsOptions, target: RenderingTarget, fontMetrics: FontMetricsLookup, cursor: GridCursor, kernedText: string): NormalizedTextRun[] {
+function fallbackRuns(text: string, options: PptxGenJS.TextPropsOptions, target: RenderingTarget, fontMetrics: FontMetricsLookup, cursor: GridCursor, kernedText: string, hold: FallbackHold): NormalizedTextRun[] {
     const fontFace = options.fontFace ?? PPTX_DEFAULTS.text.fontFace;
     const bold = options.bold ?? PPTX_DEFAULTS.text.bold;
     const italic = options.italic ?? PPTX_DEFAULTS.text.italic;
-    const fallback = fallbackSegments(text, fontFace, bold, italic, options.lang ?? PPTX_DEFAULTS.theme.language, target, fontMetrics);
+    const fallback = fallbackSegments(text, fontFace, bold, italic, options.lang ?? PPTX_DEFAULTS.theme.language, target, fontMetrics, hold);
     const font = RENDERING_TARGETS[target].advanceGridPt === undefined ? undefined : fontMetrics.glyphAdvances?.(fontFace, bold, italic);
     let segments: FallbackSegment[] = fallback;
 
@@ -699,9 +699,28 @@ export function normalizeText(
         // One advance grid sum for the paragraph's runs, in order (GridCursor).
         const cursor: GridCursor = { rounded: 0, laidOut: 0 };
         const normalizedRuns: NormalizedTextRun[] = [];
+        // The East Asian face the last piece ended in, and that piece's options (FallbackHold).
+        const hold: FallbackHold = { face: undefined };
+        let heldOptions: ReadonlyMap<string, unknown> = new Map();
 
         for (const [pieceIndex, piece] of paragraphPieces.entries()) {
             const runOptions = pieceOptions(piece);
+            const options = new Map<string, unknown>(Object.entries(runOptions));
+
+            // PowerPoint carries the held face into a run of identical options only: measured against its PDF export of a
+            // synthetic deck, "这"|"是" is all Microsoft JhengHei, where a change of colour or weight, or a line break,
+            // starts 是 over in MS Gothic.
+            let same = options.size === heldOptions.size && !runOptions.softBreakBefore;
+
+            for (const [key, value] of options) {
+                same &&= heldOptions.get(key) === value;
+            }
+
+            if (!same) {
+                hold.face = undefined;
+            }
+
+            heldOptions = options;
             // The text after this piece that PowerPoint kerns with it, up to `wordAfter`: the next pieces while both are
             // kerned in one face, size, weight and style, before a soft break. Measured against PowerPoint's PDF export of
             // a synthetic deck: a pair split by a change of colour, underline or nothing is kerned, by bold or size it is
@@ -740,7 +759,7 @@ export function normalizeText(
             const marks = languageHangingMarks(runOptions.lang ?? PPTX_DEFAULTS.theme.language, RENDERING_TARGETS[target].hangingMarks);
 
             if (marks.kind === "none") {
-                normalizedRuns.push(...fallbackRuns(piece.text, runOptions, target, fontMetrics, cursor, kernedText));
+                normalizedRuns.push(...fallbackRuns(piece.text, runOptions, target, fontMetrics, cursor, kernedText, hold));
             } else {
                 const next = paragraphPieces[pieceIndex + 1];
                 const after = next && !next.options.softBreakBefore ? [...next.text][0] : undefined;
@@ -752,7 +771,7 @@ export function normalizeText(
                     // A word does not go on into a mark that hangs: the mark's advance is cancelled and its U+3000 laid out apart.
                     const kernedWith = segments[segmentIndex + 1]?.hangs ? "" : wordAfter(`${rest.join("")}${kernedText}`);
 
-                    for (const run of fallbackRuns(text, runOptions, target, fontMetrics, cursor, kernedWith)) {
+                    for (const run of fallbackRuns(text, runOptions, target, fontMetrics, cursor, kernedWith, hold)) {
                         // Only the piece's first stretch starts after its soft break.
                         const segment = segmentIndex ? { ...run, softBreakBefore: false } : run;
 

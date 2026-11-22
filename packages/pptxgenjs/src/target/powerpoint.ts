@@ -8,11 +8,22 @@ const ADVANCE_GRID_PER_INCH = 576;
 const BASELINE_GRID_PER_INCH = 600;
 /** Its font fallback chain (`fallbackFaces`), first to last. */
 const FALLBACK_FACES = Object.freeze(["Arial", "Cambria Math", "Segoe UI Symbol"]);
-/** The East Asian faces it links to Arial and Calibri (`eastAsianFallback`). */
+/** The East Asian faces it links to Arial, Calibri and the other sans-serif faces measured (`eastAsianFallback`). */
 const LINKED_EAST_ASIAN_FACES = Object.freeze(["MS Gothic", "Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"]);
+/** The East Asian faces it links to Courier New and Consolas: kana from Yu Gothic, not MS Gothic (`eastAsianFallback`). */
+const MONOSPACE_EAST_ASIAN_FACES = Object.freeze(["Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"]);
 /** Its East Asian faces by run face, and for any other face, as measured in Times New Roman (`eastAsianFallback`). */
 const EAST_ASIAN_FALLBACK = Object.freeze({
-    byFace: Object.freeze({ arial: LINKED_EAST_ASIAN_FACES, calibri: LINKED_EAST_ASIAN_FACES }),
+    byFace: Object.freeze({
+        arial: LINKED_EAST_ASIAN_FACES,
+        calibri: LINKED_EAST_ASIAN_FACES,
+        aptos: LINKED_EAST_ASIAN_FACES,
+        "segoe ui": LINKED_EAST_ASIAN_FACES,
+        verdana: LINKED_EAST_ASIAN_FACES,
+        tahoma: LINKED_EAST_ASIAN_FACES,
+        "courier new": MONOSPACE_EAST_ASIAN_FACES,
+        consolas: MONOSPACE_EAST_ASIAN_FACES,
+    }),
     otherFaces: Object.freeze(["Yu Gothic", "PMingLiU", "SimSun", "Malgun Gothic"]),
 });
 /** The face it draws an emoji in (`emojiFace`). */
@@ -266,10 +277,18 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * keeps the face of the one before it while that face has it: "够是够是" is all Yu Gothic (MS Gothic lacks 够),
  * "这是这是" all Microsoft JhengHei, "够这" Yu Gothic then Microsoft JhengHei, "䶶是" Microsoft YaHei; a space, a Latin
  * letter, a run in another colour or another character ("这 是", "这a是", "↉是") starts over, so 是 is MS Gothic there;
- * a full-width comma does not ("这，是" stays in Microsoft JhengHei). An emoji (Extended_Pictographic: ❤ ☺ ✔ ⚠ ☀ ⭐ ✅ ❌,
- * 😀, and a flag such as 🇯🇵) is drawn in Segoe UI Emoji (`emojiFace`), at its 1.373em advance, where ✓ ✗ ☆ Ⓐ stay
- * in Segoe UI Symbol.
- * shortcut: faces other than Arial and Calibri take the Times New Roman faces; measure another face when a deck needs it.
+ * a full-width comma does not ("这，是" stays in Microsoft JhengHei). An emoji the face lacks whose default
+ * presentation is emoji (⭐ ✅ ❌, 😀, and a flag such as 🇯🇵) is drawn in Segoe UI Emoji (`emojiFace`), at its 1.373em
+ * advance, where ✓ ✗ ☆ Ⓐ stay in Segoe UI Symbol. In a second export (#403: "x这是x x够x xあアx x한글x" in ten faces, each embedded), Aptos, Segoe UI,
+ * Verdana and Tahoma take Arial's East Asian faces (这是 Microsoft JhengHei, 够 Yu Gothic, あア MS Gothic, 한글 Malgun
+ * Gothic), Courier New and Consolas the same but あア from Yu Gothic, Cambria and Georgia Times New Roman's (这是
+ * PMingLiU). The held face goes on into a run of identical options ("这"|"是" both Microsoft JhengHei) and starts over
+ * at a change of colour or weight and at a line break. ☺ ™ ↔ ♥ ♠ ‼ are laid out at the advances of the run's
+ * face where it has them (Arial, Times New Roman, Courier New) and of Segoe UI Symbol where it lacks them (☺ ♥ ♠ in
+ * Calibri), and drawn black, as is a keycap with U+FE0F ("1️⃣ #️⃣ *️⃣", Segoe UI Emoji's outline); "2⃣", without
+ * it, keeps 2 in the face and draws U+20E3 in Segoe UI Symbol. Its PDF export draws Segoe UI Emoji without its colour
+ * layers.
+ * shortcut: faces other than those measured take the Times New Roman faces; measure another face when a deck needs it.
  * It draws U+2011 NON-BREAKING HYPHEN with the face's U+002D glyph (`nonBreakingHyphen`), even in Times New Roman,
  * which has a U+2011 glyph of its own: in the same export it is glyph 16 in Arial and Times New Roman, the one
  * U+002D maps to, and Calibri's hyphen.

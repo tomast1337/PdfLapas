@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "f0631f3f56474608e671ee6855dafd52eff7e8182466adc674fdeb17c88c3b38",
+    fixture: "bf139b42b4e5d3a708636bb42514ab249957dd73f3a09f4cc755cfa09c78e647",
     "cross-runtime": "ffae7f4c58c322317e30c93dd7b132010d0afe52d3d17018b61dc8db4ba3317d",
     "wasm-text": "9700fb8fe52842ff7f6f09e6cd4c3c5b3a9af6d01659ab00ab124f2d3c479641",
     "wasm-emoji": "0170f6d0e30f8fb4961eda77afac9a9ab91bd91534aaa2c394c68edd9d332fc0",
@@ -48,7 +48,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartBar3DAxis": "25c89cf67b10d5ee733c69270bfa8edf777af90bb58c977a785f7ac6ece4d0f2",
     "wasm-chartOptionLabels": "45640b0a32243c90a360234ee035c0ab65c5a1e30e6b8843fef1a82f511e6acc",
     "wasm-chartOptionAxes": "ddf2c1868387cd1e6f4d9b1bf3b35ba356cd9ff1a85feb0354a5d0b69ea3327d",
-    "wasm-fallbackFaces": "df75259d72b1b9e34b67695b2724bcf654513055b17a324d4e6af3dd44f4fa5f",
+    "wasm-fallbackFaces": "3f0e840bfdd51ab6f39227bfdd1660becf4626c91bef0f978a4aac3ed7327727",
     "wasm-svg": "2609fdf9a6819dd5b90d99865840d41c9bf23c99340a329d34cafd80947fd3f0",
     "wasm-gif": "c9657cd861b77c52e1d664741089a73b432d9156dfc494899090d310209db207",
     "wasm-webp": "72221bb707a533502f0c794ba28ff3b1d04999d33b32bf92b01d4782deb4f83c",

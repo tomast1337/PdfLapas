@@ -206,7 +206,6 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisMajorTickMark",
     "valAxisMinorTickMark", // `cross` remains explicit unsupported
     "dataLabelFormatCode", // the same numeric formats as valAxisLabelFormatCode
-    "dataLabelPosition", // a pie's inEnd and outEnd remain explicit unsupported
     "showValue", // bar, line, pie and doughnut; other chart types remain explicit unsupported
     "showLabel", // pie and doughnut; scatter's custom labels remain explicit unsupported
     ...CATEGORY_AXIS_OPTIONS, // not drawn on bar3D, bubble, radar or scatter charts (#445)

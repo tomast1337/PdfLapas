@@ -292,7 +292,6 @@ describe("chart normalization and rendering", () => {
 
         expect(unsupported("area", categoricalData, { showValue: true })).toEqual(["showValue[area]"]);
         expect(unsupported("radar", categoricalData, { showValue: true })).toEqual(["showValue[radar]"]);
-        expect(unsupported("pie", [categoricalData[0]!], { showValue: true, dataLabelPosition: "outEnd" })).toEqual(["dataLabelPosition[outEnd]"]);
         expect(unsupported("bar", categoricalData, { showValue: true, dataLabelFormatCode: "0;[Red]-0" })).toEqual(["dataLabelFormatCode[format]"]);
         // Styling without a shown label draws nothing in PptxGenJS's output either.
         expect(normalizeChart("area", categoricalData, { dataLabelColor: "FF0000", showLabel: true }).dataLabels.showValue).toBe(false);
@@ -319,6 +318,71 @@ describe("chart normalization and rendering", () => {
         expect(texts(2)).toEqual(expect.arrayContaining(["1,200", "3,400"]));
         // Each field on its own line: ECharts writes one text element per line.
         expect(texts(3)).toEqual(["Lorem", "25%", "Ipsum", "75%"]);
+    });
+
+    test("places a pie's inEnd and outEnd labels at the rim as LibreOffice 26.2 does (#478)", () => {
+        // A 4.4 x 4.1in pie (values 40, 25, 20, 15, 12pt values): LibreOffice draws the outEnd ring 332.5px wide at
+        // (213.2, 192.5) in the chart, the "20" label (bisector at 9 o'clock) left of a point 1.5mm outside the rim,
+        // and keeps the inEnd ring 367px wide at (211.2, 196.8), "20" right of a point 1.5mm inside it.
+        expect(normalizeChart("pie", [categoricalData[0]!], { showValue: true, dataLabelPosition: "outEnd" }).dataLabels.position).toBe("outEnd");
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const data = [{ name: "S", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }];
+
+        slide.addChart("pie", data, { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "outEnd" });
+        slide.addChart("pie", data, { x: 5, y: 0, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "inEnd" });
+        const charts = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+        const label = (index: number, content: string) => {
+            const text = Array.from(charts[index]?.querySelectorAll("text") ?? []).find(candidate => candidate.textContent === content);
+            const [x = Number.NaN, y = Number.NaN] = (/translate\(([-\d.]+) ([-\d.]+)\)/.exec(text?.getAttribute("transform") ?? "") ?? []).slice(1).map(Number);
+
+            return { anchor: text?.getAttribute("text-anchor"), x, y };
+        };
+        const offset = pointsToPixels(PPTX_DEFAULTS.chart.pieLabel.offsetPt);
+        const outside = label(0, "20");
+        const inside = label(1, "20");
+
+        expect(outside.anchor).toBe("end");
+        expect(Math.abs(outside.x - (213.2 - 166.2 - offset))).toBeLessThan(1.5);
+        expect(Math.abs(outside.y - 192.5)).toBeLessThan(1.5);
+        // The 40 slice's bisector points up-right: its outEnd label starts right of its anchor, its inEnd label ends there.
+        expect(label(0, "40").anchor).toBe("start");
+        expect(label(1, "40").anchor).toBe("end");
+        expect(inside.anchor).toBe("start");
+        expect(Math.abs(inside.x - (211.2 - 183.5 + offset))).toBeLessThan(1);
+        expect(Math.abs(inside.y - 196.8)).toBeLessThan(1);
+    });
+
+    test("puts a negative bar's label past its own end, as LibreOffice 26.2 does (#478)", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+        const data = [{ name: "S", labels: ["A", "B", "C", "D"], values: [5, -3, 7, -6] }];
+
+        slide.addChart("bar", data, { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true });
+        slide.addChart("bar", data, { x: 5, y: 0, w: 4.4, h: 4.1, showValue: true, barDir: "bar" });
+        slide.addChart("bar", data, { x: 0, y: 4, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "inEnd" });
+        const charts = Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg"));
+        // Each text's anchor (x, y): the axis labels -8..8 by 2 come first, the odd data labels are unique.
+        const position = (index: number, content: string) => {
+            const text = Array.from(charts[index]?.querySelectorAll("text") ?? []).find(candidate => candidate.textContent === content);
+            const [x = Number.NaN, y = Number.NaN] = (/translate\(([-\d.]+) ([-\d.]+)\)/.exec(text?.getAttribute("transform") ?? "") ?? []).slice(1).map(Number);
+
+            return { x, y };
+        };
+        const zero = position(0, "0");
+        const unit = (zero.y - position(0, "2").y) / 2;
+
+        // outEnd (the clustered default): below the -3 column's end, above the 5 column's.
+        expect(position(0, "-3").y).toBeGreaterThan(zero.y + 3 * unit);
+        expect(position(0, "5").y).toBeLessThan(zero.y - 5 * unit);
+        // A horizontal bar's: left of the -3 bar's end (the value axis is the second set of axis labels).
+        const barZero = Array.from(charts[1]?.querySelectorAll("text") ?? []).find(text => text.textContent === "0" && text.getAttribute("text-anchor") === "middle");
+        const barZeroX = Number(/translate\(([-\d.]+)/.exec(barZero?.getAttribute("transform") ?? "")?.[1]);
+
+        expect(position(1, "-3").x).toBeLessThan(barZeroX - 3 * unit);
+        // inEnd: inside the -3 column, at its end.
+        expect(position(2, "-3").y).toBeGreaterThan(zero.y + 1.5 * unit);
+        expect(position(2, "-3").y).toBeLessThan(zero.y + 3 * unit);
     });
 
     test("normalizes the category axis from PptxGenJS's makeCatAxis defaults", () => {

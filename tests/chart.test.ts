@@ -471,12 +471,10 @@ describe("chart normalization and rendering", () => {
         expect(fromCenter("1")).toBeGreaterThan(radius);
     });
 
-    test("shrinks a bestFit pie's ring for each label too wide for its slice of LibreOffice's first, small ring (#572)", () => {
+    test("shrinks a bestFit pie's ring for each label too wide for its slice of LibreOffice's first, small ring, and keeps it for PowerPoint (#572)", () => {
         // LibreOffice 26.2.7 on a 6 x 4.4in pie, 12pt Arial percentages at 96 dpi: a 40/25/20/15 ring 395px wide, a
-        // 70/15/8/4/3 one 373px, though every label of both lies in its slice.
-        const ringWidth = (values: number[]) => {
-            const presentation = new PuppeteerGen();
-
+        // 70/15/8/4/3 one 373px, though every label of both lies in its slice. PowerPoint keeps both at 393px.
+        const ringWidth = (values: number[], presentation: PuppeteerGen = new PuppeteerGen()) => {
             presentation.addSlide().addChart("pie", [{ name: "S", labels: values.map(String), values }], { x: 0, y: 0, w: 6, h: 4.4, showPercent: true, showValue: false, dataLabelPosition: "bestFit", dataLabelFontFace: "Arial" });
             let radius = 0;
 
@@ -489,6 +487,7 @@ describe("chart normalization and rendering", () => {
 
         expect(ringWidth([40, 25, 20, 15])).toBeCloseTo(395, -1);
         expect(ringWidth([70, 15, 8, 4, 3])).toBeCloseTo(373, -1);
+        expect(ringWidth([70, 15, 8, 4, 3], new PuppeteerGenPowerPoint())).toBeCloseTo(395, -1);
     });
 
     test("wraps a long outEnd pie label where LibreOffice does, and keeps one line per field for PowerPoint (#558)", () => {
@@ -821,14 +820,15 @@ describe("chart normalization and rendering", () => {
 
         // The bars take the grouping, the areas stack only for "stacked", the line never does.
         expect(stacks("stacked")).toEqual(["stacked", "stacked", undefined, "stacked", "stacked"]);
-        expect(stacks("percentStacked")).toEqual(["percentStacked", "percentStacked", undefined, undefined, undefined]);
+        expect(stacks("percentStacked")).toEqual(["shareStacked", "shareStacked", undefined, undefined, undefined]);
+        expect(normalizeChart("bar", categoricalData, { barGrouping: "percentStacked" }, "powerpoint").series[0]?.stack).toBe("percentStacked");
         expect(stacks()).toEqual([undefined, undefined, undefined, undefined, undefined]);
         expect(normalizeChart(combo, [], { barGrouping: "standard" }).grouping).toBe("standard");
         // The automatic axis covers the bar stack (6, 6, 9) and the line (6, 9, 7) apart: 9 is the largest, not 9 + 9.
         expect(normalizeChart(combo, [], { barGrouping: "stacked" }).valueAxisMaximum).toBe(10);
-        // A percent-stacked bar group shares 100 among the bars only, the areas and the line keep their values.
-        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }, "powerpoint").valueAxisMaximum).toBe(120);
-        // LibreOffice 26.2 stacks a combo chart's percentStacked bars by value (stacksComboPercentBarsByValue, #537).
+        // PowerPoint draws a combo's percent-stacked bars as shares of 1 on the axis the line and areas set (#537): 0..10.
+        expect(normalizeChart(combo, [], { barGrouping: "percentStacked" }, "powerpoint").valueAxisMaximum).toBe(10);
+        // LibreOffice 26.2 stacks them by value (comboPercentBarStack, #537).
         const libreOffice = normalizeChart(combo, [], { barGrouping: "percentStacked" }, "libreoffice");
 
         expect(libreOffice.series.map(series => series.stack)).toEqual(["stacked", "stacked", undefined, undefined, undefined]);

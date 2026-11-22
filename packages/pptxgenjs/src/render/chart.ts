@@ -821,7 +821,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             };
             // LibreOffice's first layout: a ring 1 / firstPassDivisor of the plot area, centered in a box that size
             // placed at the plot area's far corner (VDiagram::reduceToMinimumSize), and the rect its labels and ring
-            // cover there. inEnd and outEnd labels resize the ring, and so does each bestFit label that does not fit in
+            // cover there. inEnd and outEnd labels resize the ring, and on some targets (bestFitLabelsShrinkPie) so does each bestFit label that does not fit in
             // its slice of that small ring, though it may fit in the final one: LibreOffice 26.2 draws a 70/15/8/4/3 pie
             // with bestFit percentages, all inside their slices, on a ring 6% smaller than a 40/25/20/15 one (#572).
             const firstWidth = boxWidth / pieLabel.firstPassDivisor;
@@ -889,7 +889,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const innerWidth = Math.max(0, Math.min(left + boxWidth, innerX + firstSide + deltaWidth) - innerLeft);
             const innerHeight = Math.max(0, Math.min(top + boxHeight, innerY + firstSide + deltaHeight) - innerTop);
 
-            if (rimLabels || bestFit) {
+            if (rimLabels || (bestFit && chart.bestFitLabelsShrinkPie)) {
                 radius = Math.min(innerWidth, innerHeight) / 2;
                 centerX = innerLeft + innerWidth / 2;
                 centerY = innerTop + innerHeight / 2;
@@ -914,6 +914,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                         label = inner;
                         align = "center";
                         verticalAlign = "middle";
+                    } else if (!chart.bestFitLabelsShrinkPie) {
+                        // A ring that keeps its size leaves no room outside, so the label moves back into the chart, as
+                        // PowerPoint keeps "Amet 3%" of a 70/15/8/4/3 pie inside its frame (#572).
+                        const left = align === "left" ? x : align === "right" ? x - label.width : x - label.width / 2;
+                        const top = verticalAlign === "top" ? y : verticalAlign === "bottom" ? y - label.height : y - label.height / 2;
+
+                        x += Math.max(0, -left) - Math.max(0, left + label.width - width);
+                        y += Math.max(0, -top) - Math.max(0, top + label.height - height);
                     }
                 }
 
@@ -1231,8 +1239,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const color = chart.colors[series.colorIndex % chart.colors.length];
             let values: readonly number[] = series.values;
 
-            // Each value as its percentage of the category's total over the series of its stack.
-            if (series.stack === "percentStacked") {
+            // Each value as its percentage (or share of 1) of the category's total over the series of its stack.
+            if (series.stack === "percentStacked" || series.stack === "shareStacked") {
                 const percent: number[] = [];
 
                 for (const [valueIndex, value] of series.values.entries()) {
@@ -1244,7 +1252,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                         }
                     }
 
-                    percent.push(total === 0 ? 0 : (value / total) * 100);
+                    percent.push(total === 0 ? 0 : (value / total) * (series.stack === "percentStacked" ? 100 : 1));
                 }
 
                 values = percent;

@@ -153,6 +153,9 @@ export const PPTX_DEFAULTS = Object.freeze({
         h: 0,
         // PowerPoint's Normal text-box inset: top, right, bottom, left.
         marginIn: Object.freeze([0.05, 0.1, 0.05, 0.1] as const),
+        // The left margin a paragraph at indent level N takes when PptxGenJS writes no marL on it: N times this, the
+        // `marL` of `lvl{N+1}pPr` (N x 457200 EMU) in its master's otherStyle and presentation.xml's defaultTextStyle.
+        levelMarginIn: 0.5,
         glowWhenEnabled: Object.freeze({ sizePt: 8, color: "FFFFFF", opacity: 0.75 }),
         // genXmlTextRunProperties writes a run's outline as <a:ln w={valToPts(outline.size || 0.75)}>.
         outlineSizePt: 0.75,

@@ -778,8 +778,10 @@ export function normalizeText(
         // PptxGenJS 4.0.1 (genXmlTextBody) matches `type.toString().toLowerCase() === 'number'` (#501) inside
         // `if (bullet.type)`, so any other truthy type ("bullet", 1) writes no marL, indent or marker at all (#513).
         const kind = config.type?.toString().toLowerCase() === "number" ? "number" : "bullet";
+        // Every other paragraph has a marL: its bullet's, or the 0 genXmlParagraphProperties writes without a bullet.
+        const writesMargin = !(first.bullet && config.type && kind === "bullet");
 
-        if (first.bullet && !(config.type && kind === "bullet")) {
+        if (first.bullet && writesMargin) {
             // PptxGenJS 4.0.1 reads these with `||`: a falsy indent, numberStartAt, startAt, style or characterCode falls
             // through to the next one or the default (numberStartAt 0 writes startAt="1", #491). It never reads the
             // deprecated marginPt (#498).
@@ -871,6 +873,13 @@ export function normalizeText(
             tabStops,
             defaultTabStop: inchesToPixels(PPTX_DEFAULTS.text.defaultTabStopIn),
             ...(bullet && !runlessGroup ? { bullet } : {}),
+            // A paragraph without a marL takes its level's from the master's otherStyle (a table cell's from
+            // defaultTextStyle, the same values): measured against PowerPoint's PDF export and LibreOffice's of a
+            // synthetic deck (Arial 14pt text box, `bullet: { type: "bullet" }`), the text starts 0.5in in at level 1
+            // and 1in at level 2 in both (#531).
+            // shortcut: a placeholder's paragraph takes its master bodyStyle's or titleStyle's level instead, which was
+            // not measured beyond PowerPoint drawing no bullet there; it keeps no margin until a deck needs it.
+            ...(!writesMargin && level > 0 && writing.placeholderSpaceBeforeRatio === undefined ? { marginLeft: inchesToPixels(PPTX_DEFAULTS.text.levelMarginIn * level) } : {}),
             ...firstSpace,
             ...lastSpace,
         });

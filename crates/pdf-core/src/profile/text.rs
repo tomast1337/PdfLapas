@@ -41,7 +41,8 @@ const PARAGRAPH_ATTRS: &[&str] = &[
     "data-bullet-start",
     "data-bullet-number-type",
 ];
-// `padding-left` and `text-indent` are the bullet indent, derived from the values read here.
+// With a bullet, `padding-left` and `text-indent` are its indent, derived from the values read here; without one,
+// `padding-left` is the paragraph's margin.
 const PARAGRAPH_CSS: &[&str] = &[
     "text-align",
     "text-justify",
@@ -252,6 +253,11 @@ fn paragraph(dom: &Dom<'_>, element: &Element<'_>) -> Result<Paragraph, String> 
         space_after: style.require_px("margin-bottom")?,
         tab_stops,
         default_tab_stop: style.require_px("tab-size")?,
+        // With a bullet, `padding-left` is derived from `data-bullet-indent`.
+        margin_left: match bullet {
+            Some(_) => 0.0,
+            None => style.px("padding-left")?.unwrap_or(0.0),
+        },
         bullet,
     })
 }
@@ -675,6 +681,16 @@ mod tests {
         let html = format!(r#"<div class="text-paragraph" data-line-baseline="16" style="{style}"><span class="text-run" style="{RUN_STYLE}">x</span></div>"#);
         let text = text_object(&html).unwrap().text.expect("text");
         assert!(matches!(text.paragraphs[..], [ref p] if p.align == ParagraphAlign::Justify));
+    }
+
+    #[test]
+    fn reads_padding_left_as_the_margin_of_a_paragraph_without_a_bullet() {
+        let margin = |style: &str| {
+            let html = format!(r#"<div class="text-paragraph" data-line-baseline="16" style="{PARAGRAPH_STYLE}{style}"></div>"#);
+            text_object(&html).map(|o| o.text.and_then(|t| t.paragraphs.first().map(|p| p.margin_left)))
+        };
+        assert_eq!(margin(" padding-left: 48px;"), Ok(Some(48.0)));
+        assert_eq!(margin(""), Ok(Some(0.0)));
     }
 
     #[test]

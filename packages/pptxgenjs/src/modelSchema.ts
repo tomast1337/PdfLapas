@@ -134,6 +134,7 @@ const textBox = z.strictObject({
                     numberType: z.string().optional(),
                 })
                 .optional(),
+            marginLeft: nonNegative.optional(),
         }),
     ),
     margin: z.tuple([finite, finite, finite, finite]),

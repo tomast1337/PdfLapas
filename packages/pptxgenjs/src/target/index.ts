@@ -188,6 +188,21 @@ export type RenderingTargetProfile = {
      * (`NormalizedChart.namesSingleDepthSlot`).
      */
     readonly bar3DNamesSingleSeries: boolean;
+    /**
+     * Whether a bubble chart's value label (`showValue`, `<c:showVal>`) prints the bubble's size, or its y value
+     * (`NormalizedChartDataLabels.valueIsBubbleSize`).
+     */
+    readonly bubbleValueLabelShowsSize: boolean;
+    /**
+     * What joins a data label's series name and value, as PptxGenJS writes no `<c:separator>`
+     * (`NormalizedChartDataLabels.fieldSeparator`).
+     */
+    readonly dataLabelFieldSeparator: string;
+    /**
+     * How many steps a radar chart's automatic value axis takes at most, with 0 included (`normalizeChart`'s radar
+     * scale, the bar3D rounding over the data).
+     */
+    readonly radarMaxIncrements: number;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

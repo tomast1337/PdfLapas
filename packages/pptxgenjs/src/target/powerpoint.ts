@@ -271,6 +271,17 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // The same export prints "Lorem" at the depth axis of both single-series charts, where LibreOffice prints none.
     // shortcut: a stacked bar3D's depth label is not measured on PowerPoint and keeps LibreOffice's none (#541).
     bar3DNamesSingleSeries: true,
+    // ECMA-376 21.2.2.189 `showVal` shows the point's value, its y value, and `showBubbleSize` (which PptxGenJS writes 0)
+    // its size.
+    // shortcut: not measured on PowerPoint's PDF export; measure it when a deck labels bubbles (#477).
+    bubbleValueLabelShowsSize: false,
+    // Its PDF export of the chartOptionLabels fixture slide (PptxGenJS 4.0.1, area chart with showSerName and
+    // showValue) prints "Lorem, 5" (#568).
+    dataLabelFieldSeparator: ", ",
+    // Its PDF export of the chartOptionAxes fixture slide numbers a radar with data up to 7 0..8 by 2
+    // with four rings (#568); at most 4, 5 or 6 steps all give that scale.
+    // shortcut: one measurement; measure other ranges and sizes when a deck steps differently (#565).
+    radarMaxIncrements: 4,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

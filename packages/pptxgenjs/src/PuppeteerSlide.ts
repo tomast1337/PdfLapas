@@ -235,7 +235,7 @@ export class PuppeteerSlide implements PptxSlide {
         const target = RENDERING_TARGETS[this.context.target];
         // PptxGenJS writes `<c:holeSize>`, but not every target reads it (readsDoughnutHoleSize).
         const holeSize = target.readsDoughnutHoleSize ? chartOptions.holeSize : undefined;
-        const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() });
+        const normalized = normalizeChart(type, Array.isArray(data) ? (data as PptxGenJS.OptsChartData[]) : [], { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() }, this.context.target);
         const series: NormalizedChartSeries[] = [];
 
         // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill).
@@ -261,6 +261,8 @@ export class PuppeteerSlide implements PptxSlide {
             // the target may name a single series at the depth axis (bar3DNamesSingleSeries).
             valueAxes: normalized.valueAxes.map(axis => (axis.automaticScale ? { ...axis, automaticScale: { ...axis.automaticScale, labelHeightsPerStep: target.bar3DLabelHeightsPerStep } } : axis)),
             ...(target.bar3DNamesSingleSeries && normalized.type === "bar3D" ? { namesSingleDepthSlot: true } : {}),
+            // A bubble's value label prints its y value or, on some targets, its size (bubbleValueLabelShowsSize).
+            ...(target.bubbleValueLabelShowsSize && normalized.type === "bubble" ? { dataLabels: { ...normalized.dataLabels, valueIsBubbleSize: true } } : {}),
         };
 
         chartSize(style);

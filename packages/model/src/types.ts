@@ -322,6 +322,8 @@ export type NormalizedChartSeries = {
     automaticPointFill?: CssColor;
     /** Each point's outline color, by point index (a `<c:dPt>` `<a:ln>`); absent: no outline. */
     pointLineColors?: CssColor[];
+    /** The series' own data labels (a combo chart's chart type options); absent: the chart's. */
+    dataLabels?: NormalizedChartDataLabels;
 };
 
 export type NormalizedChartValueAxis = {
@@ -349,6 +351,8 @@ export type NormalizedChartValueAxis = {
     majorTickMark: "none" | "inside" | "outside" | "cross";
     minorTickMark: "none" | "inside" | "outside" | "cross";
     majorUnit?: number;
+    /** Whether the axis runs from its maximum to its minimum (`valAxisOrientation: "maxMin"`); absent: minimum first. */
+    reversed?: boolean;
     /**
      * On a bar3D chart, whose step LibreOffice picks from the drawn length of the axis: the data's low and high ends (0
      * included) and whether the caller set the minimum and the maximum; absent: `minimum` to `maximum` as they are.
@@ -362,11 +366,17 @@ export type NormalizedChartValueAxis = {
     gridLineCap: "flat" | "round" | "square";
 };
 
-/** The data labels of a bar, line, pie or doughnut chart: what each label shows, where and in which text style. */
+/** The data labels of a chart or a series: what each label shows, where and in which text style. */
 export type NormalizedChartDataLabels = {
     showValue: boolean;
-    /** The category name, on pie and doughnut slices. */
+    /** The category name, on pie and doughnut slices; a scatter point's own label (its series' `labels`). */
     showCategory: boolean;
+    /** The series name; absent: not shown. */
+    showSeriesName?: boolean;
+    /** What joins the series name and the value (the rendering target's); absent: ", ". */
+    fieldSeparator?: string;
+    /** Whether a bubble's value label prints its size in place of its y value; absent: the y value. */
+    valueIsBubbleSize?: boolean;
     /** The share of the total, on pie and doughnut slices. */
     showPercent: boolean;
     position: "b" | "bestFit" | "ctr" | "inBase" | "inEnd" | "l" | "outEnd" | "r" | "t";

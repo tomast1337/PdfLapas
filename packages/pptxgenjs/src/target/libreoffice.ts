@@ -49,6 +49,8 @@ import type { RenderingTargetProfile } from "./index";
  * (`bar3DLabelHeightsPerStep` 1): in LibreOffice 26.2.6's PDF export of 3, 5, 4, 8 in 14pt Arial, 0..8 by 1 on a
  * 136.5pt axis, by 2 on a 95pt one and 0..10 by 5 on a 54pt one. A single series or a stacked chart gets no depth-axis
  * label (`bar3DNamesSingleSeries` off): its PDF export of the chartBar3DAxis fixture slide prints none (#541).
+ * A bubble's value label prints its size (`bubbleValueLabelShowsSize`): in LibreOffice 26.2.6's PDF export of a
+ * synthetic PptxGenJS 4.0.1 bubble chart with `showValue` (y 3, 5, 4, 7, sizes 1, 2, 3, 4) the labels read 1 to 4 (#477).
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -86,4 +88,11 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     topRightLegend: { kind: "beside" as const },
     bar3DLabelHeightsPerStep: 1,
     bar3DNamesSingleSeries: false,
+    bubbleValueLabelShowsSize: true,
+    // Its PDF export of a bar and an area chart with showSerName and showValue prints "North; 7" (#477).
+    dataLabelFieldSeparator: "; ",
+    // A radar axis takes at most two steps: 26.2.6 draws 0..10 by 5 for 2..7 in 2.5, 4.5 and 7in high charts at 8, 12
+    // and 14pt labels, 0..40 by 20 for 2..23, 0..100 by 50 for 20..70, 0..1 by 0.5 for 0.2..0.8, -10..10 by 10 for
+    // -5..7, and 2..7 with valAxisMinVal 2 (its PDF export of synthetic PptxGenJS 4.0.1 radar charts, #561).
+    radarMaxIncrements: 2,
 });

@@ -121,7 +121,10 @@ describe("compatibility manifest", () => {
         expect(COMPATIBILITY.chart.options.v3DRotX).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valAxes).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valAxisMinVal).toBe("implemented");
-        expect(COMPATIBILITY.chart.options.valAxisLogScaleBase).toBe("implemented");
+        expect(COMPATIBILITY.chart.options.valAxisLogScaleBase).toBe("partial");
+        expect(COMPATIBILITY.chart.options.showSerName).toBe("implemented");
+        expect(COMPATIBILITY.chart.options.layout).toBe("implemented");
+        expect(COMPATIBILITY.chart.options.fill).toBe("partial");
         expect(COMPATIBILITY.chart.options.valAxisLineStyle).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valGridLine).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valAxisLabelFormatCode).toBe("partial");

@@ -984,6 +984,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartSeries.stack`                                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.automaticPointFill`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.pointLineColors`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeries.dataLabels`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colors`                                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colorOpacity`                                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.showLegend`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1056,6 +1057,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartValueAxis.gridLineWidth`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.gridLineStyle`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.gridLineCap`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartValueAxis.reversed`                           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.doughnutHoleSize`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.firstSliceAngle`                             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.radarStyle`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1071,7 +1073,10 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChart.dataLabels`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.showValue`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.showCategory`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.showSeriesName`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.fieldSeparator`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.showPercent`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataLabels.valueIsBubbleSize`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.position`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.valueFormat`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataLabels.percentFormat`                     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

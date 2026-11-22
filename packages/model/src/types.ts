@@ -160,7 +160,7 @@ export type NormalizedTextRun = {
      * Omitted: `characterSpacing` spaces them.
      */
     spaceCharacterSpacing?: readonly number[];
-    /** `false`: drawn without the font's pair kerning (PowerPoint, below the run's `kern` size); omitted: kerned. */
+    /** `false`: drawn without the font's pair kerning (PowerPoint: below the run's `kern` size, or kerned through its letter-spacing); omitted: kerned. */
     kerning?: false;
     /** On a bold run: the stroke width, as a fraction of `fontSize`, that emboldens a face with no bold; omitted: the renderer's own. */
     syntheticBold?: number;

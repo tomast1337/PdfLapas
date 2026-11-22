@@ -241,7 +241,8 @@ export function normalizeTextRun(
         verticalAlign: runVerticalAlign,
         baselineOffset: escapement === undefined ? 0 : escapement * fontSize,
         ...spacing,
-        ...(kerned(options, target, fontMetrics) ? {} : { kerning: false as const }),
+        // On the advance grid the letter-spacing carries the `kern` table's pairs (advanceGridWordSpacing), not GPOS.
+        ...(grid.kind === "grid" || !kerned(options, target, fontMetrics) ? { kerning: false as const } : {}),
         ...(bold && syntheticBoldStrokeEm !== undefined ? { syntheticBold: syntheticBoldStrokeEm } : {}),
         ...(italic && syntheticItalicShear !== undefined ? { syntheticItalic: syntheticItalicShear } : {}),
         ...(nonBreakingHyphen && text.includes(NON_BREAKING_HYPHEN) ? { nonBreakingHyphen } : {}),

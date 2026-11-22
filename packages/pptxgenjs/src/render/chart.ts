@@ -689,8 +689,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // PptxGenJS writes no <c:marker> on an area series, and Office draws none.
                 symbol: series.type === "line" ? lineSymbol(chart.lineSymbol) : series.type === "area" ? "none" : undefined,
                 symbolSize: series.type === "line" ? symbolSize : undefined,
-                lineStyle: lineLike ? { width: pointsToPixels(chart.lineSize), color } : undefined,
-                areaStyle: series.type === "area" ? {} : undefined,
+                // PptxGenJS writes an area series' <c:spPr> as its chartColors fill at chartColorsOpacity and no <a:ln>
+                // (lineSize is only for line and radar series), so LibreOffice fills it opaque by default with no edge.
+                lineStyle: series.type === "line" ? { width: pointsToPixels(chart.lineSize), color } : series.type === "area" ? { width: 0 } : undefined,
+                areaStyle: series.type === "area" ? { color, opacity: chart.colorOpacity } : undefined,
                 itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : {}) },
                 yAxisIndex: series.valueAxisIndex,
             });

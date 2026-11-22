@@ -9,6 +9,7 @@ import {
     populateChartDataLabelFixture,
     populateChartCategoryAxisFixture,
     populateChartFixture,
+    populateChartAreaFixture,
     populateChartLegendOrderFixture,
     populateChartMarkerFixture,
     populateChartPieFixture,
@@ -168,6 +169,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartStacked: {
         populate: presentation => {
             populateChartStackedFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartArea: the shared fixture's area fill slide (#520); every chart gets a crop.
+    chartArea: {
+        populate: presentation => {
+            populateChartAreaFixture(presentation);
 
             return presentation;
         },

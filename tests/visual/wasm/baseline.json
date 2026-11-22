@@ -549,7 +549,7 @@
     "p1-Chart1": 0.0743
   },
   "chartPointColors": {
-    "p1-Chart0": 0.2062,
+    "p1-Chart0": 0.2027,
     "p1-Chart1": 0.0943
   },
   "chartScatterAxes": {
@@ -578,5 +578,9 @@
   "chartLabelPositions": {
     "p1-Chart0": 0.0256,
     "p1-Chart1": 0.1003
+  },
+  "chartBar3DAxis": {
+    "p1-Chart0": 0.1398,
+    "p1-Chart1": 0.1339
   }
 }

@@ -11,6 +11,7 @@ import {
     populateChartFixture,
     populateChartAreaFixture,
     populateChartComboFixture,
+    populateChartAreaOrderFixture,
     populateChartLegendOrderFixture,
     populateChartMarkerFixture,
     populateChartPieFixture,
@@ -201,6 +202,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartCombo: {
         populate: presentation => {
             populateChartComboFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartAreaOrder: the shared fixture's standard area order slide (#533); every chart gets a crop.
+    chartAreaOrder: {
+        populate: presentation => {
+            populateChartAreaOrderFixture(presentation);
 
             return presentation;
         },

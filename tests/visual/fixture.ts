@@ -2237,6 +2237,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartAreaFixture(presentation);
     populateChartPlotBandFixture(presentation);
     populateChartComboFixture(presentation);
+    populateChartAreaOrderFixture(presentation);
 }
 
 /**
@@ -3062,4 +3063,24 @@ export function populateChartComboFixture(presentation: Presentation): void {
 
     slide.addText("Combo chart grouping", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
     (slide.addChart as Function)([columns, line], { x: 0.4, y: 0.9, w: 4.4, h: 4.1, barGrouping: "stacked", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" });
+}
+
+/**
+ * Standard area order (#533): an unstacked area chart's series overlap, and LibreOffice draws the first in front
+ * (`firstAreaSeriesInFront`). A parity slide after the others (no page number moves) and the WASM chartAreaOrder deck,
+ * which crops each chart: two series and three.
+ */
+export function populateChartAreaOrderFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Standard area order", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+        { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [4, 4, 4, 4] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("area", data.slice(0, 2), { ...shared, x: 0.4 });
+    slide.addChart("area", data, { ...shared, x: 5.2 });
 }

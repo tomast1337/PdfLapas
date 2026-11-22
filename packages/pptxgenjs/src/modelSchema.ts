@@ -295,6 +295,7 @@ const chart = z.strictObject({
     lineSymbol: z.enum(["circle", "dash", "diamond", "dot", "none", "square", "triangle"]),
     lineSymbolSize: nonNegative,
     lineSymbolLineColor: cssColor.optional(),
+    firstSeriesInFront: z.boolean().optional(),
     lineSymbolLineSize: nonNegative,
     lineSize: nonNegative,
     dataLabels: z.strictObject({

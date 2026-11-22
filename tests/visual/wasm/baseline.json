@@ -601,5 +601,11 @@
     "p1-Chart0": 0.1373,
     "p1-Chart1": 0.1651,
     "p1-Chart2": 0.2126
+  },
+  "chartComboAreaPieLabels": {
+    "p1-Chart0": 0.0865,
+    "p1-Chart1": 0.0843,
+    "p2-Chart0": 0.0176,
+    "p2-Chart1": 0.0793
   }
 }

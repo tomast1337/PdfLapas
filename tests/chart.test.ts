@@ -879,6 +879,64 @@ describe("chart normalization and rendering", () => {
         }
     });
 
+    test("scales a scatter chart's axes as LibreOffice does, without ticks, the y axis by the value-axis options (#519)", () => {
+        const xyData: PptxGenJS.OptsChartData[] = [
+            { name: "X", values: [0, 2, 4, 6, 7.6] },
+            { name: "Lorem", values: [3, 5, 4, 6.4, 5.5] },
+        ];
+        // The gridlines: vertical ones at each x step, horizontal ones at each y step.
+        const steps = (options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("scatter", structuredClone(xyData), { x: 0, y: 0, w: 5, h: 3, ...options });
+            const columns: number[] = [];
+            const rows: number[] = [];
+            const labels: string[] = [];
+            let ticks = 0;
+
+            for (const path of renderedPage(presentation).querySelectorAll(".slide-chart path")) {
+                const segment = /^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/.exec(path.getAttribute("d") ?? "");
+
+                if (segment?.[1] === segment?.[3] && Math.abs(Number(segment?.[4]) - Number(segment?.[2])) > 100) {
+                    columns.push(Number(segment?.[1]));
+                }
+
+                if (segment?.[2] === segment?.[4] && Number(segment?.[3]) - Number(segment?.[1]) > 100) {
+                    rows.push(Number(segment?.[2]));
+                }
+
+                // A tick: a short straight segment on either axis.
+                if (segment && (segment[1] === segment[3] || segment[2] === segment[4]) && Math.abs(Number(segment[3]) - Number(segment[1]) + Number(segment[4]) - Number(segment[2])) < 10) {
+                    ticks++;
+                }
+            }
+
+            for (const text of renderedPage(presentation).querySelectorAll(".slide-chart text")) {
+                labels.push(text.textContent ?? "");
+            }
+
+            return { columns: new Set(columns).size, rows: new Set(rows).size, labels, ticks };
+        };
+        // PptxGenJS 4.0.1 writes majorTickMark and minorTickMark none on both axes, whatever the options say.
+        const model = normalizeChart("scatter", xyData, { valAxisMajorTickMark: "outside" });
+
+        expect<unknown[]>([model.categoryMajorTickMark, model.valueAxes[0]?.majorTickMark, model.valueAxes[0]?.minorTickMark]).toEqual(["none", "none", "none"]);
+
+        // LibreOffice runs x 0..7.6 on 0..8 by 1 (nine gridlines) and y 0..6.4 on 0..7 by 1 (eight).
+        const automatic = steps({});
+
+        expect([automatic.columns, automatic.rows]).toEqual([9, 8]);
+        expect(automatic.labels).toContain("8");
+        // valAxisMinVal, valAxisMaxVal and valAxisMajorUnit set the y axis: 0..10 by 2, six gridlines.
+        const set = steps({ valAxisMinVal: 0, valAxisMaxVal: 10, valAxisMajorUnit: 2, valAxisLabelFormatCode: "0.0" });
+
+        expect(set.rows).toBe(6);
+        expect(set.labels).toContain("10.0");
+        expect(set.columns).toBe(9);
+        // No ticks on either axis.
+        expect([automatic.ticks, set.ticks]).toEqual([0, 0]);
+    });
+
     test("draws a scatter chart's gridlines D9D9D9 on both axes unless valGridLine is set, as PptxGenJS defaults them", () => {
         const xyData: PptxGenJS.OptsChartData[] = [
             { name: "X", values: [1, 2, 3, 4] },

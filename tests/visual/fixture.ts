@@ -2239,6 +2239,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartComboFixture(presentation);
     populateChartAreaOrderFixture(presentation);
     populateChartPointColorFixture(presentation);
+    populateChartScatterAxesFixture(presentation);
 }
 
 /**
@@ -3007,6 +3008,36 @@ export function populateBulletTypeFixture(presentation: Presentation): void {
  * chartArea deck, which crops each chart: a stacked area chart at the default opacity and one at 50%. Stacked, so no
  * series covers another, and the legend at the bottom, clear of the side legend's overlap (#517).
  */
+/**
+ * Scatter axis scales (#519): LibreOffice's automatic x scale on x values away from zero (100..160 runs 90..170 by 10)
+ * and the y axis set by valAxisMinVal, valAxisMaxVal and valAxisMajorUnit, neither axis with ticks. A parity slide after
+ * the others (no page number moves) and the WASM chartScatterAxes deck, which crops each chart.
+ */
+export function populateChartScatterAxesFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Scatter axes", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], lineDataSymbol: "none" };
+
+    slide.addChart(
+        "scatter",
+        [
+            { name: "X", values: [100, 120, 135, 160] },
+            { name: "Lorem", values: [1, 3, 2, 2.6] },
+        ],
+        { ...shared, x: 0.4 },
+    );
+    slide.addChart(
+        "scatter",
+        [
+            { name: "X", values: [0.2, 0.5, 0.7, 0.9] },
+            { name: "Lorem", values: [3, 5, 4, 6.4] },
+            { name: "Ipsum", values: [4.5, 1.5, 5.5, 3.5] },
+        ],
+        { ...shared, x: 5.2, valAxisMinVal: 0, valAxisMaxVal: 10, valAxisMajorUnit: 2 },
+    );
+}
+
 export function populateChartAreaFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
 

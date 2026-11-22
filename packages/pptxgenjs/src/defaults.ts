@@ -325,6 +325,12 @@ export const PPTX_DEFAULTS = Object.freeze({
         //   bottom axis's outside ticks (LibreOffice's 1.5mm, 4.25pt), its 1mm (2.83pt) label spacing and a line of
         //   labelLineEm label font sizes, the labels centered in it.
         plotBand: Object.freeze({ titleBandPt: 4.25, legendBandEm: 1.58, legendBandPt: 6, legendBottomPt: 0.75, tickLengthPt: 4.25, labelSpacingPt: 2.83, labelLineEm: 1.14 }),
+        // LibreOffice's automatic linear axis scale (chart2 ScaleAutomatism, MAXIMUM_AUTO_INCREMENT_COUNT 10; the border
+        // ratio measured): at most 10 steps of 1, 2 or 5 x 10^k, and a bound one step further where the data comes within
+        // 1/21 of the range of it. In LibreOffice 26.2's PDF export of synthetic PptxGenJS 4.0.1 scatter charts the x axis
+        // runs 0..8 by 1 for 0..7.6, 0.1..1 by 0.1 for 0.2..0.9, 90..170 by 10 for 100..160, 0..60 by 10 for 0..48,
+        // 0..16 by 2 for 0..15 and 0..3.5 by 0.5 for 0..3 (#519).
+        automaticScale: Object.freeze({ maxIncrements: 10, borderRatio: 1 / 21 }),
         displayBlanksAs: "span" as const,
         radarStyle: "standard" as const,
         chartAreaRoundedCorners: true,

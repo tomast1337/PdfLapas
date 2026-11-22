@@ -783,10 +783,12 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineColor: normalizeColor(PPTX_DEFAULTS.chart.gridLine.color),
         gridLineWidth: PPTX_DEFAULTS.chart.gridLine.widthPt,
         axisLineVisible: PPTX_DEFAULTS.chart.categoryAxisLineVisible,
-        categoryMajorTickMark: PPTX_DEFAULTS.chart.categoryMajorTickMark,
+        // PptxGenJS 4.0.1 writes `<c:majorTickMark val="none"/>` and `<c:minorTickMark val="none"/>` on both scatter
+        // axes, whatever catAxisMajorTickMark or valAxisMajorTickMark say.
+        categoryMajorTickMark: normalizedType === "scatter" ? "none" : PPTX_DEFAULTS.chart.categoryMajorTickMark,
         valueAxisMinimum: primaryAxis.minimum,
         valueAxisMaximum: primaryAxis.maximum,
-        valueAxes,
+        valueAxes: normalizedType === "scatter" ? valueAxes.map(axis => ({ ...axis, majorTickMark: "none" as const, minorTickMark: "none" as const })) : valueAxes,
         categoryAxis,
     };
 }

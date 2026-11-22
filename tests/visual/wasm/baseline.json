@@ -512,8 +512,8 @@
     "p1-Chart1": 0.0859
   },
   "chartScatter": {
-    "p1-Chart0": 0.117,
-    "p1-Chart1": 0.1369
+    "p1-Chart0": 0.1154,
+    "p1-Chart1": 0.1205
   },
   "chartBarColors": {
     "p1-Chart0": 0.1043,
@@ -551,5 +551,9 @@
   "chartPointColors": {
     "p1-Chart0": 0.2062,
     "p1-Chart1": 0.0943
+  },
+  "chartScatterAxes": {
+    "p1-Chart0": 0.1164,
+    "p1-Chart1": 0.1078
   }
 }

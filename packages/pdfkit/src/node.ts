@@ -8,9 +8,11 @@ import type { SystemFontOptions } from "./browser";
 export { createPdfkitRenderer, type MissingFont, MissingFontError, type MissingFontPolicy, PdfkitRenderer, type PdfkitRendererOptions, type SystemFontOptions, type UnsupportedPolicy } from "./browser";
 
 // The faces the renderer's fallback chain maps Office fonts to (Calibri->Carlito, Cambria->Caladea, Arial->Liberation
-// Sans, ... then DejaVu Sans), CJK fallbacks, plus the Office faces themselves: @pdflapas/wasm's set without the
+// Sans, ... then DejaVu Sans), CJK fallbacks and the LibreOffice target's fallback faces (DejaVu Sans, Serif and Sans
+// Mono, Noto Sans and Serif CJK), plus the Office faces themselves: @pdflapas/wasm's set without the
 // bitmap emoji font, which has no outlines for PDFKit to embed.
-const DEFAULT_FONT_FILES = /^(?:(?:Carlito|Caladea|LiberationSans|LiberationSerif|LiberationMono)-.*|DejaVuSans(?:-Bold|-Oblique|-BoldOblique)?|NotoSansCJK-(?:Regular|Bold)|calibri.*|cambria.*|arial.*|times.*|cour.*)\.(?:ttf|otf|ttc)$/i;
+const DEFAULT_FONT_FILES =
+    /^(?:(?:Carlito|Caladea|LiberationSans|LiberationSerif|LiberationMono)-.*|DejaVu(?:Sans|Serif|SansMono)(?:-Bold|-Oblique|-BoldOblique|-Italic|-BoldItalic)?|Noto(?:Sans|Serif)CJK-(?:Regular|Bold)|calibri.*|cambria.*|arial.*|times.*|cour.*)\.(?:ttf|otf|ttc)$/i;
 
 async function fontFiles(dir: string, match: RegExp): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);

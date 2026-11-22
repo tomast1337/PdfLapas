@@ -26,6 +26,34 @@ export type DecorationRules = {
     readonly doubleStrike: readonly NormalizedDecorationPiece[];
 };
 
+/** A generic font family, as fontconfig sorts faces. */
+export type GenericFamily = "sans-serif" | "serif" | "monospace";
+
+/**
+ * Fallback faces chosen by the run face's generic family and the run's language (normalize/fallback.ts
+ * `fallbackChain`): the family's `faces`, then its East Asian face with the language's region appended.
+ */
+export type GenericFallback = {
+    /** The lower-case faces of the serif family; a face in neither set is sans-serif. */
+    readonly serif: ReadonlySet<string>;
+    /** The lower-case faces of the monospace family. */
+    readonly monospace: ReadonlySet<string>;
+    /**
+     * The face listed first for an emoji (Extended_Pictographic) whatever the run's face, which a renderer still takes
+     * first where it has the emoji: the run is cut around each one (normalize/fallback.ts `fallbackSegments`).
+     */
+    readonly emojiFace: string;
+    /** Each family's faces, first to last, before its East Asian face. */
+    readonly faces: Readonly<Record<GenericFamily, readonly string[]>>;
+    /** Each family's East Asian face, without its region ("Noto Sans CJK", to which "SC" is appended). */
+    readonly eastAsianFace: Readonly<Record<GenericFamily, string>>;
+    /** The region by lower-case language tag, else by its lower-case primary subtag, else `otherRegion`. */
+    readonly regionByLanguage: Readonly<Record<string, string>>;
+    readonly otherRegion: string;
+    /** The regions whose East Asian face is the sans-serif family's whatever the run face's family. */
+    readonly sansSerifRegions: ReadonlySet<string>;
+};
+
 /**
  * A rendering target: the application whose drawing of the PptxGenJS file the PDF matches, where applications differ.
  * Each quirk is a flag here; normalization reads the flags and never a target's name. Each target's values, and the
@@ -150,11 +178,14 @@ export type RenderingTargetProfile = {
     readonly eastAsianFallback: { readonly byFace: Readonly<Record<string, readonly string[]>>; readonly otherFaces: readonly string[] };
     /** The face an emoji (Extended_Pictographic) the run's face lacks is drawn in, ahead of `fallbackFaces`; undefined: none. */
     readonly emojiFace: string | undefined;
+    /** The faces after `fallbackFaces` by the run face's generic family and the run's language; undefined: none. */
+    readonly genericFallback: GenericFallback | undefined;
     /**
-     * How U+2011 NON-BREAKING HYPHEN is drawn: "hyphen-minus", with the run's face's U+002D glyph, still unbreakable
-     * (`NormalizedTextRun.nonBreakingHyphen`); undefined, as any other character.
+     * How U+2011 NON-BREAKING HYPHEN is drawn: "hyphen-minus", with the run's face's U+002D glyph, "hyphen" as U+2010
+     * from the first face that has it, both still unbreakable (`NormalizedTextRun.nonBreakingHyphen`); undefined, as
+     * any other character.
      */
-    readonly nonBreakingHyphen: "hyphen-minus" | undefined;
+    readonly nonBreakingHyphen: "hyphen-minus" | "hyphen" | undefined;
     /**
      * Whether it draws a picture's inner shadow (`<a:innerShdw>` in its `<p:spPr>`, which PptxGenJS writes for
      * `addImage` with `shadow: { type: "inner" }`), or leaves the picture without it.

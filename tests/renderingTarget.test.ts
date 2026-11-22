@@ -736,7 +736,7 @@ describe("rendering targets", () => {
     });
 
     // Measured against PowerPoint's PDF export of a synthetic deck (RENDERING_TARGETS.powerpoint.fallbackFaces).
-    test("the PowerPoint target writes its fallback chain after each run's and bullet's face, without the face; LibreOffice the face alone", async () => {
+    test("the PowerPoint target writes its fallback chain after each run's and bullet's face, without the face; LibreOffice its generic chain", async () => {
         const html = async (presentation: PuppeteerGen) => {
             presentation.addSlide().addText(
                 [
@@ -751,8 +751,8 @@ describe("rendering targets", () => {
         const chain = '"Cambria Math", "Segoe UI Symbol", "MS Gothic", "Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"';
 
         expect(await html(new PuppeteerGenPowerPoint())).toEqual([`"Calibri", "Arial", ${chain}`, `"Calibri", "Arial", ${chain}`, `"arial", ${chain}`]);
-        expect(await html(new PuppeteerGenLibreOffice())).toEqual(['"Calibri"', '"Calibri"', '"arial"']);
-        expect(normalizeText("x", { fontFace: "Times New Roman" }, "libreoffice").paragraphs[0]?.runs[0]).not.toHaveProperty("fallbackFaces");
+        expect(await html(new PuppeteerGenLibreOffice())).toEqual(['"Calibri", "DejaVu Sans", "Noto Sans CJK SC"', '"Calibri", "DejaVu Sans", "Noto Sans CJK SC"', '"arial", "DejaVu Sans", "Noto Sans CJK SC"']);
+        expect(normalizeText("x", { fontFace: "Times New Roman" }, "libreoffice").paragraphs[0]?.runs[0]?.fallbackFaces).toEqual(["DejaVu Serif", "DejaVu Sans", "Noto Serif CJK SC"]);
     });
 
     // Measured against PowerPoint's PDF export of a synthetic deck: U+2011 is drawn with glyph 16 in Arial and Times New
@@ -762,7 +762,8 @@ describe("rendering targets", () => {
 
         expect(run("lorem‑ipsum", "powerpoint")).toMatchObject({ text: "lorem‑ipsum", nonBreakingHyphen: "hyphen-minus" });
         expect(run("lorem-ipsum", "powerpoint")).not.toHaveProperty("nonBreakingHyphen");
-        expect(run("lorem‑ipsum", "libreoffice")).not.toHaveProperty("nonBreakingHyphen");
+        // LibreOffice draws it as U+2010 (RENDERING_TARGETS.libreoffice.nonBreakingHyphen).
+        expect(run("lorem‑ipsum", "libreoffice")).toMatchObject({ text: "lorem‑ipsum", nonBreakingHyphen: "hyphen" });
         // The word ends where "lorem-ipsum"'s rounded advances do.
         expect(run("lorem‑ipsum", "powerpoint")?.characterSpacing).toBe(run("lorem-ipsum", "powerpoint")?.characterSpacing ?? Number.NaN);
         const presentation = new PuppeteerGenPowerPoint();

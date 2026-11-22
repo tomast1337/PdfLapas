@@ -702,8 +702,8 @@ describe("text DOM rendering", () => {
         expect(paragraph?.querySelector(".text-bullet")?.textContent).toContain("●");
         expect(paragraph?.querySelectorAll("br")).toHaveLength(1);
         expect(runs?.[0]?.style.fontWeight).toBe("bold");
-        // The face alone: the Puppeteer print step appends Chromium's fallback list.
-        expect(runs?.[0]?.style.fontFamily).toBe('"Calibri"');
+        // The face and its fallback faces: the Puppeteer print step appends Chromium's fallback list.
+        expect(runs?.[0]?.style.fontFamily).toBe('"Calibri", "DejaVu Sans", "Noto Sans CJK SC"');
         expect(runs?.[0]?.style.backgroundColor).toBe("rgb(255, 255, 0)");
         expect(link?.href).toBe("https://example.com/");
         expect(link?.title).toBe("Example");

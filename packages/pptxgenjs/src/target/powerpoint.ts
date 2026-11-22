@@ -315,6 +315,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     fallbackFaces: FALLBACK_FACES,
     eastAsianFallback: EAST_ASIAN_FALLBACK,
     emojiFace: EMOJI_FACE,
+    genericFallback: undefined,
     nonBreakingHyphen: "hyphen-minus",
     drawsPictureInnerShadow: true,
     drawsChartMarkerOutline: true,

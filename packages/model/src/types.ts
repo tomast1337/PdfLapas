@@ -183,8 +183,11 @@ export type NormalizedTextRun = {
     syntheticBold?: number;
     /** On an italic run: the shear that slants a face with no italic (x per unit of height); omitted: the renderer's own. */
     syntheticItalic?: number;
-    /** On a run whose text has U+2011: "hyphen-minus" draws it with the face's U+002D glyph, still unbreakable; omitted: as any character. */
-    nonBreakingHyphen?: "hyphen-minus";
+    /**
+     * On a run whose text has U+2011: "hyphen-minus" draws it with the face's U+002D glyph, "hyphen" as U+2010 (from the
+     * first face that has it), both still unbreakable; omitted: as any character.
+     */
+    nonBreakingHyphen?: "hyphen-minus" | "hyphen";
     highlight?: CssColor;
     outline?: { color: CssColor; width: number };
     glow?: NormalizedShadow;

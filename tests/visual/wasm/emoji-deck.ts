@@ -53,7 +53,7 @@ export function populateEmojiDeck<T extends PptxGenJS | PuppeteerGen>(presentati
     ]);
 
     // The same Han in an Arial run: the run's lang picks the regional Noto Sans CJK face (#289), whose 骨 直 次 化 角
-    // differ; a lang without a fontconfig rule (ko-KR) falls to the default JP face like en-US. Han only: LibreOffice
+    // differ (RENDERING_TARGETS.libreoffice.genericFallback names it in the HTML). Han only: LibreOffice
     // widens a space between Latin and Han, which would shift a lang label's Han against both backends.
     const han = "骨直次化角今令";
     const regional = presentation.addSlide();

@@ -34,7 +34,6 @@ const METRIC_ALIASES: Readonly<Record<string, string>> = Object.freeze({
     cambria: "caladea",
     arial: "liberation sans",
     helvetica: "liberation sans",
-    "segoe ui": "liberation sans",
     "arial narrow": "liberation sans narrow",
     "times new roman": "liberation serif",
     times: "liberation serif",

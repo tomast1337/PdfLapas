@@ -25,8 +25,8 @@ const DASH_SEPARATOR = /\s*,\s*|\s+/;
 const INSET_SHADOW = /(?:^|; )box-shadow: inset ([^;]+);/;
 // A box's line as render/style.ts applyLine writes it: color, width, style.
 const TEXT_BORDER = /(?:^|; )border-color: ([^;]+); border-width: ([^;]+)px; border-style: ([^;]+);/;
-// The face and its fallback faces as the profile writes them: CSS strings, `\` and `"` escaped; group 2 is the face.
-const FONT_FAMILY = /((?:^|; )font-family: "((?:[^"\\]|\\.)*)"(?:, "(?:[^"\\]|\\.)*")*)/;
+// The face and its fallback faces as the profile writes them: CSS strings, `\` and `"` escaped; group 2 is the face, group 3 its fallback faces.
+const FONT_FAMILY = /((?:^|; )font-family: "((?:[^"\\]|\\.)*)")((?:, "(?:[^"\\]|\\.)*")*)/;
 // A run's underline and strike, its decoration style and thickness, as render/text.ts writes them.
 const UNDERLINE_AND_STRIKE = /(?:^|; )text-decoration-line: underline line-through;/;
 // A run's decoration lines, and an underline band stated in em (render/text.ts writes it from the target's rules).
@@ -36,16 +36,19 @@ const DECORATION_STYLE = /((?:^|; )text-decoration-style: )[^;]+;/;
 const DECORATION_THICKNESS = /(?:^|; )text-decoration-thickness: ([^;]+);/;
 // U+2011 NON-BREAKING HYPHEN in a run's source text, literal or as a character reference.
 const NON_BREAKING_HYPHEN = /\u2011|&#(?:8209|x2011);/gi;
-// U+002D, which draws the face's hyphen, then U+2060 WORD JOINER, which keeps U+2011's no-break after it.
-const HYPHEN_MINUS_NO_BREAK = "-\u2060";
+// What each data-non-breaking-hyphen value draws U+2011 as: U+002D (the face's hyphen-minus) or U+2010 (its hyphen, or
+// the first fallback face's), then U+2060 WORD JOINER, which keeps U+2011's no-break after it.
+const NON_BREAKING_HYPHEN_DRAWN: ReadonlyMap<string, string> = new Map([
+    ["hyphen-minus", "-\u2060"],
+    ["hyphen", "\u2010\u2060"],
+]);
 // The payload of a `src="data:…"` attribute. Inlined images make up most of a large deck's HTML, and no print
 // step reads or writes them. It stops at `<` too, so text that only looks like one never spans markup.
 const DATA_URI_PAYLOAD = /(\ssrc="data:[^,"<]*,)[^"<]*/g;
 // Calibri and Cambria name their metric-compatible faces first, as the WASM renderer's family_stack does
 // (crates/pdf-core/src/text/font.rs), so lines wrap as in PowerPoint where the Office fonts are missing. Noto Sans
-// comes next because LibreOffice draws Calibri in it on a machine without Carlito.
-const CALIBRI_FALLBACK = '"Carlito", "Noto Sans", Arial, "Liberation Sans", sans-serif';
-const CAMBRIA_FALLBACK = '"Caladea", Arial, "Liberation Sans", sans-serif';
+// comes last for Calibri because LibreOffice draws Calibri in it on a machine without Carlito.
+const CALIBRI_FALLBACK = '"Noto Sans", Arial, "Liberation Sans", sans-serif';
 const SANS_FALLBACK = 'Arial, "Liberation Sans", sans-serif';
 
 /**
@@ -211,7 +214,7 @@ export function printHtml(html: string): string {
             }
 
             const substitute = metricSubstitute(face);
-            const fallback = substitute.kind === "none" ? SANS_FALLBACK : substitute.face === "Carlito" ? CALIBRI_FALLBACK : CAMBRIA_FALLBACK;
+            const fallback = substitute.kind === "substitute" && substitute.face === "Carlito" ? CALIBRI_FALLBACK : SANS_FALLBACK;
 
             // Underline and strike stated in em: prepareForPrint draws them from the profile's geometry (Renderer workarounds),
             // so Chromium draws none. data-print-decoration keeps the lines for that stage; a run whose band is the font's
@@ -252,11 +255,17 @@ export function printHtml(html: string): string {
                 edits.push({ start: tag.endOffset - 1, end: tag.endOffset, text: `><span style="${strike}">` }, { start: end.startOffset, end: end.startOffset, text: "</span>" });
             }
 
-            edits.push(setAttribute(element, "style", style.replace(FONT_FAMILY, `$1, ${fallback}`)));
-            // data-non-breaking-hyphen="hyphen-minus": Chromium picks a face by the character, so it draws U+2011 in a
-            // fallback face where the run's face lacks it; U+002D is in the face. No break opportunity is added.
-            if (attribute(element, "data-non-breaking-hyphen") === "hyphen-minus") {
-                edits.push(...nonBreakingHyphenEdits(element, masked));
+            // The metric-compatible face goes right after the face, before the run's fallback faces, which would
+            // otherwise draw every character Calibri lacks on the machine.
+            const metricFace = substitute.kind === "none" ? "" : `, "${substitute.face}"`;
+
+            edits.push(setAttribute(element, "style", style.replace(FONT_FAMILY, `$1${metricFace}$3, ${fallback}`)));
+            // data-non-breaking-hyphen: Chromium picks a face by the character, so it would draw U+2011 in a fallback face
+            // where the run's face lacks it; it draws the U+002D or U+2010 the HTML says. No break opportunity is added.
+            const hyphen = NON_BREAKING_HYPHEN_DRAWN.get(attribute(element, "data-non-breaking-hyphen") ?? "");
+
+            if (hyphen !== undefined) {
+                edits.push(...nonBreakingHyphenEdits(element, masked, hyphen));
             }
         } else if (hasClass(element, "text-paragraph")) {
             // Line box: the paragraph's 0px-font strut (stylesheet) puts the baseline about the middle of `line-height`
@@ -479,13 +488,13 @@ export function printHtml(html: string): string {
     return applySourceEdits(masked, edits).replace(DATA_URI_PAYLOAD, (head: string) => `${head}${payloads[next++] ?? ""}`);
 }
 
-/** Each U+2011 in the text of `run` and its word spans, in `source`, as U+002D and a word joiner. */
-function nonBreakingHyphenEdits(run: Element, source: string): SourceEdit[] {
+/** Each U+2011 in the text of `run` and its word spans, in `source`, as `hyphen`: a hyphen and a word joiner. */
+function nonBreakingHyphenEdits(run: Element, source: string, hyphen: string): SourceEdit[] {
     const edits: SourceEdit[] = [];
 
     for (const child of run.childNodes) {
         if (isElement(child)) {
-            edits.push(...nonBreakingHyphenEdits(child, source));
+            edits.push(...nonBreakingHyphenEdits(child, source, hyphen));
             continue;
         }
 
@@ -496,7 +505,7 @@ function nonBreakingHyphenEdits(run: Element, source: string): SourceEdit[] {
         }
 
         for (const match of source.slice(at.startOffset, at.endOffset).matchAll(NON_BREAKING_HYPHEN)) {
-            edits.push({ start: at.startOffset + match.index, end: at.startOffset + match.index + match[0].length, text: HYPHEN_MINUS_NO_BREAK });
+            edits.push({ start: at.startOffset + match.index, end: at.startOffset + match.index + match[0].length, text: hyphen });
         }
     }
 

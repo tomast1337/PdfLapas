@@ -25,11 +25,12 @@ export async function createWasmRenderer(options: WasmRendererOptions): Promise<
 }
 
 // The metric-compatible faces the renderer's fallback chain maps Office fonts to (Calibri->Carlito,
-// Cambria->Caladea, Arial->Liberation Sans, ... then DejaVu Sans, Liberation Sans), emoji/CJK fallbacks, plus the Office faces themselves
+// Cambria->Caladea, Arial->Liberation Sans, ... then DejaVu Sans, Liberation Sans), the LibreOffice target's fallback faces (Noto Color
+// Emoji, DejaVu Sans, Serif and Sans Mono, Noto Sans, Serif and Sans Mono CJK), plus the Office faces themselves
 // and, where installed, the PowerPoint target's fallback faces (Cambria Math is in cambria.ttc; Segoe UI Symbol and Emoji, Yu Gothic
 // regular and bold, MS Gothic, Microsoft JhengHei and YaHei, Malgun Gothic, SimSun, PMingLiU in mingliu.ttc).
 const DEFAULT_FONT_FILES =
-    /^(?:(?:Carlito|Caladea|LiberationSans|LiberationSerif|LiberationMono)-.*|DejaVuSans(?:-Bold|-Oblique|-BoldOblique)?|NotoColorEmoji|NotoSansCJK-(?:Regular|Bold)|calibri.*|cambria.*|arial.*|times.*|cour.*|seguisym|seguiemj|YuGoth[RB]|msgothic|msjh(?:bd)?|msyh(?:bd)?|malgun(?:bd)?|simsun|mingliu)\.(?:ttf|otf|ttc)$/i;
+    /^(?:(?:Carlito|Caladea|LiberationSans|LiberationSerif|LiberationMono)-.*|DejaVu(?:Sans|Serif|SansMono)(?:-Bold|-Oblique|-BoldOblique|-Italic|-BoldItalic)?|NotoColorEmoji|Noto(?:Sans|Serif)CJK-(?:Regular|Bold)|calibri.*|cambria.*|arial.*|times.*|cour.*|seguisym|seguiemj|YuGoth[RB]|msgothic|msjh(?:bd)?|msyh(?:bd)?|malgun(?:bd)?|simsun|mingliu)\.(?:ttf|otf|ttc)$/i;
 
 async function fontFiles(dir: string, match: RegExp): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);

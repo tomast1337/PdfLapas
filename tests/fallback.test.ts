@@ -27,7 +27,7 @@ const FONTS: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: (
 function drawn(text: string, fontFace = "Arial"): [string, string][] {
     const faces: [string, string][] = [];
 
-    for (const { text: stretch, fallbackFaces } of fallbackSegments(text, fontFace, false, false, "powerpoint", FONTS)) {
+    for (const { text: stretch, fallbackFaces } of fallbackSegments(text, fontFace, false, false, "en-US", "powerpoint", FONTS)) {
         for (const character of stretch) {
             const face = [fontFace, ...fallbackFaces].find(candidate => COVERAGE[candidate]?.includes(character)) ?? "none";
             const last = faces.at(-1);
@@ -47,11 +47,10 @@ describe("the PowerPoint target's fallback faces", () => {
     test("writes Arial's and Calibri's linked East Asian faces after its symbol faces, and Times New Roman's for other faces", () => {
         const linked = ["MS Gothic", "Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"];
 
-        expect(fallbackChain("Arial", "powerpoint")).toEqual(["Cambria Math", "Segoe UI Symbol", ...linked]);
-        expect(fallbackChain("CALIBRI", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", ...linked]);
-        expect(fallbackChain("Times New Roman", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", "Yu Gothic", "PMingLiU", "SimSun", "Malgun Gothic"]);
-        expect(fallbackChain("constructor", "powerpoint")).toEqual(fallbackChain("Times New Roman", "powerpoint"));
-        expect(fallbackChain("Arial", "libreoffice")).toEqual([]);
+        expect(fallbackChain("Arial", "en-US", "powerpoint")).toEqual(["Cambria Math", "Segoe UI Symbol", ...linked]);
+        expect(fallbackChain("CALIBRI", "en-US", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", ...linked]);
+        expect(fallbackChain("Times New Roman", "en-US", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", "Yu Gothic", "PMingLiU", "SimSun", "Malgun Gothic"]);
+        expect(fallbackChain("constructor", "en-US", "powerpoint")).toEqual(fallbackChain("Times New Roman", "en-US", "powerpoint"));
     });
 
     // Measured against PowerPoint's PDF export of a synthetic deck: each line's faces in Arial (Calibri and Arial bold
@@ -116,8 +115,8 @@ describe("the PowerPoint target's fallback faces", () => {
     test("leaves the text whole when a face's characters are unknown, and on the LibreOffice target", () => {
         const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: () => UNKNOWN });
 
-        expect(fallbackSegments("够这", "Arial", false, false, "powerpoint", unknown)).toEqual([{ text: "够这", fallbackFaces: fallbackChain("Arial", "powerpoint") }]);
-        expect(fallbackSegments("够这", "Arial", false, false, "libreoffice", FONTS)).toEqual([{ text: "够这", fallbackFaces: [] }]);
+        expect(fallbackSegments("够这", "Arial", false, false, "en-US", "powerpoint", unknown)).toEqual([{ text: "够这", fallbackFaces: fallbackChain("Arial", "en-US", "powerpoint") }]);
+        expect(fallbackSegments("够这", "Arial", false, false, "en-US", "libreoffice", FONTS)).toEqual([{ text: "够这", fallbackFaces: fallbackChain("Arial", "en-US", "libreoffice") }]);
     });
 
     test("cuts a run into one run a stretch, the first keeping its soft break", () => {
@@ -128,5 +127,66 @@ describe("the PowerPoint target's fallback faces", () => {
             ["够", "Cambria Math", true],
             ["是", "Yu Gothic", false],
         ]);
+    });
+});
+
+// Measured in LibreOffice 26.2's PDF export in the visual image (RENDERING_TARGETS.libreoffice.genericFallback, #289).
+describe("the LibreOffice target's fallback faces", () => {
+    test("follows the run face's generic family: sans-serif, serif or monospace", () => {
+        expect(fallbackChain("Arial", "en-US", "libreoffice")).toEqual(["DejaVu Sans", "Noto Sans CJK SC"]);
+        expect(fallbackChain("Segoe UI", "en-US", "libreoffice")).toEqual(["DejaVu Sans", "Noto Sans CJK SC"]);
+        expect(fallbackChain("Times New Roman", "en-US", "libreoffice")).toEqual(["DejaVu Serif", "DejaVu Sans", "Noto Serif CJK SC"]);
+        expect(fallbackChain("CAMBRIA", "en-US", "libreoffice")).toEqual(["DejaVu Serif", "DejaVu Sans", "Noto Serif CJK SC"]);
+        expect(fallbackChain("Courier New", "en-US", "libreoffice")).toEqual(["DejaVu Sans Mono", "DejaVu Sans", "Noto Sans Mono CJK SC"]);
+        // A face of the chain is left out of it.
+        expect(fallbackChain("DejaVu Serif", "en-US", "libreoffice")).toEqual(["DejaVu Sans", "Noto Serif CJK SC"]);
+    });
+
+    test("takes the East Asian face's region from the run's language, its tag then its primary subtag", () => {
+        const region = (language: string) => fallbackChain("Arial", language, "libreoffice").at(-1);
+
+        expect([region("zh-CN"), region("zh-Hans"), region("fr-FR")]).toEqual(["Noto Sans CJK SC", "Noto Sans CJK SC", "Noto Sans CJK SC"]);
+        expect([region("ZH-tw"), region("zh-Hant-TW")]).toEqual(["Noto Sans CJK TC", "Noto Sans CJK TC"]);
+        expect([region("zh"), region("zh-HK"), region("zh-MO"), region("zh-SG"), region("zh-Hant"), region("yue-HK")]).toEqual(Array(6).fill("Noto Sans CJK HK"));
+        expect([region("ja"), region("ja-JP"), region("ko"), region("ko-KR"), region("ko-KP")]).toEqual(["Noto Sans CJK JP", "Noto Sans CJK JP", "Noto Sans CJK KR", "Noto Sans CJK KR", "Noto Sans CJK KR"]);
+        // A tag named like an Object.prototype member is just another language.
+        expect(region("constructor")).toBe("Noto Sans CJK SC");
+        // The HK face is the sans-serif one in every family.
+        expect([fallbackChain("Times New Roman", "zh-HK", "libreoffice").at(-1), fallbackChain("Consolas", "zh", "libreoffice").at(-1), fallbackChain("Georgia", "zh-TW", "libreoffice").at(-1)]).toEqual([
+            "Noto Sans CJK HK",
+            "Noto Sans CJK HK",
+            "Noto Serif CJK TC",
+        ]);
+    });
+
+    test("writes the chain and draws U+2011 as U+2010 on every run", () => {
+        const runs = normalizeText([{ text: "lorem‑ipsum 1ᵉʳ" }, { text: "这", options: { fontFace: "Georgia", lang: "ja-JP" } }], { fontFace: "Arial", fontSize: 14 }, "libreoffice").paragraphs.flatMap(paragraph =>
+            paragraph.runs.map(run => [run.text, run.fallbackFaces, run.nonBreakingHyphen]),
+        );
+
+        expect(runs).toEqual([
+            ["lorem‑ipsum 1ᵉʳ", ["DejaVu Sans", "Noto Sans CJK SC"], "hyphen"],
+            ["这", ["DejaVu Serif", "DejaVu Sans", "Noto Serif CJK JP"], undefined],
+        ]);
+    });
+
+    // ❤ ✔ ⚠ ☀ ♠, which DejaVu Sans has, are drawn from Noto Color Emoji in Arial, Calibri and Times New Roman.
+    test("cuts the run around each emoji, whose stretch lists Noto Color Emoji first, and looks up no face", () => {
+        const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, {
+            glyphAdvances: () => {
+                throw new Error("looked up");
+            },
+        });
+        const chain = ["DejaVu Sans", "Noto Sans CJK SC"];
+        const emoji = ["Noto Color Emoji", ...chain];
+
+        expect(fallbackSegments("a❤✔b 😀👍🏽 c", "Arial", false, false, "en-US", "libreoffice", unknown)).toEqual([
+            { text: "a", fallbackFaces: chain },
+            { text: "❤✔", fallbackFaces: emoji },
+            { text: "b ", fallbackFaces: chain },
+            { text: "😀👍🏽", fallbackFaces: emoji },
+            { text: " c", fallbackFaces: chain },
+        ]);
+        expect(fallbackSegments("", "Arial", false, false, "en-US", "libreoffice", unknown)).toEqual([{ text: "", fallbackFaces: chain }]);
     });
 });

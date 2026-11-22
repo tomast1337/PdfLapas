@@ -33,5 +33,6 @@
   "chartScatterAxes": "50b599b287f90115d78bd2bbbd3876687bf8bd42bda25f148d41fa6aa91cfe1c",
   "chartTopRightLegend": "13bfd7faa205ea47ec3cf26289355942798bc6ec8bcbb73648ed0afab5d790af",
   "chartValueAxis": "d9083174ccb7c8fc92b531e7380ca3aa63246033088586e1f2d15954e5ecead6",
-  "bulletType": "cf2758440dd2eac6d3eeaecf45ed310562f619d9625d9b3268bf531a13b7b38c"
+  "bulletType": "cf2758440dd2eac6d3eeaecf45ed310562f619d9625d9b3268bf531a13b7b38c",
+  "chartFixedBound": "2289ddcf0330d9fcad8930f1e36f7f397d254c40ea6f4f489ec95220cb2ada37"
 }

@@ -570,5 +570,9 @@
     "p1-Text2": 0.0165,
     "p1-Text3": 0.0079,
     "p1-Text4": 0.0195
+  },
+  "chartFixedBound": {
+    "p1-Chart0": 0.0944,
+    "p1-Chart1": 0.0922
   }
 }

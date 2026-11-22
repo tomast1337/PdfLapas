@@ -257,6 +257,8 @@ export class PuppeteerSlide implements PptxSlide {
             // shortcut: a bar chart whose <c:dPt>s are filled (varyColors) keeps the series entry, and a combo chart's
             // single-series bar group too; neither is measured against PowerPoint (#552).
             ...(target.chartLegendListsUnfilledPoints && normalized.series.length === 1 && normalized.series[0]?.automaticPointFill ? { legendListsPoints: true } : {}),
+            // A bar3D value axis's step needs the target's label heights of drawn axis (bar3DLabelHeightsPerStep).
+            valueAxes: normalized.valueAxes.map(axis => (axis.automaticScale ? { ...axis, automaticScale: { ...axis.automaticScale, labelHeightsPerStep: target.bar3DLabelHeightsPerStep } } : axis)),
         };
 
         chartSize(style);

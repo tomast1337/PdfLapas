@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type PptxGenJS from "pptxgenjs";
-import { automaticAxisInterval, automaticAxisScale } from "../packages/pptxgenjs/src/chart/axisScale";
+import { automaticAxisInterval, automaticAxisScale, bar3DAxisScale, type FixedAxisScale } from "../packages/pptxgenjs/src/chart/axisScale";
 import { normalizeChart } from "../packages/pptxgenjs/src/normalize/chart";
 
 describe("automatic axis scale", () => {
@@ -152,6 +152,38 @@ describe("automatic axis scale", () => {
             const chart = normalizeChart(type, data, options);
 
             expect([chart.valueAxisMinimum, chart.valueAxisMaximum, automaticAxisInterval(chart.valueAxisMinimum, chart.valueAxisMaximum)]).toEqual([minimum, maximum, interval]);
+        }
+    });
+
+    test("matches LibreOffice 26.2's bar3D value axes, with no step added near the data (#541)", () => {
+        // Measured in its PDF export of synthetic PptxGenJS 4.0.1 bar3D charts: data low and high, the caller's bounds
+        // and unit, the step count the axis's length fits (8 on a 9 x 4.8in chart in 14pt labels), then the drawn axis.
+        const cases: [number, number, FixedAxisScale, number, number, number, number][] = [
+            [0, 7, {}, 8, 0, 7, 1],
+            [0, 8, {}, 8, 0, 8, 1],
+            [0, 9, {}, 8, 0, 10, 2],
+            [0, 16, {}, 8, 0, 16, 2],
+            [0, 18, {}, 8, 0, 20, 5],
+            [0, 20, {}, 8, 0, 20, 5],
+            [0, 95, {}, 8, 0, 100, 20],
+            [0, 1.4, {}, 8, 0, 1.4, 0.2],
+            [0, 350, {}, 8, 0, 350, 50],
+            [0, 4.5, {}, 8, 0, 5, 1],
+            [-3, 7, {}, 8, -4, 8, 2],
+            [0, 11, {}, 8, 0, 12, 2],
+            [0, 7, { majorUnit: 2 }, 8, 0, 8, 2],
+            [0, 7, { majorUnit: 2.5 }, 8, 0, 7.5, 2.5],
+            [0, 9, { majorUnit: 2, minimum: 1 }, 8, 1, 9, 2],
+            [0, 7, { maximum: 10 }, 8, 0, 10, 2],
+            [0, 7, { minimum: 2, maximum: 9 }, 8, 2, 9, 1],
+            [0, 7, { maximum: 20, majorUnit: 5 }, 8, 0, 20, 5],
+            // Shorter charts (9 x 2.2in and 9 x 1.4in) fit fewer steps.
+            [0, 8, {}, 6, 0, 8, 2],
+            [0, 8, {}, 3, 0, 10, 5],
+        ];
+
+        for (const [low, high, fixed, maxIncrements, minimum, maximum, interval] of cases) {
+            expect(bar3DAxisScale(low, high, fixed, maxIncrements)).toEqual({ minimum, maximum, interval });
         }
     });
 });

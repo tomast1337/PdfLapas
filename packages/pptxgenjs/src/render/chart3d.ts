@@ -1,4 +1,7 @@
 import { PPTX_DEFAULTS } from "#src/defaults";
+import { builtInFontMetrics } from "#src/fontMetrics";
+import { automaticAxisInterval, type AxisScale, bar3DAxisScale } from "#src/chart/axisScale";
+import { formatChartNumber } from "#src/chart/format";
 import type { NormalizedChart } from "@pdflapas/model";
 import { pointsToPixels } from "@pdflapas/model";
 import { type Attribute, element, escapeText, type Html } from "./markup";
@@ -111,33 +114,78 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
 
         return { x: fitLeft + point.x * fitScale, y: fitTop + point.y * fitScale, distance: point.distance };
     };
-    const minimum = chart.grouping === "percentStacked" ? 0 : chart.valueAxisMinimum;
-    const maximum = chart.grouping === "percentStacked" ? 100 : chart.valueAxisMaximum;
-    const range = Math.max(1e-9, maximum - minimum);
-    /** `x` and `depth` run 0..1 along the category axis and the depth axis. */
-    const project = (x: number, depth: number, value: number): CameraPoint => camera(x, (value - minimum) / range, depth);
     // The walls stand on the far sides of the floor, the faces drawn on a bar on the near ones.
     const backDepth = Math.cos(chart.rotationY3D * DEGREE) >= 0 ? 1 : 0;
     const frontDepth = 1 - backDepth;
     const sideX = Math.sin(chart.rotationY3D * DEGREE) >= 0 ? 0 : 1;
+    const axis = chart.valueAxes[0];
+    const labelFontSize = pointsToPixels(axis?.labelFontSize ?? chart.fontSize);
+    const labelFontFace = axis?.labelFontFace ?? chart.fontFace;
+    const labelFont = builtInFontMetrics(labelFontFace);
+    const labelHeight = labelFontSize * (labelFont.kind === "metrics" ? (labelFont.metrics.winAscent + labelFont.metrics.winDescent) / labelFont.metrics.unitsPerEm : PPTX_DEFAULTS.text.singleLineEm);
+    // LibreOffice fits about as many steps on a 3D value axis as its labels' height fits along the axis, at most the
+    // automatic scale's increments (26.2.6, 3, 5, 4, 8 in 14pt Arial: 0..8 by 1 on a 136.5pt axis, by 2 on a 95pt one,
+    // 0..10 by 5 on a 54pt one); a target may need several label heights per step (labelHeightsPerStep).
+    // shortcut: the length is this projection's, which differs from LibreOffice's (#541), and LibreOffice estimates it
+    // before its last layout pass (3, 5, 4, 7 in 12pt steps by 1 on an 87.6pt axis); fix with the projection.
+    const axisBottom = camera(sideX, 0, frontDepth);
+    const axisTop = camera(sideX, 1, frontDepth);
+    const axisLength = Math.hypot(axisTop.x - axisBottom.x, axisTop.y - axisBottom.y);
+    const stepHeight = labelHeight * (axis?.automaticScale?.labelHeightsPerStep ?? 1);
+    const maxIncrements = Math.max(1, Math.min(PPTX_DEFAULTS.chart.automaticScale.maxIncrements, Math.floor(axisLength / stepHeight)));
+    let scale: AxisScale;
+
+    if (chart.grouping === "percentStacked") {
+        scale = { minimum: 0, maximum: 100, interval: axis?.majorUnit ?? automaticAxisInterval(0, 100, maxIncrements) };
+    } else if (axis?.automaticScale) {
+        const { low, high, fixedMinimum, fixedMaximum } = axis.automaticScale;
+
+        scale = bar3DAxisScale(low, high, { minimum: fixedMinimum ? axis.minimum : undefined, maximum: fixedMaximum ? axis.maximum : undefined, majorUnit: axis.majorUnit }, maxIncrements);
+    } else {
+        scale = { minimum: chart.valueAxisMinimum, maximum: chart.valueAxisMaximum, interval: axis?.majorUnit ?? automaticAxisInterval(chart.valueAxisMinimum, chart.valueAxisMaximum, maxIncrements) };
+    }
+
+    const { minimum, maximum } = scale;
+    const range = Math.max(1e-9, maximum - minimum);
+    /** `x` and `depth` run 0..1 along the category axis and the depth axis. */
+    const project = (x: number, depth: number, value: number): CameraPoint => camera(x, (value - minimum) / range, depth);
     const polygon = (className: string, points: Point[], fill: string): Html =>
         element("polygon", [
             ["class", className],
             ["points", points.map(p).join(" ")],
             ["fill", fill],
         ]);
-    const tickCount = 4;
     const otherX = 1 - sideX;
     const gridStroke: Attribute[] = [
         ["fill", "none"],
         ["stroke", `#${chart.gridLineColor.replace(/^#/, "")}`],
         ["stroke-width", n(pointsToPixels(chart.gridLineWidth))],
     ];
-    // Office draws the value gridlines across the side wall and the back wall, labelled at the wall's front edge.
+    // The value labels take the value axis's font.
+    const labelStyle: Attribute[] = [
+        ["font-family", labelFontFace],
+        ["font-size", n(labelFontSize)],
+    ];
+
+    if (axis) {
+        labelStyle.push(["fill", axis.labelColor]);
+    }
+
+    if (axis?.labelBold) {
+        labelStyle.push(["font-weight", "bold"]);
+    }
+
+    if (axis?.labelItalic) {
+        labelStyle.push(["font-style", "italic"]);
+    }
+
+    // Office draws the value gridlines across the side wall and the back wall, labelled at the wall's front edge, at
+    // each whole step from the minimum (toPrecision drops the floating point noise of 0.9 / 0.1).
     const grid: Html[] = [];
+    const tickCount = Math.floor(Number((range / scale.interval).toPrecision(12)));
 
     for (let index = 0; index <= tickCount; index++) {
-        const value = minimum + (range * index) / tickCount;
+        const value = Number((minimum + index * scale.interval).toPrecision(12));
         const label = project(sideX, frontDepth, value);
         const line = [label, project(sideX, backDepth, value), project(otherX, backDepth, value)];
         const labelX: Attribute[] =
@@ -148,9 +196,9 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
                   ]
                 : [["x", n(label.x + 8)]];
 
-        const tickLabel = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+        const tickLabel = axis ? formatChartNumber(value, axis.labelFormatCode) : String(value);
 
-        grid.push(element("polyline", [["points", line.map(p).join(" ")], ...gridStroke]), element("text", [...labelX, ["y", n(label.y + 4)]], escapeText(tickLabel)));
+        grid.push(element("polyline", [["points", line.map(p).join(" ")], ...gridStroke]), element("text", [...labelX, ["y", n(label.y + labelFontSize / 4)], ...labelStyle], escapeText(tickLabel)));
     }
 
     const backSideBottom = project(sideX, backDepth, minimum);

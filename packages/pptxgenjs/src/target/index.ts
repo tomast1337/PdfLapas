@@ -177,6 +177,12 @@ export type RenderingTargetProfile = {
      * as a right legend's, or in a band above the plot area at the right edge (`NormalizedChart.topRightLegend`).
      */
     readonly topRightLegend: NormalizedChart["topRightLegend"];
+    /**
+     * How many value-label heights of drawn axis a bar3D value axis's automatic step needs: the step is the smallest
+     * that leaves the axis at most its length over this many label heights in steps
+     * (`NormalizedChartValueAxis.automaticScale.labelHeightsPerStep`).
+     */
+    readonly bar3DLabelHeightsPerStep: number;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

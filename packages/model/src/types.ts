@@ -349,6 +349,12 @@ export type NormalizedChartValueAxis = {
     majorTickMark: "none" | "inside" | "outside" | "cross";
     minorTickMark: "none" | "inside" | "outside" | "cross";
     majorUnit?: number;
+    /**
+     * On a bar3D chart, whose step LibreOffice picks from the drawn length of the axis: the data's low and high ends (0
+     * included) and whether the caller set the minimum and the maximum; absent: `minimum` to `maximum` as they are.
+     * `labelHeightsPerStep` is how many label heights of drawn axis each step needs; absent: one.
+     */
+    automaticScale?: { low: number; high: number; fixedMinimum: boolean; fixedMaximum: boolean; labelHeightsPerStep?: number };
     logScaleBase?: number;
     gridLineColor: CssColor;
     gridLineWidth: number;

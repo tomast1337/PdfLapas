@@ -220,6 +220,7 @@ const valueAxis = z.strictObject({
     majorTickMark: tickMark,
     minorTickMark: tickMark,
     majorUnit: finite.optional(),
+    automaticScale: z.strictObject({ low: finite, high: finite, fixedMinimum: z.boolean(), fixedMaximum: z.boolean(), labelHeightsPerStep: z.number().positive().optional() }).optional(),
     logScaleBase: finite.optional(),
     gridLineColor: cssColor,
     gridLineWidth: nonNegative,

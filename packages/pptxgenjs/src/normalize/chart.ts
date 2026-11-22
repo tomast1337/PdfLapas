@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import { automaticAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
+import { automaticAxisScale, bar3DAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
 import { UnsupportedChartError } from "#src/chart/errors";
 import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -301,13 +301,30 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
     return normalized;
 }
 
-function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefined, dataRange: [number, number], path: string, chartTypes: PptxGenJS.CHART_NAME[], defaultGridLine: PptxGenJS.OptsChartGridLine): NormalizedChart["valueAxes"][number] {
+function normalizeValueAxis(
+    axisOptions: PptxGenJS.IChartPropsAxisVal | undefined,
+    dataRange: [number, number],
+    bar3D: boolean,
+    path: string,
+    chartTypes: PptxGenJS.CHART_NAME[],
+    defaultGridLine: PptxGenJS.OptsChartGridLine,
+): NormalizedChart["valueAxes"][number] {
     const defaults = PPTX_DEFAULTS.chart.valueAxis;
-    // Check the axis's bounds, scale, unit, tick marks and label format. An automatic bound scales from a fixed one (#556).
+    // Check the axis's unit, bounds, scale, tick marks and label format. An automatic bound scales from a fixed one (#556).
+    const majorUnit = axisOptions?.valAxisMajorUnit;
+
+    if (majorUnit !== undefined && (!Number.isFinite(majorUnit) || majorUnit <= 0)) {
+        throw new TypeError("valAxisMajorUnit must be a positive finite number");
+    }
+
     const fixedMinimum = axisOptions?.valAxisMinVal;
     const fixedMaximum = axisOptions?.valAxisMaxVal;
     const fixed: FixedAxisBound = fixedMinimum !== undefined ? { kind: "minimum", value: fixedMinimum } : fixedMaximum !== undefined ? { kind: "maximum", value: fixedMaximum } : { kind: "none" };
-    const scale = automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
+    // A bar3D axis takes LibreOffice's 3D scale over its data with 0 included; renderBar3DSvg takes a longer step where
+    // the drawn axis is short.
+    const bar3DLow = Math.min(0, dataRange[0]);
+    const bar3DHigh = Math.max(0, dataRange[1]);
+    const scale = bar3D ? bar3DAxisScale(bar3DLow, bar3DHigh, { minimum: fixedMinimum, maximum: fixedMaximum, majorUnit }, PPTX_DEFAULTS.chart.automaticScale.maxIncrements) : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
     const minimum = fixedMinimum ?? scale.minimum;
     const maximum = fixedMaximum ?? scale.maximum;
 
@@ -323,12 +340,6 @@ function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefine
 
     if (logScaleBase !== undefined && minimum <= 0) {
         throw new TypeError("A logarithmic value axis requires a positive minimum");
-    }
-
-    const majorUnit = axisOptions?.valAxisMajorUnit;
-
-    if (majorUnit !== undefined && (!Number.isFinite(majorUnit) || majorUnit <= 0)) {
-        throw new TypeError("valAxisMajorUnit must be a positive finite number");
     }
 
     if (axisOptions?.valAxisMajorTickMark === "cross" || axisOptions?.valAxisMinorTickMark === "cross") {
@@ -350,6 +361,7 @@ function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefine
         minimum,
         maximum,
         majorUnit,
+        ...(bar3D ? { automaticScale: { low: bar3DLow, high: bar3DHigh, fixedMinimum: fixedMinimum !== undefined, fixedMaximum: fixedMaximum !== undefined } } : {}),
         logScaleBase,
         labelFormatCode,
         hidden: axisOptions?.valAxisHidden ?? defaults.hidden,
@@ -680,11 +692,11 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
-    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
+    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, normalizedType === "bar3D", valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
     const valueAxes = [primaryAxis];
 
     if (secondaryDataRange) {
-        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, "valAxes[1].", chartTypes, {}));
+        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, false, "valAxes[1].", chartTypes, {}));
     }
 
     // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing

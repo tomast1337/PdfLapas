@@ -615,7 +615,52 @@ describe("chart normalization and rendering", () => {
         expect(chart.rotationX3D).toBe(-20);
         expect(chart.rotationY3D).toBe(30);
         expect(normalizeChart("bar3D", categoricalData, { bar3DShape: "invalid" }).bar3DShape).toBe("box");
-        expect(normalizeChart("bar3D", categoricalData, { barGrouping: "stacked" }).valueAxisMaximum).toBe(10);
+        // Stacked totals reach 9: a 3D axis takes no extra step near its data (#541).
+        expect(normalizeChart("bar3D", categoricalData, { barGrouping: "stacked" }).valueAxisMaximum).toBe(9);
+    });
+
+    test("steps a bar3D value axis by the target's label heights per step (bar3DLabelHeightsPerStep, #541)", () => {
+        const ticks = (target: "libreoffice" | "powerpoint", options: PptxGenJS.IChartOpts = {}): string[] => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart("bar3D", [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] }], { x: 1, y: 1.3, w: 3.2, h: 3, showLegend: true, legendPos: "b", ...options });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+
+            return Array.from(svg?.querySelectorAll("text[text-anchor='end']") ?? [], text => text.textContent ?? "");
+        };
+
+        // The chartBar3DAxis fixture's first chart: LibreOffice 26.2.6 steps 0..7 by 1, PowerPoint's PDF export 0..10 by 5.
+        expect(ticks("libreoffice")).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+        expect(ticks("powerpoint")).toEqual(["0", "5", "10"]);
+        // valAxisMajorUnit sets the step whatever the target.
+        expect(ticks("powerpoint", { valAxisMajorUnit: 1 })).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+    });
+
+    test("steps a bar3D value axis as LibreOffice does, by valAxisMajorUnit when set (#541)", () => {
+        const one: PptxGenJS.OptsChartData[] = [{ name: "Lorem", labels: ["A", "B", "C", "D"], values: [3, 5, 4, 7] }];
+        const ticks = (options: PptxGenJS.IChartOpts, h = 4.8): string[] => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("bar3D", one, { x: 0.5, y: 0.6, w: 9, h, fontFace: "Arial", valAxisLabelFontSize: 14, ...options });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+
+            return Array.from(svg?.querySelectorAll("text[text-anchor='end']") ?? [], text => text.textContent ?? "");
+        };
+
+        expect(normalizeChart("bar3D", one).valueAxes[0]?.automaticScale).toEqual({ low: 0, high: 7, fixedMinimum: false, fixedMaximum: false });
+        // LibreOffice 26.2.6 on the same charts: 0..7 by 1, 0..8 by 2, 0..7.5 by 2.5, 0..10 by 2 and 2..9 by 1.
+        expect(ticks({})).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+        expect(ticks({ valAxisMajorUnit: 2 })).toEqual(["0", "2", "4", "6", "8"]);
+        expect(ticks({ valAxisMajorUnit: 2.5 })).toEqual(["0", "2.5", "5", "7.5"]);
+        expect(ticks({ valAxisMaxVal: 10 })).toEqual(["0", "2", "4", "6", "8", "10"]);
+        expect(ticks({ valAxisMinVal: 2, valAxisMaxVal: 9 })).toEqual(["2", "3", "4", "5", "6", "7", "8", "9"]);
+        // The labels take the value axis's font and format.
+        const presentation = new PuppeteerGen();
+
+        presentation.addSlide().addChart("bar3D", one, { x: 0, y: 0, w: 6, h: 4, valAxisLabelFontSize: 9, valAxisLabelColor: "FF0000", valAxisLabelFormatCode: "0.0" });
+        const label = renderedPage(presentation).querySelector(".slide-chart svg text[text-anchor='end']");
+
+        expect([label?.getAttribute("font-size"), label?.getAttribute("fill"), label?.textContent]).toEqual(["12", "#FF0000", "0.0"]);
     });
 
     test("renders all six bar3D shapes as deterministic inline SVG", () => {

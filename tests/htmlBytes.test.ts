@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "1fa4a39d8d2692ddad9c24b287316d85954c852cb0978b79b0a784535eb9da85",
+    fixture: "aed47b38f76c0b762c1dd73d7eb9c9653dd40528a3ec09b513f9e3df42e19eaa",
     "cross-runtime": "c2e697d0d8c7cb7bb87f876cbafa52560823c7c65931f9b5a109d46f3454743e",
     "wasm-text": "8fd50aaacf2518ba08215451e2fb3b6c5dcf2ef46221ce8c80abd5c1fc5a5efb",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -36,6 +36,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartArea": "5b6fe73653f3901e4d6c88eb3db75ea33eefff42c166d914ae2894562ccc74f8",
     "wasm-chartPlotBand": "3c56ce5a82ad53e1698e01a34d6363d06f4cafcf5e7a09103d67911133cc899d",
     "wasm-chartCombo": "829a549da8cbbd4058f8784413e26e11c655e18e75fb0db8e74cbe8859ada863",
+    "wasm-chartComboAreaPieLabels": "db9303e467dc43d9e44cecfcfa5d817635df19ccd8c2bb8fe00c73262b899178",
     "wasm-chartAreaOrder": "0dd7b361670052c66972165c2b144408162cf669dfeb2fc6c473c78022155e4b",
     "wasm-chartPointColors": "dfb77c0a549c56d85f2f2f986a9cc99ee6a65519f37163b7079ba0c7e4bfbcf2",
     "wasm-chartScatterAxes": "cccfe2aca9150f8f64e25931e78cdac2c83a1a7d0f6873c3cdf8e803ddb5837e",

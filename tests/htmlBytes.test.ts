@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "bf139b42b4e5d3a708636bb42514ab249957dd73f3a09f4cc755cfa09c78e647",
+    fixture: "15132431df5d459a09a113bc7bf557b294bec05a51f7c65347e81fbb7763ec50",
     "cross-runtime": "ffae7f4c58c322317e30c93dd7b132010d0afe52d3d17018b61dc8db4ba3317d",
     "wasm-text": "9700fb8fe52842ff7f6f09e6cd4c3c5b3a9af6d01659ab00ab124f2d3c479641",
     "wasm-emoji": "0170f6d0e30f8fb4961eda77afac9a9ab91bd91534aaa2c394c68edd9d332fc0",
@@ -22,7 +22,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-tables": "0cbe750637e62232cca8447e143d6166bcd1861e6f3f19aa76c44cd4f17b4a46",
     "wasm-images": "119660443b85adcf0dbeeaa887c4112b27efb546e49678a4c50cb5863e25dd16",
     "wasm-effects": "8bd6d2c2227f3b3ffa0094f15bd57feea261a8379c9c9db0f2b9cac4ac325790",
-    "wasm-charts": "6d757338a692d485555c5f950bdb9b8420fa0d44cc0dc1b7b4d9fe99123256f7",
+    "wasm-charts": "88affd22d46387693e2eb6f10836d01a763735d26b7fb4a5755e53486fe4f3fd",
     "wasm-chartAxis": "a80e7e6e7b3581711fc9b80a5cd20574d676b282914b1e54939fe39a39a01c34",
     "wasm-chartPlot": "b3d6edd9e6d43821a15ae72d6c20103842a164c2dbdaad0bb6f18f57eacdeed5",
     "wasm-placeholders": "71a7cc706f42793c6692eb04ab6b6becebbce57919d8a2cc9d0fdb483aae28cf",
@@ -48,6 +48,8 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartBar3DAxis": "25c89cf67b10d5ee733c69270bfa8edf777af90bb58c977a785f7ac6ece4d0f2",
     "wasm-chartOptionLabels": "45640b0a32243c90a360234ee035c0ab65c5a1e30e6b8843fef1a82f511e6acc",
     "wasm-chartOptionAxes": "ddf2c1868387cd1e6f4d9b1bf3b35ba356cd9ff1a85feb0354a5d0b69ea3327d",
+    "wasm-chartCategoryOptions": "8541d3c97d75133277050b5b876104783d395080a409c0a0de1544da375b3da3",
+    "wasm-chartDataTable": "dd8f0dec247576a4b157dfb89fbd03a574ad61a52760a4d8882ded8dc317d1d9",
     "wasm-fallbackFaces": "3f0e840bfdd51ab6f39227bfdd1660becf4626c91bef0f978a4aac3ed7327727",
     "wasm-svg": "2609fdf9a6819dd5b90d99865840d41c9bf23c99340a329d34cafd80947fd3f0",
     "wasm-gif": "c9657cd861b77c52e1d664741089a73b432d9156dfc494899090d310209db207",

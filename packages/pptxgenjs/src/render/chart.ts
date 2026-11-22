@@ -54,6 +54,8 @@ const TICK_LENGTH = 5;
 const AXIS_LABEL_MARGIN = 8;
 /** ECharts' default axisLabel.textMargin[1], the px it adds on each side of a label's measured width when fitting it. */
 const AXIS_LABEL_TEXT_MARGIN = 3;
+/** ECharts' default title.padding, the px between the chart's top edge and its title. */
+const TITLE_PADDING = 5;
 
 function tickOption(mark: NormalizedChart["valueAxes"][number]["majorTickMark"], color: string, width: number) {
     return {
@@ -92,9 +94,11 @@ function valueAxisOption(axis: NormalizedChartValueAxis, index: number, min: num
         inverse: axis.reversed === true,
         position: index === 1 ? ("right" as const) : ("left" as const),
         show: !axis.hidden,
-        name: axis.showTitle ? axis.title : undefined,
-        nameLocation: "middle" as const,
-        nameGap: 40,
+        // A display unit's name (`<c:dispUnitsLbl/>`) at the axis's far end, where the axis has no title.
+        // shortcut: not measured against PowerPoint's PDF export, which may turn it up beside the axis; measure it (#566).
+        name: axis.showTitle ? axis.title : axis.displayUnit?.label,
+        nameLocation: axis.showTitle || !axis.displayUnit?.label ? ("middle" as const) : ("end" as const),
+        nameGap: axis.showTitle || !axis.displayUnit?.label ? 40 : AXIS_LABEL_MARGIN,
         nameRotate: axis.titleRotate,
         nameTextStyle: {
             color: axis.titleColor,
@@ -112,7 +116,7 @@ function valueAxisOption(axis: NormalizedChartValueAxis, index: number, min: num
             ...(labelMargin.kind === "margin" ? { margin: labelMargin.px } : {}),
             fontWeight: axis.labelBold ? "bold" : "normal",
             fontStyle: axis.labelItalic ? "italic" : "normal",
-            formatter: (value: number) => formatChartNumber(value, axis.labelFormatCode),
+            formatter: (value: number) => formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode),
         },
         axisLine: {
             show: axis.lineVisible,
@@ -307,7 +311,13 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const legendPx = pointsToPixels(chart.legendFontSize);
     const legendBand = legendPx * plotBand.legendBandEm + pointsToPixels(plotBand.legendBandPt);
     const legendRowInset = (legendPx * (plotBand.legendBandEm - 1)) / 2;
-    const titleBand = chart.showTitle ? gap + pointsToPixels(chart.titleFontSize) * pieLayout.titleBandEm + pointsToPixels(plotBand.titleBandPt) : 0;
+    // A turned title (titleRotate) takes its turned box's height, as LibreOffice 26.2 lowers the plot under it.
+    const titleTurn = ((chart.titleRotate ?? 0) * Math.PI) / 180;
+    const titleTextPx = pointsToPixels(chart.titleFontSize);
+    const titleTextWidth = chart.showTitle && chart.titleRotate ? format.getTextRect(chart.title, `${titleTextPx}px ${chart.titleFontFace}`).width : 0;
+    const titleTurnedWidth = Math.abs(Math.cos(titleTurn)) * titleTextWidth + Math.abs(Math.sin(titleTurn)) * titleTextPx;
+    const titleTurnedHeight = chart.titleRotate ? Math.abs(Math.sin(titleTurn)) * titleTextWidth + Math.abs(Math.cos(titleTurn)) * titleTextPx : titleTextPx;
+    const titleBand = chart.showTitle ? gap + titleTurnedHeight - titleTextPx + titleTextPx * pieLayout.titleBandEm + pointsToPixels(plotBand.titleBandPt) : 0;
     // A vertical legend's entries come every pitch: ECharts puts them a text line and itemGap apart, and centers
     // the first half a text line below the legend's top (padding 0).
     const verticalLegendLayout = PPTX_DEFAULTS.chart.verticalLegend;
@@ -401,6 +411,36 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const symbolPixels = pointsToPixels(chart.lineSymbolSize);
     const symbolSize = chart.lineSymbol === "dash" ? [symbolPixels, symbolPixels * DASH_SYMBOL_HEIGHT_RATIO] : symbolPixels;
     const symbolBorder = { borderWidth: pointsToPixels(chart.lineSymbolLineSize), ...(chart.lineSymbolLineColor ? { borderColor: chart.lineSymbolLineColor } : {}) };
+    // The chart's graphic elements: a placed or turned title, a pie's rim labels, a data table.
+    const graphics: Record<string, unknown>[] = [];
+    // A manually placed title (titlePos) has its box's top left corner there; a turned one (titleRotate, clockwise) turns
+    // about its middle, its turned box kept there. ECharts' title component does neither, so the title is graphic text.
+    const titleGraphic = chart.showTitle && (chart.titlePosition !== undefined || chart.titleRotate !== undefined);
+
+    if (titleGraphic) {
+        const titlePx = pointsToPixels(chart.titleFontSize);
+        const position = chart.titlePosition;
+        const turned = chart.titleRotate !== undefined && chart.titleRotate !== 0;
+        const anchored = position !== undefined && !turned;
+
+        graphics.push({
+            type: "text",
+            x: position ? position.x * width + (turned ? titleTurnedWidth / 2 : 0) : width / 2,
+            y: position ? position.y * height + (turned ? titleTurnedHeight / 2 : 0) : TITLE_PADDING + titleTurnedHeight / 2,
+            rotation: (-(chart.titleRotate ?? 0) * Math.PI) / 180,
+            silent: true,
+            style: {
+                text: chart.title,
+                fill: chart.titleColor,
+                fontFamily: chart.titleFontFace,
+                fontSize: titlePx,
+                fontWeight: chart.titleBold ? "bold" : "normal",
+                align: anchored ? "left" : "center",
+                verticalAlign: anchored ? "top" : "middle",
+            },
+        });
+    }
+
     const common: EChartsCoreOption = {
         animation: false,
         color: chart.colors,
@@ -408,19 +448,20 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             fontFamily: chart.fontFace,
             fontSize: pointsToPixels(chart.fontSize),
         },
-        title: chart.showTitle
-            ? {
-                  show: true,
-                  text: chart.title,
-                  left: "center",
-                  textStyle: {
-                      color: chart.titleColor,
-                      fontFamily: chart.titleFontFace,
-                      fontSize: pointsToPixels(chart.titleFontSize),
-                      fontWeight: chart.titleBold ? "bold" : "normal",
-                  },
-              }
-            : { show: false },
+        title:
+            chart.showTitle && !titleGraphic
+                ? {
+                      show: true,
+                      text: chart.title,
+                      left: "center",
+                      textStyle: {
+                          color: chart.titleColor,
+                          fontFamily: chart.titleFontFace,
+                          fontSize: pointsToPixels(chart.titleFontSize),
+                          fontWeight: chart.titleBold ? "bold" : "normal",
+                      },
+                  }
+                : { show: false },
         legend,
     };
     const axisStyle = {
@@ -429,9 +470,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             fontFamily: chart.fontFace,
             fontSize: pointsToPixels(chart.fontSize),
         },
+        // The category axis line (a scatter chart's x axis line): catAxisLine*, none on a deleted axis.
         axisLine: {
-            show: chart.axisLineVisible,
-            lineStyle: { color: chart.gridLineColor, width: pointsToPixels(chart.gridLineWidth) },
+            show: chart.axisLineVisible && !chart.categoryAxis.hidden,
+            lineStyle: { color: chart.categoryAxis.lineColor, width: pointsToPixels(chart.categoryAxis.lineWidth), ...(chart.categoryAxis.lineStyle === "solid" ? {} : { type: lineType(chart.categoryAxis.lineStyle) }) },
         },
     };
     // The automatic plot area (PptxGenJS writes `<c:layout/>`) in text-sized bands, not fractions of the chart height,
@@ -507,25 +549,78 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         borderWidth: plotArea.borderVisible ? pointsToPixels(plotArea.borderWidth) : 0,
     };
     const layout = chart.plotLayout;
+    // A data table (#567) takes the category labels' band: a row of category names, then one per series, each
+    // rowEm table font sizes tall, its series names in a column left of the plot area. Its columns are the categories',
+    // so the plot area is laid out here (outerBoundsMode none), its gutter wide enough for the names and value labels.
+    const table = chart.dataTable;
+    const tableDefaults = PPTX_DEFAULTS.chart.dataTable;
+    const tablePx = table ? pointsToPixels(table.fontSize) : 0;
+    const tableRowPx = tablePx * tableDefaults.rowEm;
+    const tableKeyPx = tablePx * tableDefaults.keyEm;
+    let tableNameColumn = 0;
+
+    if (table) {
+        let widestName = 0;
+        let widestValueLabel = 0;
+
+        for (const series of chart.series) {
+            widestName = Math.max(widestName, format.getTextRect(series.name, `${tablePx}px ${table.fontFace}`).width);
+        }
+
+        for (const value of firstAxis ? [firstAxis.minimum, firstAxis.maximum] : []) {
+            widestValueLabel = Math.max(widestValueLabel, format.getTextRect(formatChartNumber(value, firstAxis?.labelFormatCode ?? "General"), `${valueLabelPx}px ${firstAxis?.labelFontFace ?? chart.fontFace}`).width);
+        }
+
+        // LibreOffice 26.2 starts the names two text gaps in and keeps the plot area one gap after the widest.
+        tableNameColumn = 3 * LEGEND_TEXT_GAP + (table.keys ? tableKeyPx + LEGEND_TEXT_GAP : 0) + widestName;
+        gutter = Math.max(gutter, tableNameColumn, widestValueLabel + TICK_LENGTH + AXIS_LABEL_MARGIN + gap);
+    }
+
+    // A column chart whose category labels are not below it (deleted, `none` or `high`) gives their band to the plot, as
+    // LibreOffice 26.2 does.
+    const noBottomLabels = !horizontal && chart.type !== "scatter" && chart.type !== "bubble" && (categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (categoryAxisModel.labelPosition === "high" && !firstAxis?.reversed));
+    const categoryBand = table ? (chart.series.length + 1) * tableRowPx : noBottomLabels ? 0 : bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2;
+    // A column chart's value axis on the right (catAxisCrossesAt max, or a reversed category axis) takes the gutter there.
+    const valueAxisRight =
+        !horizontal && !table && chart.valueAxes.length === 1 && chart.type !== "scatter" && chart.type !== "bubble" && chart.type !== "radar" && (categoryAxisModel.valueAxisCrossing?.kind === "max") !== (categoryAxisModel.reversed === true);
+    const gridLeft = valueAxisRight ? width * 0.02 + leftLegendShift : gutter + leftLegendShift;
+    // A right legend's band replaces the 2% margin; a secondary axis keeps its gutter beside the band.
+    // shortcut: the secondary axis beside a right legend is not measured against LibreOffice; measure it when a deck
+    // needs both.
+    const gridRight = chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : valueAxisRight ? gutter + rightLegendBand : Math.max(width * 0.02, rightLegendBand);
+    const gridBottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + categoryBand;
     // A manual layout (layoutTarget inner) places the plot rectangle itself, so the labels go where they fall.
     const grid = layout
         ? { left: layout.x * width, top: layout.y * height, width: layout.w * width, height: layout.h * height, outerBoundsMode: "none", ...plotAreaStyle }
         : {
-              left: gutter + leftLegendShift,
-              // A right legend's band replaces the 2% margin; a secondary axis keeps its gutter beside the band.
-              // shortcut: the secondary axis beside a right legend is not measured against LibreOffice; measure it when a
-              // deck needs both.
-              right: chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : Math.max(width * 0.02, rightLegendBand),
+              left: gridLeft,
+              right: gridRight,
               top: gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2) + topLegendBand,
-              bottom: gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2,
-              outerBoundsMode: "auto",
+              bottom: gridBottom,
+              outerBoundsMode: table ? "none" : "auto",
               outerBounds: { left: labelBound + leftLegendShift, right: Math.max(labelBound, rightLegendBand), top: 0, bottom: 0 },
               ...plotAreaStyle,
           };
     // The category axis's labels and title (a scatter or bubble chart's x axis takes them too, as PptxGenJS writes its
     // c:valAx from the catAxis* options).
+    const categoryLabelFormat = categoryAxisModel.labelFormatCode;
     const categoryAxisText = {
         axisLabel: {
+            // A deleted axis, `none` and a data table (whose first row names the categories) print no labels.
+            ...(categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || chart.dataTable ? { show: false } : {}),
+            // catAxisLabelRotate turns clockwise, ECharts' rotate counterclockwise.
+            ...(categoryAxisModel.labelRotate ? { rotate: -categoryAxisModel.labelRotate } : {}),
+            ...(categoryAxisModel.labelSkip ? { interval: categoryAxisModel.labelSkip - 1 } : {}),
+            // catLabelFormatCode formats each numeric category (PptxGenJS writes them as a date axis's numbers).
+            ...(categoryLabelFormat
+                ? {
+                      formatter: (value: string) => {
+                          const number = Number(value);
+
+                          return value.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryLabelFormat) : value;
+                      },
+                  }
+                : {}),
             color: categoryAxisModel.labelColor,
             fontFamily: categoryAxisModel.labelFontFace,
             fontSize: categoryLabelPx,
@@ -534,8 +629,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(categoryAxisModel.labelBold ? { fontWeight: "bold" } : {}),
             ...(categoryAxisModel.labelItalic ? { fontStyle: "italic" } : {}),
         },
-        axisTick: tickOption(chart.categoryMajorTickMark, chart.gridLineColor, chart.gridLineWidth),
-        name: categoryAxisModel.showTitle ? categoryAxisModel.title : undefined,
+        // LibreOffice 26.2 draws a category axis's minor ticks at the category boundaries, as its major ones, so either
+        // draws them there.
+        axisTick: categoryAxisModel.hidden ? { show: false } : tickOption(chart.categoryMajorTickMark !== "none" ? chart.categoryMajorTickMark : categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth),
+        name: categoryAxisModel.showTitle && !categoryAxisModel.hidden ? categoryAxisModel.title : undefined,
         nameLocation: "middle",
         nameGap: horizontal ? AXIS_LABEL_MARGIN : TICK_LENGTH + AXIS_LABEL_MARGIN + categoryLabelPx * lineEm + gap,
         nameRotate: categoryAxisModel.titleRotate,
@@ -826,7 +923,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         option = {
             ...common,
-            ...(rimTexts.length ? { graphic: rimTexts } : {}),
+            ...(graphics.length || rimTexts.length ? { graphic: [...graphics, ...rimTexts] } : {}),
             series: [
                 {
                     name: series.name,
@@ -835,7 +932,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     // OOXML's c:holeSize is a percentage of the outer diameter.
                     radius: chart.type === "doughnut" ? [(radius * chart.doughnutHoleSize) / 100, radius] : radius,
                     startAngle: 90 - chart.firstSliceAngle,
-                    itemStyle: { opacity: chart.colorOpacity },
+                    itemStyle: { opacity: chart.colorOpacity, ...(chart.dataBorder ? { borderColor: chart.dataBorder.color, borderWidth: pointsToPixels(chart.dataBorder.width) } : {}) },
                     // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent
                     // off unless showLabel, showValue or showPercent is set, so PowerPoint and LibreOffice draw no
                     // slice labels by default; ECharts would draw category names on leaders. A ctr label sits at
@@ -891,6 +988,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         option = {
             ...common,
+            ...(graphics.length ? { graphic: graphics } : {}),
             radar: {
                 indicator: indicators,
                 // Office draws the categories clockwise from the top.
@@ -938,9 +1036,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         const maxBubble = Math.max(1, ...bubbleSizes);
         // LibreOffice scales the x axis to the x values (not to zero), and the y axis to the value axis's bounds by its
-        // major unit or the same automatic interval.
-        // shortcut: the bubble chart's x scale is not measured against LibreOffice (it may leave room for the bubbles);
-        // measure it when a deck has one.
+        // major unit or the same automatic interval. A bubble chart's x axis takes the same scale, with no room for the
+        // bubbles: its PDF export numbers x values 1..4 0.5..4.5 by 0.5, 10..40 5..45 by 5, 0..100 0..120 by 20, -5..5 -6..6
+        // by 2 and 1000..4000 500..4500 by 500, whatever the sizes (#548).
         const xScale = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), { kind: "none" }, false) : undefined;
         const scatter: Record<string, unknown>[] = [];
 
@@ -964,7 +1062,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 name: series.name,
                 data: series.values.map((value, index) => (chart.type === "bubble" ? [xValues[index], value, series.sizes?.[index] ?? 0] : [xValues[index], value])),
                 ...(chart.type === "bubble"
-                    ? { type: "scatter", symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32, itemStyle: { opacity: chart.colorOpacity } }
+                    ? {
+                          type: "scatter",
+                          symbolSize: (value: unknown[]) => 8 + Math.sqrt(Number(value[2] ?? 0) / maxBubble) * 32,
+                          itemStyle: { opacity: chart.colorOpacity, ...(chart.dataBorder ? { borderColor: chart.dataBorder.color, borderWidth: pointsToPixels(chart.dataBorder.width) } : {}) },
+                      }
                     : {
                           type: "line",
                           smooth: chart.lineSmooth,
@@ -980,6 +1082,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         option = {
             ...common,
+            ...(graphics.length ? { graphic: graphics } : {}),
             grid,
             // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine.
             xAxis: {
@@ -994,14 +1097,55 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         };
     } else {
         const categories = chart.series[0]?.labels ?? [];
+        const valueAxes: ReturnType<typeof valueAxisOption>[] = [];
+        // The value range each axis draws: a percent-stacked axis 0 to 100.
+        const ranges: [number, number][] = [];
+
+        for (const [index, axis] of chart.valueAxes.entries()) {
+            const percent = chart.series.some(series => series.stack === "percentStacked" && series.valueAxisIndex === index);
+
+            ranges.push(percent ? [0, 100] : [axis.minimum, axis.maximum]);
+            valueAxes.push(valueAxisOption(axis, index, percent ? 0 : axis.minimum, percent ? 100 : axis.maximum, horizontal && index === 0 ? { kind: "margin", px: bottomLabelMargin } : { kind: "default" }));
+        }
+
+        const [valueAxis] = valueAxes;
+        const [low, high] = ranges[0] ?? [0, 0];
+
+        if (!valueAxis || !firstAxis) {
+            throw new TypeError(`A ${chart.type} chart model needs at least one value axis; got none`);
+        }
+
+        // Where the category axis crosses the value axis (valAxisCrossesAt): its low end, its high end, or a value inside
+        // it (autoZero: 0, or the end nearer it). Its line and ticks go there, and unstacked bars and areas start there.
+        const crossing = firstAxis.categoryAxisCrossing;
+        const crossValue = crossing === undefined ? Math.min(Math.max(0, low), high) : crossing.kind === "min" ? low : crossing.kind === "max" ? high : Math.min(Math.max(crossing.value, low), high);
+        const lineAt = crossValue <= low ? "low" : crossValue >= high ? "high" : "inside";
+        // The value axis's low end is at the bottom (a horizontal chart's left), or the top (right) when it is reversed.
+        const lowSide = horizontal ? (firstAxis.reversed ? "right" : "left") : firstAxis.reversed ? "top" : "bottom";
+        const highSide = horizontal ? (firstAxis.reversed ? "left" : "right") : firstAxis.reversed ? "bottom" : "top";
+        // The category labels sit by the value axis's low or high end, or with the line (catAxisLabelPos). Away from the
+        // line they are a second category axis of their own, as LibreOffice keeps a column chart's labels below its
+        // negative values (its default `low`).
+        const labelSide = categoryAxisModel.labelPosition === "high" ? highSide : lowSide;
+        // shortcut: ECharts keeps an onZero axis's labels at the plot edge, so `nextTo` labels stay at the low end rather
+        // than beside a line inside the plot; follow the line once the plot height is known here.
+        const labelsApart = (categoryAxisModel.labelPosition === "low" && lineAt !== "low") || (categoryAxisModel.labelPosition === "high" && lineAt !== "high");
+        // A crossing inside the axis other than 0 moves the line onto the zero of a hidden copy of the value axis shifted
+        // by it, as ECharts puts an axis line on another axis's zero only.
+        const shifted = lineAt === "inside" && crossValue !== 0;
+        const shiftedIndex = valueAxes.length;
         const categoryAxis = {
             type: "category",
             data: categories,
             ...axisStyle,
             ...categoryAxisText,
+            ...(categoryAxisModel.reversed ? { inverse: true } : {}),
+            ...(labelsApart ? { axisLabel: { show: false }, name: undefined } : {}),
             // The category axis crosses a reversed value axis at its minimum, now at the far end (LibreOffice draws a
             // maxMin line chart's category labels at the top).
-            ...(chart.valueAxes[0]?.reversed ? { position: horizontal ? ("right" as const) : ("top" as const) } : {}),
+            ...(firstAxis.reversed || lineAt === "high" ? { position: lineAt === "high" ? highSide : lowSide } : {}),
+            ...(crossing !== undefined && !shifted ? { axisLine: { ...axisStyle.axisLine, onZero: lineAt === "inside" } } : {}),
+            ...(shifted ? { axisLine: { ...axisStyle.axisLine, onZero: true, onZeroAxisIndex: shiftedIndex } } : {}),
             // Category gridlines run through the ticks, between the categories, as Office draws them.
             splitLine: gridLineOption(categoryAxisModel),
             // On the ticks (`<c:crossBetween val="midCat"/>`) a bar is centered on its tick and cut at the plot area's edges.
@@ -1009,18 +1153,42 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             boundaryGap: !chart.categoriesOnTicks,
             containShape: false,
         } as const;
-        const valueAxes = [];
+        const categoryAxes: Record<string, unknown>[] = [categoryAxis];
 
-        for (const [index, axis] of chart.valueAxes.entries()) {
-            const percent = chart.grouping === "percentStacked";
-
-            valueAxes.push(valueAxisOption(axis, index, percent ? 0 : axis.minimum, percent ? 100 : axis.maximum, horizontal && index === 0 ? { kind: "margin", px: bottomLabelMargin } : { kind: "default" }));
+        if (labelsApart) {
+            categoryAxes.push({
+                type: "category",
+                data: categories,
+                position: labelSide,
+                ...(categoryAxisModel.reversed ? { inverse: true } : {}),
+                ...categoryAxisText,
+                axisLine: { show: false, onZero: false },
+                axisTick: { show: false },
+                splitLine: { show: false },
+            });
         }
 
-        const [valueAxis] = valueAxes;
+        // Where the value axis crosses the category axis (catAxisCrossesAt): before the first category, after the last,
+        // or before a category in between, the zero of a hidden value axis over the categories. A reversed category axis
+        // starts at the other side.
+        const valueCrossing = categoryAxisModel.valueAxisCrossing;
+        const valueAtEnd = (valueCrossing?.kind === "max") !== (categoryAxisModel.reversed === true);
 
-        if (!valueAxis) {
-            throw new TypeError(`A ${chart.type} chart model needs at least one value axis; got none`);
+        if (valueCrossing?.kind === "category") {
+            categoryAxes.push({ type: "value", show: false, min: -valueCrossing.index, max: categories.length - valueCrossing.index, inverse: categoryAxisModel.reversed === true, splitLine: { show: false } });
+        }
+
+        // Unstacked bars grow from the crossing, and areas fill to it (LibreOffice 26.2 starts a stacked chart's bars at 0).
+        const stackedBars = chart.series.some(series => series.type === "bar" && series.stack !== undefined);
+        const primaryValueAxis = {
+            ...valueAxis,
+            ...(valueCrossing?.kind === "category" ? { axisLine: { ...valueAxis.axisLine, onZero: true, onZeroAxisIndex: categoryAxes.length - 1 } } : valueAtEnd ? { position: horizontal ? ("top" as const) : ("right" as const) } : {}),
+            ...(crossing !== undefined && !stackedBars ? { startValue: crossValue } : {}),
+        };
+        const valueAxisList: Record<string, unknown>[] = [primaryValueAxis, ...valueAxes.slice(1)];
+
+        if (shifted) {
+            valueAxisList.push({ type: "value", show: false, min: low - crossValue, max: high - crossValue, inverse: firstAxis.reversed === true, splitLine: { show: false } });
         }
 
         // The bar, line and area series on the category axis.
@@ -1032,8 +1200,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             }
         }
 
+        // barOverlapPct: each bar of a category overlaps the next by that share of its width (a gap when negative).
         const visibleSeries = stacked ? 1 : Math.max(1, barCount);
-        const barWidth = `${100 / (visibleSeries + chart.barGapWidthPercent / 100)}%`;
+        const overlap = chart.barOverlapPercent ?? 0;
+        const barWidth = `${100 / (visibleSeries - ((visibleSeries - 1) * overlap) / 100 + chart.barGapWidthPercent / 100)}%`;
+        const border = chart.dataBorder ? { borderColor: chart.dataBorder.color, borderWidth: pointsToPixels(chart.dataBorder.width) } : {};
         const cartesian: Record<string, unknown>[] = [];
 
         for (const series of chart.series) {
@@ -1065,8 +1236,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const labels = series.dataLabels ?? chart.dataLabels;
             const positions = lineLike ? POINT_LABEL_POSITIONS : horizontal ? BAR_LABEL_POSITIONS : COLUMN_LABEL_POSITIONS;
             const labelPosition = positions[labels.position] ?? "inside";
-            // The series' own value, also on a percent-stacked chart that draws its share.
-            const label = showsPointLabel(labels) ? dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dataIndex] ?? 0, { kind: "none" })) : undefined;
+            // The series' own value, also on a percent-stacked chart that draws its share; on the series color with
+            // dataLabelBkgrdColors.
+            const label = showsPointLabel(labels)
+                ? {
+                      ...dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dataIndex] ?? 0, { kind: "none" })),
+                      ...(labels.seriesColorBackground ? { backgroundColor: color } : {}),
+                  }
+                : undefined;
             // A negative bar's label takes its own position, as its end points the other way (#478).
             const negativePosition = label && series.type === "bar" ? ((horizontal ? NEGATIVE_BAR_LABEL_POSITIONS : NEGATIVE_COLUMN_LABEL_POSITIONS)[labels.position] ?? "inside") : labelPosition;
             const pointFill = series.varyColors || series.automaticPointFill;
@@ -1079,7 +1256,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 for (const [valueIndex, value] of values.entries()) {
                     points.push({
                         value,
-                        ...(pointFill ? { itemStyle: { color: series.automaticPointFill ?? chart.colors[valueIndex % chart.colors.length] } } : {}),
+                        // A point's own `<c:dPt>` `<c:spPr>` holds its fill and no line, so it drops the dataBorder
+                        // (LibreOffice 26.2 draws such a bar without it).
+                        ...(pointFill ? { itemStyle: { color: series.pointFills?.[valueIndex] ?? series.automaticPointFill ?? chart.colors[valueIndex % chart.colors.length], ...(series.pointFills ? { borderWidth: 0 } : {}) } } : {}),
                         ...(value < 0 && negativePosition !== labelPosition ? { label: { position: negativePosition } } : {}),
                     });
                 }
@@ -1095,7 +1274,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // Each type stacks apart from the others, as each is its own chart element.
                 stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,
-                barGap: seriesType === "bar" ? "0%" : undefined,
+                barGap: seriesType === "bar" ? `${-overlap}%` : undefined,
                 // PptxGenJS writes <c:smooth> on line series only, so an area is never smoothed.
                 smooth: series.type === "line" ? chart.lineSmooth : undefined,
                 // PptxGenJS writes no <c:marker> on an area series, and Office draws none; ECharts draws a point's label on
@@ -1104,10 +1283,12 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     ? { symbol: "circle", symbolSize: 0 }
                     : { symbol: series.type === "line" ? lineSymbol(chart.lineSymbol) : series.type === "area" ? "none" : undefined, symbolSize: series.type === "line" ? symbolSize : undefined }),
                 // PptxGenJS writes an area series' <c:spPr> as its chartColors fill at chartColorsOpacity and no <a:ln>
-                // (lineSize is only for line and radar series), so LibreOffice fills it opaque by default with no edge.
-                lineStyle: series.type === "line" ? { width: pointsToPixels(chart.lineSize), color } : series.type === "area" ? { width: 0 } : undefined,
-                areaStyle: series.type === "area" ? { color, opacity: chart.colorOpacity } : undefined,
-                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : {}) },
+                // (lineSize is only for line and radar series), so LibreOffice fills it opaque by default with no edge;
+                // dataBorder gives it one.
+                lineStyle:
+                    series.type === "line" ? { width: pointsToPixels(chart.lineSize), color } : series.type === "area" ? (chart.dataBorder ? { width: pointsToPixels(chart.dataBorder.width), color: chart.dataBorder.color } : { width: 0 }) : undefined,
+                areaStyle: series.type === "area" ? { color, opacity: chart.colorOpacity, ...(crossing !== undefined ? { origin: crossValue } : {}) } : undefined,
+                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : series.type === "bar" ? border : {}) },
                 yAxisIndex: series.valueAxisIndex,
                 // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
                 // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.
@@ -1146,12 +1327,72 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             }
         }
 
+        // The data table under the plot area: the category names, then each series' name (after its key) and values in
+        // its data labels' format, each in its category's column, with the borders the target draws.
+        if (table) {
+            const plotLeft = layout ? layout.x * width : gridLeft;
+            const plotRight = layout ? (layout.x + layout.w) * width : width - gridRight;
+            const tableTop = layout ? (layout.y + layout.h) * height : height - gridBottom;
+            const tableLeft = plotLeft - tableNameColumn;
+            const tableBottom = tableTop + (chart.series.length + 1) * tableRowPx;
+            const column = (plotRight - plotLeft) / Math.max(1, categories.length);
+            const text = (value: string, x: number, row: number, align: "center" | "left") => ({
+                type: "text",
+                x,
+                y: tableTop + (row + 0.5) * tableRowPx,
+                silent: true,
+                style: { text: value, fill: table.color, fontFamily: table.fontFace, fontSize: tablePx, align, verticalAlign: "middle" },
+            });
+            const rule = (x1: number, y1: number, x2: number, y2: number) => ({ type: "line", silent: true, shape: { x1, y1, x2, y2 }, style: { stroke: table.borderColor, lineWidth: pointsToPixels(table.borderWidth) } });
+
+            for (const [index, category] of categories.entries()) {
+                graphics.push(text(categoryLabelFormat && Number.isFinite(Number(category)) && category.trim() !== "" ? formatChartNumber(Number(category), categoryLabelFormat) : category, plotLeft + (index + 0.5) * column, 0, "center"));
+            }
+
+            for (const [row, series] of chart.series.entries()) {
+                const labels = series.dataLabels ?? chart.dataLabels;
+                const nameX = tableLeft + 2 * LEGEND_TEXT_GAP;
+
+                if (table.keys) {
+                    graphics.push({ type: "rect", silent: true, shape: { x: nameX, y: tableTop + (row + 1.5) * tableRowPx - tableKeyPx / 2, width: tableKeyPx, height: tableKeyPx }, style: { fill: chart.colors[series.colorIndex % chart.colors.length] } });
+                }
+
+                graphics.push(text(series.name, nameX + (table.keys ? tableKeyPx + LEGEND_TEXT_GAP : 0), row + 1, "left"));
+
+                for (const [index, value] of series.values.entries()) {
+                    graphics.push(text(formatChartNumber(value, labels.valueFormat), plotLeft + (index + 0.5) * column, row + 1, "center"));
+                }
+            }
+
+            // The horizontal rules between rows, the vertical ones between columns (the names' first), the outline.
+            for (let row = 1; table.horizontalBorder && row <= chart.series.length; row++) {
+                graphics.push(rule(tableLeft, tableTop + row * tableRowPx, plotRight, tableTop + row * tableRowPx));
+            }
+
+            for (let index = 0; table.verticalBorder && index < categories.length; index++) {
+                graphics.push(rule(plotLeft + index * column, index === 0 ? tableTop + tableRowPx : tableTop, plotLeft + index * column, tableBottom));
+            }
+
+            if (table.outline) {
+                graphics.push({
+                    type: "rect",
+                    silent: true,
+                    shape: { x: tableLeft, y: tableTop + tableRowPx, width: plotRight - tableLeft, height: tableBottom - tableTop - tableRowPx },
+                    style: { fill: "none", stroke: table.borderColor, lineWidth: pointsToPixels(table.borderWidth) },
+                });
+            }
+        }
+
+        const categoryAxisOption = categoryAxes.length === 1 ? categoryAxis : categoryAxes;
+        const valueAxisOptionList = valueAxisList.length === 1 ? primaryValueAxis : valueAxisList;
+
         option = {
             ...common,
             grid,
-            xAxis: chart.type === "bar" && chart.barDirection === "bar" ? valueAxis : categoryAxis,
-            yAxis: chart.type === "bar" && chart.barDirection === "bar" ? categoryAxis : valueAxes.length === 1 ? valueAxis : valueAxes,
+            xAxis: horizontal ? valueAxisOptionList : categoryAxisOption,
+            yAxis: horizontal ? categoryAxisOption : valueAxisOptionList,
             series: cartesian,
+            ...(graphics.length ? { graphic: graphics } : {}),
         };
     }
 

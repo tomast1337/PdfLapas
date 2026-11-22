@@ -6,6 +6,8 @@ import {
     populateBulletTypeFixture,
     populateChartAxisLabelFixture,
     populateChartBar3DAxisFixture,
+    populateChartCategoryOptionFixture,
+    populateChartDataTableFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
     populateChartDataLabelFixture,
@@ -349,6 +351,26 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
             return presentation;
         },
         pages: 2,
+        crop: object => object.kind === "chart",
+    },
+    // chartCategoryOptions: the shared fixture's category-axis and point options slide (#566); every chart gets a crop.
+    chartCategoryOptions: {
+        populate: presentation => {
+            populateChartCategoryOptionFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartDataTable: the shared fixture's data tables, titles and depth axis slide (#567, #566); every chart gets a crop.
+    chartDataTable: {
+        populate: presentation => {
+            populateChartDataTableFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
         crop: object => object.kind === "chart",
     },
     // components: the shared fixture's component slide (an HTML and a React progress bar, sized boxes;

@@ -128,7 +128,7 @@ describe("compatibility manifest", () => {
         expect(COMPATIBILITY.chart.options.valAxisLineStyle).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valGridLine).toBe("implemented");
         expect(COMPATIBILITY.chart.options.valAxisLabelFormatCode).toBe("partial");
-        expect(COMPATIBILITY.chart.options.showDataTable).toBe("unsupported");
+        expect(COMPATIBILITY.chart.options.showDataTable).toBe("partial");
         // PptxGenJS 4.0.1 declares IChartOpts.fontFace and fontSize but no chart writer reads them.
         expect(COMPATIBILITY.chart.options.fontFace).toBe("ignored");
         expect(COMPATIBILITY.chart.options.fontSize).toBe("ignored");

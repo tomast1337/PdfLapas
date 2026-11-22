@@ -475,6 +475,55 @@ export const PPTX_DEFAULTS = Object.freeze({
             // LibreOffice lowers the plot area by two plot-area gaps and 1.71 title font sizes for a bottom axis title
             // (measured on PptxGenJS column charts 4.1in high: 39px for a 10pt title, 71px for 24pt).
             titleBandEm: 1.71,
+            // makeCatAxis: `<c:delete val="${catAxisHidden ? 1 : 0}"/>`, `catAxisLabelPos || (barDir === 'col' ? 'low' :
+            // 'nextTo')`, no `rot` unless catAxisLabelRotate, `<a:ln w="${catAxisLineSize || 1pt}">` in
+            // `catAxisLineColor || DEF_CHART_GRIDLINE.color` with `catAxisLineStyle || 'solid'`, and
+            // `catAxisMinorTickMark || 'none'`.
+            hidden: false,
+            columnLabelPosition: "low" as const,
+            barLabelPosition: "nextTo" as const,
+            labelRotate: 0,
+            lineColor: "888888",
+            lineWidthPt: 1,
+            lineStyle: "solid" as const,
+            minorTickMark: "none" as const,
+        }),
+        // makeSerAxis (bar3D): `serAxisTitle || 'Axis Title'`, `serAxisLabelFontSize || 12`, `serAxisLabelColor ||
+        // '000000'`, `serAxisLabelFontFace || 'Arial'`; the title is written without `sz` (Office's 10pt default).
+        seriesAxis: Object.freeze({
+            title: "Axis Title",
+            titleColor: "000000",
+            titleFontSizePt: 10,
+            labelColor: "000000",
+            labelFontSizePt: 12,
+        }),
+        // `<c:dTable>`: `dataTableFontSize || 12` in the theme's minor font (+mn-lt) and tx1 at 65% (595959), borders
+        // 0.75pt (9525 EMU) in tx1 at 15% (D9D9D9). Each border and the keys default to shown. LibreOffice 26.2 sets each
+        // row 1.79 font sizes apart (its PDF export of a 12pt table: 21.5pt between baselines).
+        dataTable: Object.freeze({
+            fontSizePt: 12,
+            color: "595959",
+            borderColor: "D9D9D9",
+            borderWidthPt: 0.75,
+            rowEm: 1.79,
+            keyEm: 0.6,
+        }),
+        // dataBorder: PptxGenJS sets a missing or invalid `pt` to 0.75 and a color that is not hex or a scheme name to
+        // F9F9F9; a missing color is written `val="undefined"`, taken as that fallback here.
+        dataBorder: Object.freeze({ widthPt: 0.75, color: "F9F9F9" }),
+        // `<c:dispUnits><c:builtInUnit>`: each unit's divisor, and the name Office prints for `<c:dispUnitsLbl/>`.
+        // shortcut: the names are Office's display-unit menu entries, not read from a PowerPoint render; measure them
+        // with the decks waiting for PowerPoint (#566).
+        displayUnits: Object.freeze({
+            hundreds: Object.freeze({ divisor: 1e2, label: "Hundreds" }),
+            thousands: Object.freeze({ divisor: 1e3, label: "Thousands" }),
+            tenThousands: Object.freeze({ divisor: 1e4, label: "10000" }),
+            hundredThousands: Object.freeze({ divisor: 1e5, label: "100000" }),
+            millions: Object.freeze({ divisor: 1e6, label: "Millions" }),
+            tenMillions: Object.freeze({ divisor: 1e7, label: "10000000" }),
+            hundredMillions: Object.freeze({ divisor: 1e8, label: "100000000" }),
+            billions: Object.freeze({ divisor: 1e9, label: "Billions" }),
+            trillions: Object.freeze({ divisor: 1e12, label: "Trillions" }),
         }),
         secondaryCategoryAxis: false,
         secondaryValueAxis: false,

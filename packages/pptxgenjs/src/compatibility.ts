@@ -212,6 +212,25 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelRotate", // not drawn on radar charts (#561)
     "valAxisLabelPos", // low and high are not drawn on radar charts (#561)
     "catGridLine", // not drawn on radar charts (#479)
+    // Not drawn on radar charts; nor on bar3D, scatter or bubble charts for the placement options (#566).
+    "catAxisCrossesAt",
+    "catAxisHidden",
+    "catAxisLabelFrequency", // and where the target reads `tickLblSkip` only (readsCategoryLabelSkip)
+    "catAxisLabelPos", // `high` not on bar3D or bubble charts
+    "catAxisLabelRotate",
+    "catAxisLineColor",
+    "catAxisLineShow",
+    "catAxisLineSize",
+    "catAxisLineStyle",
+    "catAxisMajorTickMark", // `cross` remains explicit unsupported
+    "catAxisMinorTickMark", // as catAxisMajorTickMark
+    "catAxisOrientation",
+    "catLabelFormatCode", // the numeric formats of valAxisLabelFormatCode, no date formats
+    "valAxisCrossesAt", // not with a secondary value axis
+    "valAxisDisplayUnit", // where the target reads `<c:dispUnits>` (readsValueAxisDisplayUnits); not on radar charts
+    "valAxisDisplayUnitLabel", // as valAxisDisplayUnit, not on bar3D charts nor with a value-axis title
+    "showDataTable", // column, line, area and combo charts only (#567)
+    "dataLabelBkgrdColors", // not on bar3D charts
     "plotArea", // not drawn on pie, doughnut, radar or bar3D charts, as LibreOffice draws none there (#479)
     "fill", // as plotArea
     "border", // as plotArea

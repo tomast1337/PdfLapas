@@ -544,9 +544,23 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
+    // The grouping PptxGenJS 4.0.1 writes per chart type: bar keeps clustered, stacked or percentStacked (standard and
+    // anything else become clustered), bar3D any of the four (else standard), and an area chart `<c:grouping>` only for
+    // stacked; a line or any other chart gets none, so it is drawn standard (addChartDefinition, makeChartType).
     const grouping = options.barGrouping;
-    const normalizedGrouping: NormalizedChart["grouping"] =
-        grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : normalizedType === "bar3D" ? PPTX_DEFAULTS.chart.grouping.bar3D : PPTX_DEFAULTS.chart.grouping.bar;
+    let normalizedGrouping: NormalizedChart["grouping"] = PPTX_DEFAULTS.chart.grouping.none;
+
+    if (normalizedType === "bar") {
+        normalizedGrouping = grouping === "stacked" || grouping === "percentStacked" || grouping === "clustered" ? grouping : PPTX_DEFAULTS.chart.grouping.bar;
+    } else if (normalizedType === "bar3D") {
+        normalizedGrouping = grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : PPTX_DEFAULTS.chart.grouping.bar3D;
+    } else if (normalizedType === "area") {
+        normalizedGrouping = grouping === "stacked" ? grouping : PPTX_DEFAULTS.chart.grouping.area;
+    } else if (normalizedType === "mixed") {
+        // shortcut: a combo chart keeps one grouping for all its series, where PptxGenJS writes one per chart type (#529).
+        normalizedGrouping = grouping === "stacked" || grouping === "percentStacked" || grouping === "standard" || grouping === "clustered" ? grouping : PPTX_DEFAULTS.chart.grouping.bar;
+    }
+
     const hasSecondaryValueAxis = series.some(item => item.valueAxisIndex === 1);
 
     if (hasSecondaryValueAxis && valueAxisOptions.length !== 2) {

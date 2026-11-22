@@ -487,6 +487,26 @@ describe("chart normalization and rendering", () => {
         expect(plot?.getAttribute("d")).toBe(`M${0.25 * width} ${0.1 * height}l${0.5 * width} 0l0 ${+(0.6 * height).toFixed(2)}l-${0.5 * width} 0Z`);
     });
 
+    test("applies barGrouping per chart type as PptxGenJS writes <c:grouping> (#518)", () => {
+        const grouping = (type: PptxGenJS.CHART_NAME, barGrouping?: string) => normalizeChart(type, categoricalData, barGrouping === undefined ? {} : { barGrouping }).grouping;
+
+        // A line chart gets no <c:grouping>, so it is drawn standard and its automatic axis is not stacked.
+        expect(grouping("line", "stacked")).toBe("standard");
+        expect(grouping("line", "percentStacked")).toBe("standard");
+        expect(normalizeChart("line", categoricalData, { barGrouping: "stacked" }).valueAxisMaximum).toBe(7);
+        // An area chart is stacked only for "stacked"; percentStacked writes no <c:grouping>.
+        expect(grouping("area", "stacked")).toBe("stacked");
+        expect(grouping("area", "percentStacked")).toBe("standard");
+        expect(grouping("area")).toBe("standard");
+        // A bar chart turns standard (and anything else) into clustered; bar3D keeps standard and defaults to it.
+        expect(grouping("bar")).toBe("clustered");
+        expect(grouping("bar", "standard")).toBe("clustered");
+        expect(grouping("bar", "percentStacked")).toBe("percentStacked");
+        expect(grouping("bar3D")).toBe("standard");
+        expect(grouping("bar3D", "clustered")).toBe("clustered");
+        expect(grouping("radar", "stacked")).toBe("standard");
+    });
+
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
         const chart = normalizeChart("bar3D", categoricalData, {
             bar3DShape: "cylinder",

@@ -167,6 +167,12 @@ export type RenderingTargetProfile = {
      */
     readonly chartPointKeepsSeriesFill: boolean;
     /**
+     * Whether the legend of a single-series bar or bar3D chart whose `<c:dPt>`s have no fill (PptxGenJS's per-point
+     * outline, or `lineSize: 0`, with several chartColors) lists each point in its chartColors entry, or the series
+     * (`NormalizedChart.legendListsPoints`).
+     */
+    readonly chartLegendListsUnfilledPoints: boolean;
+    /**
      * Where it draws a top-right legend (`legendPos: "tr"`): in a band beside the plot area at the chart's top corner,
      * as a right legend's, or in a band above the plot area at the right edge (`NormalizedChart.topRightLegend`).
      */

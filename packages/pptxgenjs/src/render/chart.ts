@@ -289,12 +289,23 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const verticalLegend = chart.legendPosition === "l" || chart.legendPosition === "r" || chart.legendPosition === "tr";
     const reversedLegend = reversedSeries || (verticalLegend && stacked && (chart.type === "area" || (chart.type === "bar" && !horizontal)));
     // Office keys a bar, area or pie entry with a filled square and a line entry with its line and marker.
-    let legendData: { name: string; icon?: string }[] | undefined;
+    let legendData: { name: string; icon?: string; itemStyle?: { color: string } }[] | undefined;
 
     if (chart.type === "pie" || chart.type === "doughnut") {
         const labels = chart.series[0]?.labels ?? [];
 
         legendData = (chart.series[0]?.values ?? []).map((_, index) => ({ name: labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON }));
+    } else if (chart.legendListsPoints) {
+        // Each point of the only series, keyed in its drawn fill, as PowerPoint's PDF export draws it (#546); ECharts keys
+        // a bar series' legend by series name, so each entry gets an empty series of its name below.
+        // shortcut: a filled <c:dPt> (varyColors) would key its own color; it keeps the series entry until measured (#552).
+        const only = chart.series[0];
+
+        legendData = [];
+
+        for (const [index] of (only?.values ?? []).entries()) {
+            legendData.push({ name: only?.labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON, itemStyle: { color: only?.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4" } });
+        }
     } else if (chart.type !== "radar" && chart.type !== "scatter" && chart.type !== "bubble") {
         legendData = chart.series.map(series => (series.type === "line" ? { name: series.name } : { name: series.name, icon: LEGEND_SQUARE_ICON }));
 
@@ -776,6 +787,13 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // ECharts places a band's bars from the top down in series order, and draws each series over the ones before it.
         if (reversedSeries || chart.firstSeriesInFront) {
             cartesian.reverse();
+        }
+
+        // A line series without data draws nothing and takes no bar slot; it only names a point's legend entry.
+        if (chart.legendListsPoints) {
+            for (const entry of legendData ?? []) {
+                cartesian.push({ name: entry.name, type: "line", data: [] });
+            }
         }
 
         option = {

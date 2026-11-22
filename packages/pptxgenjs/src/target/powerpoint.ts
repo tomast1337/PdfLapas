@@ -257,6 +257,10 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of a synthetic deck (#507) fills each outline-only point with the automatic accent1, as
     // LibreOffice does.
     chartPointKeepsSeriesFill: false,
+    // PowerPoint's PDF export of a synthetic deck (#546: a single-series bar3D chart, each `<c:dPt>` an outline in its
+    // chartColors entry, and a bar chart with `lineSize: 0`, each `<a:ln><a:noFill/>`, both `<c:varyColors val="0"/>`)
+    // lists Q1 to Q4 in the legend, each keyed in its point's color, where LibreOffice lists the series.
+    chartLegendListsUnfilledPoints: true,
     topRightLegend: { kind: "above" as const, firstKeyCenterEm: 1.55, pitchEm: 1.725, bandBelowEm: 0.98 },
 });
 

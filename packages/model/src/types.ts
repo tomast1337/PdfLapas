@@ -448,6 +448,11 @@ export type NormalizedChart = {
     plotLayout?: NormalizedChartLayout;
     /** Whether the series are drawn from the last to the first, so the first is in front; absent: in series order. */
     firstSeriesInFront?: boolean;
+    /**
+     * Whether the legend lists the only series' points, each by its category label and keyed in its point's color,
+     * in place of the series; absent: the series.
+     */
+    legendListsPoints?: boolean;
     altText: string;
 };
 

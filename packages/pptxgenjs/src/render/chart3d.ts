@@ -392,25 +392,44 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         ["fill", chart.legendColor],
     ];
     const keySize = Math.round(pointsToPixels(chart.legendFontSize) * PPTX_DEFAULTS.chart.legendKeyFontRatio);
-    const legend = chart.showLegend
-        ? chart.series.flatMap((series, index) => {
-              const itemWidth = Math.min(100, width / Math.max(2, chart.series.length + 1));
-              const x = width / 2 + (index - (chart.series.length - 1) / 2) * itemWidth;
-              const y = height - 12;
-              const color = chart.colors[index % chart.colors.length] ?? "#4472C4";
+    // Each series in its color, or each point of the only series keyed as the point is drawn (legendListsPoints):
+    // its fill and its outline, as PowerPoint's PDF export draws them (#546).
+    const legendEntries: { name: string; fill: string; stroke?: string }[] = [];
+    const only = chart.series[0];
 
-              return [
-                  element("rect", [
-                      ["x", n(x - 22 - keySize)],
-                      ["y", n(y - keySize)],
-                      ["width", n(keySize)],
-                      ["height", n(keySize)],
-                      ["fill", color],
-                  ]),
-                  element("text", [["class", "bar3d-legend"], ["x", n(x - 17)], ["y", n(y)], ...legendFont], escapeText(series.name)),
-              ];
-          })
-        : [];
+    if (chart.legendListsPoints && only) {
+        for (const [index] of only.values.entries()) {
+            legendEntries.push({ name: only.labels[index] ?? String(index + 1), fill: only.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4", stroke: only.pointLineColors?.[index] });
+        }
+    } else {
+        for (const [index, series] of chart.series.entries()) {
+            legendEntries.push({ name: series.name, fill: chart.colors[index % chart.colors.length] ?? "#4472C4" });
+        }
+    }
+
+    const legend: Html[] = [];
+
+    if (chart.showLegend) {
+        for (const [index, { name, fill, stroke }] of legendEntries.entries()) {
+            const itemWidth = Math.min(100, width / Math.max(2, legendEntries.length + 1));
+            const x = width / 2 + (index - (legendEntries.length - 1) / 2) * itemWidth;
+            const y = height - 12;
+
+            legend.push(
+                element("rect", [
+                    ["x", n(x - 22 - keySize)],
+                    ["y", n(y - keySize)],
+                    ["width", n(keySize)],
+                    ["height", n(keySize)],
+                    ["fill", fill],
+                    ["stroke", stroke],
+                    ["stroke-width", stroke ? n(pointsToPixels(PPTX_DEFAULTS.chart.pointLineWidthPt)) : undefined],
+                ]),
+                element("text", [["class", "bar3d-legend"], ["x", n(x - 17)], ["y", n(y)], ...legendFont], escapeText(name)),
+            );
+        }
+    }
+
     const title = chart.showTitle
         ? [
               element(

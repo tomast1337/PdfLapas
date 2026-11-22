@@ -40,43 +40,98 @@ export function automaticAxisInterval(minimum: number, maximum: number): number 
     return decimal(magnitude * 100);
 }
 
+/** The bound an option fixes on an axis whose other bound is automatic, or none. */
+export type FixedAxisBound = { kind: "none" } | { kind: "minimum"; value: number } | { kind: "maximum"; value: number };
+
 /**
- * LibreOffice's automatic scale of a linear axis whose data runs from low to high: the automatic interval, the bounds
- * rounded out to whole intervals, then each bound one interval further where the data comes within borderRatio of the
- * range of it, except a bound at 0; a bound that makes too many steps takes the next interval. A scatter chart's x axis
- * passes its data range; a bar, line or area value axis reaches to 0 (automaticValueBounds).
+ * LibreOffice's automatic scale of a linear axis whose data runs from low to high (PPTX_DEFAULTS.chart.automaticScale),
+ * ported from chart2 ScaleAutomatism::calculateExplicitIncrementAndScaleForLinear:
+ * 1. A fixed bound beyond the data takes the data's place (a fixed minimum above the data is also the maximum).
+ * 2. A range at or below 0 is scaled negated, [-5, -2] as [2, 5] with its fixed bound on the other side.
+ * 3. A value axis (towardZero) whose automatic minimum is above 0 drops it to 0 when it is under wideRatio of the
+ *    maximum (or equal to it), else moves it half the range toward 0.
+ * 4. A range still empty doubles an automatic maximum (0 becomes 1) or halves an automatic minimum (0 becomes -1).
+ * 5. The interval is automaticAxisInterval's. Each automatic bound rounds out to whole intervals counted from the fixed
+ *    bound (from 0 when none is fixed), then moves one interval further where the data comes within borderRatio of the
+ *    range of it, unless it is 0. More than maxIncrements steps take the next interval in 1, 2, 5 x 10^k.
+ * A scatter chart's x axis passes its data range, with no fixed bound and not toward 0.
  */
-export function automaticAxisScale(low: number, high: number): AxisScale {
-    const { maxIncrements, borderRatio } = PPTX_DEFAULTS.chart.automaticScale;
-    let interval = automaticAxisInterval(low, high);
+export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBound, towardZero: boolean): AxisScale {
+    const { maxIncrements, borderRatio, wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
+    let autoMinimum = fixed.kind !== "minimum";
+    let autoMaximum = fixed.kind !== "maximum";
+    let sourceMinimum = fixed.kind === "minimum" ? fixed.value : low;
+    let sourceMaximum = fixed.kind === "maximum" ? fixed.value : high;
+
+    if (sourceMinimum > sourceMaximum) {
+        if (autoMaximum) {
+            sourceMaximum = sourceMinimum;
+        } else {
+            sourceMinimum = sourceMaximum;
+        }
+    }
+
+    const negate = sourceMinimum < 0 && sourceMaximum <= 0;
+
+    if (negate) {
+        [sourceMinimum, sourceMaximum] = [-sourceMaximum, -sourceMinimum];
+        [autoMinimum, autoMaximum] = [autoMaximum, autoMinimum];
+    }
+
+    let tempMinimum = sourceMinimum;
+    let tempMaximum = sourceMaximum;
+
+    if (towardZero && autoMinimum && tempMinimum > 0) {
+        if (tempMinimum === tempMaximum || tempMinimum / tempMaximum < wideRatio) {
+            tempMinimum = 0;
+        } else {
+            tempMinimum -= (tempMaximum - tempMinimum) / 2;
+        }
+    }
+
+    if (tempMinimum === tempMaximum) {
+        if (autoMaximum) {
+            tempMaximum = tempMaximum === 0 ? 1 : tempMaximum * 2;
+        } else {
+            tempMinimum = tempMinimum === 0 ? -1 : tempMinimum / 2;
+        }
+    }
+
+    // The intervals count from the fixed bound, so a fixed minimum of 7 draws 7, 12, 17 and not 10, 15.
+    const base = !autoMinimum ? tempMinimum : !autoMaximum ? tempMaximum : 0;
+    let interval = automaticAxisInterval(tempMinimum, tempMaximum);
     let scale: AxisScale = { minimum: low, maximum: high, interval };
 
-    // Each pass at most doubles to quintuples the interval, so three passes reach one that fits.
+    // Each pass at least doubles the interval, so three passes reach one that fits.
     for (let pass = 0; pass < 3; pass++) {
-        let minimum = Math.floor(low / interval + STEP_EPSILON) * interval;
-        let maximum = Math.ceil(high / interval - STEP_EPSILON) * interval;
+        let minimum = tempMinimum;
+        let maximum = tempMaximum;
 
-        if (maximum <= minimum) {
-            maximum = minimum + interval;
+        if (autoMinimum) {
+            minimum = decimal(base + Math.floor((minimum - base) / interval + STEP_EPSILON) * interval);
+
+            if (minimum !== 0 && (maximum - sourceMinimum) / (maximum - minimum) > 1 - borderRatio) {
+                minimum = decimal(minimum - interval);
+            }
         }
 
-        const border = (maximum - minimum) * borderRatio;
+        if (autoMaximum) {
+            maximum = decimal(base + Math.ceil((maximum - base) / interval - STEP_EPSILON) * interval);
 
-        if (low !== 0 && low - minimum <= border + STEP_EPSILON) {
-            minimum -= interval;
+            if (maximum !== 0 && (sourceMaximum - minimum) / (maximum - minimum) > 1 - borderRatio) {
+                maximum = decimal(maximum + interval);
+            }
         }
 
-        if (high !== 0 && maximum - high <= border + STEP_EPSILON) {
-            maximum += interval;
-        }
+        // `+ 0` turns a negated 0 into 0, so no label reads -0.
+        scale = negate ? { minimum: -maximum + 0, maximum: -minimum + 0, interval } : { minimum, maximum, interval };
 
-        scale = { minimum: decimal(minimum), maximum: decimal(maximum), interval };
-
-        if ((maximum - minimum) / interval <= maxIncrements + STEP_EPSILON) {
+        if (Math.floor((maximum - minimum) / interval + STEP_EPSILON) <= maxIncrements) {
             return scale;
         }
 
-        interval = automaticAxisInterval(minimum, maximum);
+        // The next of 1, 2 and 5 x 10^k.
+        interval = decimal(interval * (interval.toExponential(0).startsWith("2") ? 2.5 : 2));
     }
 
     return scale;

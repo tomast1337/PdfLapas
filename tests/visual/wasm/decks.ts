@@ -18,6 +18,7 @@ import {
     populateChartPieFixture,
     populateChartPlotAreaFixture,
     populateChartPlotBandFixture,
+    populateChartFixedBoundFixture,
     populateChartPointColorFixture,
     populateChartScatterAxesFixture,
     populateChartScatterFixture,
@@ -272,6 +273,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
         },
         pages: 1,
         crop: isText,
+    },
+    // chartFixedBound: the shared fixture's fixed value-axis bound slide (#556); every chart gets a crop.
+    chartFixedBound: {
+        populate: presentation => {
+            populateChartFixedBoundFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
     },
     // components: the shared fixture's component slide (an HTML and a React progress bar, sized boxes;
     // the reference draws the same bars as PptxGenJS rectangles).

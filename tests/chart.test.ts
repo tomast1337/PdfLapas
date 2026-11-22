@@ -452,12 +452,43 @@ describe("chart normalization and rendering", () => {
         expect(normalizeChart("pie", data, { showValue: true }, "libreoffice").dataLabels.position).toBe("ctr");
         expect(normalizeChart("pie", data, { showValue: true, dataLabelPosition: "bestFit" }, "libreoffice").dataLabels.position).toBe("bestFit");
 
-        // A 0.72 degree slice is too narrow for its label, which goes outside the ring.
+        // A 0.72 degree slice is too narrow for its label, which goes outside the ring, shrunk to make room for it (#572).
         const narrow = new PuppeteerGen();
 
         narrow.addSlide().addChart("pie", [{ name: "S", labels: ["Lorem", "Ipsum"], values: [499, 1] }], { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "bestFit" });
-        expect(labels(narrow, "499")[0]?.distance).toBeLessThan(183.8);
-        expect(labels(narrow, "1")[0]?.distance).toBeGreaterThan(183.8);
+        const sector = renderedPage(narrow).querySelector(".slide-chart svg path")?.getAttribute("d") ?? "";
+        const [radius = Number.NaN] = (/A([\d.]+) /.exec(sector) ?? []).slice(1).map(Number);
+        const [centerX = Number.NaN, centerY = Number.NaN] = (/L([\d.]+) ([\d.]+)Z/.exec(sector) ?? []).slice(1).map(Number);
+        const fromCenter = (content: string) => {
+            const text = Array.from(renderedPage(narrow).querySelectorAll(".slide-chart svg text")).find(candidate => candidate.textContent === content);
+            const [x = Number.NaN, y = Number.NaN] = (/translate\(([-\d.]+) ([-\d.]+)\)/.exec(text?.getAttribute("transform") ?? "") ?? []).slice(1).map(Number);
+
+            return Math.hypot(x - centerX, y - centerY);
+        };
+
+        expect(radius).toBeLessThan(183.8);
+        expect(fromCenter("499")).toBeLessThan(radius);
+        expect(fromCenter("1")).toBeGreaterThan(radius);
+    });
+
+    test("shrinks a bestFit pie's ring for each label too wide for its slice of LibreOffice's first, small ring (#572)", () => {
+        // LibreOffice 26.2.7 on a 6 x 4.4in pie, 12pt Arial percentages at 96 dpi: a 40/25/20/15 ring 395px wide, a
+        // 70/15/8/4/3 one 373px, though every label of both lies in its slice.
+        const ringWidth = (values: number[]) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("pie", [{ name: "S", labels: values.map(String), values }], { x: 0, y: 0, w: 6, h: 4.4, showPercent: true, showValue: false, dataLabelPosition: "bestFit", dataLabelFontFace: "Arial" });
+            let radius = 0;
+
+            for (const path of renderedPage(presentation).querySelectorAll(".slide-chart svg path")) {
+                radius = Math.max(radius, Number(/A([\d.]+) /.exec(path.getAttribute("d") ?? "")?.[1] ?? 0));
+            }
+
+            return 2 * radius;
+        };
+
+        expect(ringWidth([40, 25, 20, 15])).toBeCloseTo(395, -1);
+        expect(ringWidth([70, 15, 8, 4, 3])).toBeCloseTo(373, -1);
     });
 
     test("wraps a long outEnd pie label where LibreOffice does, and keeps one line per field for PowerPoint (#558)", () => {

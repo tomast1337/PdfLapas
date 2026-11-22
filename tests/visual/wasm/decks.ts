@@ -8,6 +8,7 @@ import {
     populateChartBar3DAxisFixture,
     populateChartCategoryOptionFixture,
     populateChartDataTableFixture,
+    populateChartPieBestFitFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
     populateChartDataLabelFixture,
@@ -367,6 +368,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartDataTable: {
         populate: presentation => {
             populateChartDataTableFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartPieBestFit: the shared fixture's bestFit pie ring slide (#572); every chart gets a crop.
+    chartPieBestFit: {
+        populate: presentation => {
+            populateChartPieBestFitFixture(presentation);
 
             return presentation;
         },

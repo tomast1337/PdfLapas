@@ -786,11 +786,44 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 });
             }
 
+            // PieChart::performLabelBestFitInnerPlacement on a ring of that radius: how far from the center the label's
+            // center goes, with its outer corner on the ring shrunk by bestFitRimRatio, or undefined when a corner then
+            // leaves the slice.
+            const bestFitDistance = (slice: (typeof slices)[number], inner: { width: number; height: number }, ringRadius: number) => {
+                const halfWidth = inner.width / 2;
+                const halfHeight = inner.height / 2;
+                const reach = ringRadius * pieLabel.bestFitRimRatio;
+                // The outer corner's offset from the label's center, along the bisector.
+                const along = Math.abs(slice.cos) * halfWidth + Math.abs(slice.sin) * halfHeight;
+                const discriminant = along * along - halfWidth * halfWidth - halfHeight * halfHeight + reach * reach;
+
+                if (discriminant < 0 || Math.sqrt(discriminant) < along) {
+                    return undefined;
+                }
+
+                const distance = Math.sqrt(discriminant) - along;
+
+                for (const [dx, dy] of [
+                    [-halfWidth, -halfHeight],
+                    [-halfWidth, halfHeight],
+                    [halfWidth, -halfHeight],
+                    [halfWidth, halfHeight],
+                ] as const) {
+                    const cornerDegrees = (Math.atan2(distance * slice.sin + dy, distance * slice.cos + dx) * 180) / Math.PI;
+                    const fromStart = (((cornerDegrees - slice.degrees + slice.spanDegrees / 2) % 360) + 360) % 360;
+
+                    if (fromStart > slice.spanDegrees) {
+                        return undefined;
+                    }
+                }
+
+                return distance;
+            };
             // LibreOffice's first layout: a ring 1 / firstPassDivisor of the plot area, centered in a box that size
             // placed at the plot area's far corner (VDiagram::reduceToMinimumSize), and the rect its labels and ring
-            // cover there. Only inEnd and outEnd labels resize the ring.
-            // shortcut: a bestFit label that goes outside its slice leaves the ring as it is, where LibreOffice shrinks it
-            // to make room; measure it when a deck has one.
+            // cover there. inEnd and outEnd labels resize the ring, and so does each bestFit label that does not fit in
+            // its slice of that small ring, though it may fit in the final one: LibreOffice 26.2 draws a 70/15/8/4/3 pie
+            // with bestFit percentages, all inside their slices, on a ring 6% smaller than a 40/25/20/15 one (#572).
             const firstWidth = boxWidth / pieLabel.firstPassDivisor;
             const firstHeight = boxHeight / pieLabel.firstPassDivisor;
             const firstSide = Math.min(firstWidth, firstHeight);
@@ -801,7 +834,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             let minY = firstY;
             let maxY = firstY + firstSide;
 
-            for (const slice of rimLabels ? slices : []) {
+            for (const slice of slices) {
+                if (bestFit && bestFitDistance(slice, layoutLabel(slice.fields, slice.cos, undefined), firstSide / 2) !== undefined) {
+                    continue;
+                }
+
                 const anchorX = firstX + firstSide / 2 + (firstSide / 2 + offset) * slice.cos;
                 const anchorY = firstY + firstSide / 2 - (firstSide / 2 + offset) * slice.sin;
                 const label = layoutLabel(slice.fields, slice.cos, outside ? firstX + (firstSide / 2) * (1 + slice.cos) : undefined);
@@ -852,7 +889,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const innerWidth = Math.max(0, Math.min(left + boxWidth, innerX + firstSide + deltaWidth) - innerLeft);
             const innerHeight = Math.max(0, Math.min(top + boxHeight, innerY + firstSide + deltaHeight) - innerTop);
 
-            if (rimLabels) {
+            if (rimLabels || bestFit) {
                 radius = Math.min(innerWidth, innerHeight) / 2;
                 centerX = innerLeft + innerWidth / 2;
                 centerY = innerTop + innerHeight / 2;
@@ -869,28 +906,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // shrunk by bestFitRimRatio, if every corner then lies in the slice; else outside, as above.
                 if (bestFit) {
                     const inner = layoutLabel(slice.fields, slice.cos, undefined);
-                    const halfWidth = inner.width / 2;
-                    const halfHeight = inner.height / 2;
-                    const reach = radius * pieLabel.bestFitRimRatio;
-                    // The outer corner's offset from the label's center, along the bisector.
-                    const along = Math.abs(slice.cos) * halfWidth + Math.abs(slice.sin) * halfHeight;
-                    const discriminant = along * along - halfWidth * halfWidth - halfHeight * halfHeight + reach * reach;
-                    const distance = discriminant < 0 ? -1 : Math.sqrt(discriminant) - along;
-                    let fits = distance >= 0;
+                    const distance = bestFitDistance(slice, inner, radius);
 
-                    for (const [dx, dy] of [
-                        [-halfWidth, -halfHeight],
-                        [-halfWidth, halfHeight],
-                        [halfWidth, -halfHeight],
-                        [halfWidth, halfHeight],
-                    ] as const) {
-                        const cornerDegrees = (Math.atan2(distance * slice.sin + dy, distance * slice.cos + dx) * 180) / Math.PI;
-                        const fromStart = (((cornerDegrees - slice.degrees + slice.spanDegrees / 2) % 360) + 360) % 360;
-
-                        fits &&= fromStart <= slice.spanDegrees;
-                    }
-
-                    if (fits) {
+                    if (distance !== undefined) {
                         x = centerX + distance * slice.cos;
                         y = centerY - distance * slice.sin;
                         label = inner;

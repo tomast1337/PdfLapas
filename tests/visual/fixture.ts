@@ -2234,6 +2234,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartLegendOrderFixture(presentation);
     populateChartStackedFixture(presentation);
     populateBulletTypeFixture(presentation);
+    populateChartAreaFixture(presentation);
 }
 
 /**
@@ -2994,4 +2995,25 @@ export function populateBulletTypeFixture(presentation: Presentation): void {
     slide.addText("Plain paragraph", { ...box, x: 0.5, bullet: { type: "bullet", characterCode: "25BA" } });
     slide.addText("bullet: true", { x: 5.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
     slide.addText("Bulleted paragraph", { ...box, x: 5.5, bullet: true });
+}
+
+/**
+ * Area fill (#520): PptxGenJS writes an area series' fill from chartColors at chartColorsOpacity (100% by default) and
+ * no edge line, so LibreOffice fills it opaque. A parity slide after the others (no page number moves) and the WASM
+ * chartArea deck, which crops each chart: a stacked area chart at the default opacity and one at 50%. Stacked, so no
+ * series covers another, and the legend at the bottom, clear of the side legend's overlap (#517).
+ */
+export function populateChartAreaFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Area fill", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [
+        { name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 2, 6, 4] },
+        { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 3, 1, 5] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, barGrouping: "stacked", chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "b" };
+
+    slide.addChart("area", data, { ...shared, x: 0.4 });
+    slide.addChart("area", data, { ...shared, x: 5.2, chartColorsOpacity: 50 });
 }

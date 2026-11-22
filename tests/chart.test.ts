@@ -673,6 +673,24 @@ describe("chart normalization and rendering", () => {
         expect(markers("scatter", { lineDataSymbol: "none" })).toHaveLength(0);
     });
 
+    test("fills an area series at chartColorsOpacity with no edge line, as PptxGenJS writes its c:spPr (#520)", () => {
+        const areaPaths = (options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart("area", categoricalData, { x: 0, y: 0, w: 5, h: 3, chartColors: ["4472C4", "ED7D31"], lineSize: 3, ...options });
+
+            return Array.from(renderedPage(presentation).querySelectorAll(".slide-chart path")).filter(path => path.getAttribute("fill") === "#4472C4" || path.getAttribute("stroke") === "#4472C4");
+        };
+        // The fill at 100% by default; the series line ECharts draws along the top has no width (no <a:ln>, even with lineSize).
+        const [fill, edge] = areaPaths({});
+
+        expect(fill?.getAttribute("fill")).toBe("#4472C4");
+        expect(fill?.getAttribute("fill-opacity")).toBeNull();
+        expect(edge?.getAttribute("stroke-width")).toBe("0");
+        // `<a:alpha val="${chartColorsOpacity * 1000}"/>`.
+        expect(areaPaths({ chartColorsOpacity: 40 })[0]?.getAttribute("fill-opacity")).toBe("0.4");
+    });
+
     test("joins a scatter series' points with its line, as PptxGenJS's lineMarker style writes it", () => {
         const xyData: PptxGenJS.OptsChartData[] = [
             { name: "X", values: [1, 2, 3, 4] },

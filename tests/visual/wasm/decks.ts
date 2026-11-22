@@ -21,6 +21,7 @@ import {
     populateChartScatterAxesFixture,
     populateChartScatterFixture,
     populateChartStackedFixture,
+    populateChartTopRightLegendFixture,
     populateComponentFixture,
     populateImageFixture,
     populatePlaceholderFixture,
@@ -234,6 +235,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartScatterAxes: {
         populate: presentation => {
             populateChartScatterAxesFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartTopRightLegend: the shared fixture's vertical legend slide (#536); every chart gets a crop.
+    chartTopRightLegend: {
+        populate: presentation => {
+            populateChartTopRightLegendFixture(presentation);
 
             return presentation;
         },

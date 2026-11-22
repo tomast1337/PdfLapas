@@ -1,3 +1,4 @@
+import type { NormalizedChart } from "@pdflapas/model";
 import { LIBREOFFICE } from "./libreoffice";
 import { POWERPOINT } from "./powerpoint";
 
@@ -165,6 +166,11 @@ export type RenderingTargetProfile = {
      * (`NormalizedChartSeries.automaticPointFill`).
      */
     readonly chartPointKeepsSeriesFill: boolean;
+    /**
+     * Where it draws a top-right legend (`legendPos: "tr"`): in a band beside the plot area at the chart's top corner,
+     * as a right legend's, or in a band above the plot area at the right edge (`NormalizedChart.topRightLegend`).
+     */
+    readonly topRightLegend: NormalizedChart["topRightLegend"];
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

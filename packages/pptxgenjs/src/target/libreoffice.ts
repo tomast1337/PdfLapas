@@ -40,6 +40,10 @@ import type { RenderingTargetProfile } from "./index";
  * `chartColors: ["FF0000", "00AA00", "0000FF"]`, every bar3D box (each `<c:dPt>` an outline in its color) and every
  * bar of a bar chart with `lineSize: 0` (each `<c:dPt>` `<a:ln><a:noFill/>`) is 4472C4 blue, while the legend key
  * stays FF0000; a bar3D chart with one chartColors entry, which gets no `<c:dPt>`, is red.
+ * It draws a top-right legend in the chart's top corner beside the plot area, which keeps a right legend's band
+ * (`topRightLegend`): in LibreOffice 26.2's PDF export of synthetic PptxGenJS 4.0.1 column charts (1.6 to 5in tall,
+ * with and without a title, 1 to 5 entries, 10 to 20pt), the first key's center is 0.83 legend font sizes below the
+ * chart's top edge whatever the height, the title or the entry count, and the plot area's top does not move (#536).
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -73,4 +77,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsDoughnutHoleSize: false,
     firstAreaSeriesInFront: true,
     chartPointKeepsSeriesFill: false,
+    topRightLegend: { kind: "beside" as const },
 });

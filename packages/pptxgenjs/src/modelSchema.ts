@@ -246,6 +246,7 @@ const chart = z.strictObject({
     colorOpacity: z.number().min(0).max(1),
     showLegend: z.boolean(),
     legendPosition: z.enum(["b", "l", "r", "t", "tr"]),
+    topRightLegend: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("beside") }), z.strictObject({ kind: z.literal("above"), firstKeyCenterEm: nonNegative, pitchEm: nonNegative, bandBelowEm: nonNegative })]),
     showTitle: z.boolean(),
     title: z.string(),
     fontFace,

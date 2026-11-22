@@ -23,12 +23,13 @@
   "chartBarColors": "b11a79c984be99fa2f4520eb7c09457e8b5b2faf05e33d25ba117daf69d55c55",
   "chartPie": "df58f41d9f55961aa6007243ac7359a5238583a3cfc994cf6c436f2b3ba453e7",
   "chartBarOrder": "d3b14fa8a9282919f2b5dd9bab21c4e95b6dc109d38eda9f3fa67ba6db4e373b",
-  "chartLegendOrder": "883ffdb9b1e81a44ef4e6979907d7cd669e4b66f67a848071d11f0959ee2e7cb",
+  "chartLegendOrder": "3663d52c7f5fec74a977d6990a6f37ca21d09f89d9a1addf65e32efcf67b28f4",
   "chartStacked": "77f818a7296d5414efb81ded8488814561b3cd15b1d7dfa35d763f5ec17b15b4",
   "chartArea": "65dcdceaf680471d86d429231dd38125ecb5a21c06eb149114b44e219c6e1e40",
   "chartPlotBand": "c5b0a8578a68aac6c84a80738341f09e95462eff19e60ad8106be3bf978b70a2",
   "chartCombo": "6222bc31173d64c30ffe18dece49a56ec23ef41a9aad46045366561fa1ece5fb",
   "chartAreaOrder": "50db6e5e1ab98e524ce763a25108a3cdaf22dd854ab73f2e4c644911a7b80836",
   "chartPointColors": "959ed958450086332868c616b38e4d8542e7df6770fd88c42b75603101c340c5",
-  "chartScatterAxes": "50b599b287f90115d78bd2bbbd3876687bf8bd42bda25f148d41fa6aa91cfe1c"
+  "chartScatterAxes": "50b599b287f90115d78bd2bbbd3876687bf8bd42bda25f148d41fa6aa91cfe1c",
+  "chartTopRightLegend": "13bfd7faa205ea47ec3cf26289355942798bc6ec8bcbb73648ed0afab5d790af"
 }

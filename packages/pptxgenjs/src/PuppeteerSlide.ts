@@ -249,6 +249,7 @@ export class PuppeteerSlide implements PptxSlide {
         const chart = {
             ...normalized,
             series,
+            topRightLegend: target.topRightLegend,
             ...(target.drawsChartMarkerOutline ? {} : { lineSymbolLineSize: 0 }),
             ...(target.firstAreaSeriesInFront && normalized.type === "area" && normalized.grouping === "standard" ? { firstSeriesInFront: true } : {}),
         };

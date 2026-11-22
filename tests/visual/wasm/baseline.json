@@ -527,7 +527,7 @@
     "p1-Chart0": 0.0928
   },
   "chartLegendOrder": {
-    "p1-Chart0": 0.1377
+    "p1-Chart0": 0.1367
   },
   "chartStacked": {
     "p1-Chart0": 0.0862,
@@ -555,5 +555,9 @@
   "chartScatterAxes": {
     "p1-Chart0": 0.1164,
     "p1-Chart1": 0.1078
+  },
+  "chartTopRightLegend": {
+    "p1-Chart0": 0.1364,
+    "p1-Chart1": 0.0987
   }
 }

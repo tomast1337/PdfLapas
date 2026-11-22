@@ -2240,6 +2240,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartAreaOrderFixture(presentation);
     populateChartPointColorFixture(presentation);
     populateChartScatterAxesFixture(presentation);
+    populateChartTopRightLegendFixture(presentation);
 }
 
 /**
@@ -3134,4 +3135,26 @@ export function populateChartPointColorFixture(presentation: Presentation): void
     // The bar3D chart is the smaller one: its projection and axis steps differ from LibreOffice's apart from #507.
     slide.addChart("bar3D", data, { ...shared, x: 0.4, w: 3.4, h: 2.8 });
     slide.addChart("bar", data, { ...shared, x: 4.2, w: 5.4, h: 4.1, lineSize: 0 });
+}
+
+/**
+ * Top-right legends (#536): a stacked column chart and a line chart with legendPos "tr", which LibreOffice draws in the
+ * chart's top corner beside the plot area, one entry every 1.43 legend font sizes, and PowerPoint in a band above it.
+ * The values stay under 7, where LibreOffice and the renderer both step the value axis by 1. A parity slide after the
+ * others (no page number moves) and the WASM chartTopRightLegend deck, which crops each chart.
+ */
+export function populateChartTopRightLegendFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Top-right legend", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const data = [
+        { name: "Lorem", labels, values: [3, 2, 1, 2] },
+        { name: "Ipsum", labels, values: [2, 1, 3, 2] },
+        { name: "Dolor", labels, values: [1, 3, 2, 2] },
+    ];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "tr" };
+
+    slide.addChart("bar", data, { ...shared, x: 0.4, barGrouping: "stacked" });
+    slide.addChart("line", data.slice(0, 2), { ...shared, x: 5.2, lineDataSymbol: "none" });
 }

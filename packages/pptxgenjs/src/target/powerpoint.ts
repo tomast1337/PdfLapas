@@ -194,6 +194,14 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
  * It draws a picture's inner shadow (`drawsPictureInnerShadow`), the Format Picture > Shadow > Inner effect, on the
  * side its angle points to with a Gaussian of sigma blurRad / 3 (`PPTX_DEFAULTS.shadow.innerSigmaPerBlur`).
  * It draws a chart marker's outline (`drawsChartMarkerOutline`), the Format Data Series > Marker > Border.
+ * It draws a top-right legend at the chart's right edge in a band above the plot area, which keeps its full width
+ * (`topRightLegend`, #536): measured against its PDF export of a synthetic deck (a 4.4 x 4.1in stacked column chart,
+ * three entries, 10pt legend, 96 dpi), the first key's top is 16.6px below the chart's top edge and the last key's
+ * bottom 70.6px, so with its 8px key the first key's center is 1.55 legend font sizes down and an entry comes every
+ * 1.725; the top gridline is 87.6px down (14.6px without the legend), half a value label below the band's end, 0.98
+ * legend font sizes under the last key's center.
+ * shortcut: fitted on one chart (10pt, three entries, 4.1in tall), assuming its key is 0.6 legend font sizes as in
+ * LibreOffice; measure other sizes and entry counts when a deck needs them.
  * It draws an underline from the face's `post` table, unbroken under descenders (`underlineFromFont`), where
  * Chromium's default is about 0.1em thick at its own offset with gaps for descenders: measured against its PDF
  * export of a synthetic deck (Arial, Calibri and Times New Roman at 8, 10, 12, 18 and 24pt, regular and bold), the
@@ -249,6 +257,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of a synthetic deck (#507) fills each outline-only point with the automatic accent1, as
     // LibreOffice does.
     chartPointKeepsSeriesFill: false,
+    topRightLegend: { kind: "above" as const, firstKeyCenterEm: 1.55, pitchEm: 1.725, bandBelowEm: 0.98 },
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

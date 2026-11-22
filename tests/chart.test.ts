@@ -709,6 +709,65 @@ describe("chart normalization and rendering", () => {
         expect(Math.abs(noTicks.bottom - (4.1 * 96 * PPTX_DEFAULTS.chart.plotAreaGapRatio + labelBand - pointsToPixels(band.tickLengthPt)))).toBeLessThanOrEqual(1);
     });
 
+    test("places a top-right legend as each target draws it: beside the plot in LibreOffice, above it in PowerPoint (#536)", () => {
+        const data = ["Lorem", "Ipsum", "Dolor"].map((name, index) => ({ name, labels: ["Q1", "Q2"], values: [index + 1, index + 2] }));
+        const layout = (presentation: PuppeteerGen, options: PptxGenJS.IChartOpts) => {
+            presentation.addSlide().addChart("bar", structuredClone(data), { x: 0, y: 0, w: 4.4, h: 4.1, ...options });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const rows: number[] = [];
+            const ends: number[] = [];
+
+            // The gridlines: the plot area's top and right edge.
+            for (const path of svg?.querySelectorAll("path") ?? []) {
+                const segment = /^M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)$/.exec(path.getAttribute("d") ?? "");
+
+                if (segment && segment[2] === segment[4] && Number(segment[3]) - Number(segment[1]) > 100) {
+                    rows.push(Number(segment[2]));
+                    ends.push(Number(segment[3]));
+                }
+            }
+
+            const keys: { x: number; y: number }[] = [];
+
+            for (const key of svg?.querySelectorAll('path[ecmeta_ssr_type="legend"][d^="M0 0"]') ?? []) {
+                const translate = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(key.getAttribute("transform") ?? "");
+
+                keys.push({ x: Number(translate?.[1]), y: Number(translate?.[2]) });
+            }
+
+            return { top: Math.min(...rows), right: Math.max(...ends), keys };
+        };
+        const legendPx = pointsToPixels(10);
+        const keySize = Math.round(legendPx * PPTX_DEFAULTS.chart.legendKeyFontRatio);
+        // LibreOffice 26.2: in the chart's top corner, the first key centered 0.83 legend font sizes down, one entry every
+        // 1.43; the plot keeps its top and its side band.
+        const libreOffice = layout(new PuppeteerGen(), { showLegend: true, legendPos: "tr" });
+        const libreOfficeRight = layout(new PuppeteerGen(), { showLegend: true, legendPos: "r" });
+        const plain = layout(new PuppeteerGen(), {});
+        const vertical = PPTX_DEFAULTS.chart.verticalLegend;
+
+        expect(libreOffice.keys[0]?.y ?? NaN).toBeCloseTo(vertical.firstKeyCenterEm * legendPx - keySize / 2, 1);
+        expect((libreOffice.keys[2]?.y ?? NaN) - (libreOffice.keys[0]?.y ?? NaN)).toBeCloseTo(2 * vertical.pitchEm * legendPx, 1);
+        expect((libreOfficeRight.keys[1]?.y ?? NaN) - (libreOfficeRight.keys[0]?.y ?? NaN)).toBeCloseTo(vertical.pitchEm * legendPx, 1);
+        expect(libreOffice.top).toBe(plain.top);
+        expect(libreOffice.right).toBe(libreOfficeRight.right);
+        expect(libreOffice.right).toBeLessThan(plain.right);
+
+        // PowerPoint (its PDF export of a 4.4 x 4.1in stacked column chart): the first key's top 16.6px down, the last
+        // key's bottom 70.6px, the top gridline 87.6px (14.6px without the legend), the plot area its full width.
+        const powerPoint = layout(new PuppeteerGenPowerPoint(), { showLegend: true, legendPos: "tr", barGrouping: "stacked" });
+        const powerPointPlain = layout(new PuppeteerGenPowerPoint(), { barGrouping: "stacked" });
+
+        expect(Math.abs((powerPoint.keys[0]?.y ?? NaN) - 16.6)).toBeLessThan(0.6);
+        expect(Math.abs((powerPoint.keys[2]?.y ?? NaN) + keySize - 70.6)).toBeLessThan(0.6);
+        expect(Math.abs(powerPoint.top - 87.6)).toBeLessThanOrEqual(1.5);
+        // The top gridline without a legend is a 1px line snapped to 16.5px, a pixel below PowerPoint's (#528).
+        expect(Math.abs(powerPointPlain.top - 14.6)).toBeLessThanOrEqual(2);
+        expect(powerPoint.right).toBe(powerPointPlain.right);
+        // The model carries the target's placement, so another renderer draws it the same.
+        expect(normalizeChart("bar", data, {}).topRightLegend).toEqual({ kind: "beside" });
+    });
+
     test("reserves a side legend's band beside the plot area, as LibreOffice narrows it (#517)", () => {
         const width = inchesToPixels(4.4);
         // The gridlines' horizontal extent: the plot area's left and right edges.

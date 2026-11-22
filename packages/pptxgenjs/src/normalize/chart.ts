@@ -740,6 +740,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         // Text options.
         showLegend: options.showLegend ?? PPTX_DEFAULTS.chart.showLegend,
         legendPosition: options.legendPos ?? PPTX_DEFAULTS.chart.legendPosition,
+        // The rendering target places it (PuppeteerSlide, `topRightLegend`).
+        topRightLegend: { kind: "beside" },
         showTitle: options.showTitle ?? PPTX_DEFAULTS.chart.showTitle,
         title: options.title ?? "Chart Title",
         // PptxGenJS 4.0.1 reads no chart-level `fontFace` or `fontSize`: every chart text has its own option,

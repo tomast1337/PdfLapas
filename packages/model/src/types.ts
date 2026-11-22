@@ -397,6 +397,12 @@ export type NormalizedChart = {
     colorOpacity: number;
     showLegend: boolean;
     legendPosition: "b" | "l" | "r" | "t" | "tr";
+    /**
+     * Where a top-right legend goes: in its band beside the plot area, or in a band above it that leaves the plot its
+     * full width, its first key centered firstKeyCenterEm legend font sizes below the chart's top edge, one entry every
+     * pitchEm, and the band ending bandBelowEm below the last key's center.
+     */
+    topRightLegend: { kind: "beside" } | { kind: "above"; firstKeyCenterEm: number; pitchEm: number; bandBelowEm: number };
     showTitle: boolean;
     title: string;
     fontFace: string;

@@ -333,7 +333,16 @@ export const PPTX_DEFAULTS = Object.freeze({
         // ratio measured): at most 10 steps of 1, 2 or 5 x 10^k, and a bound one step further where the data comes within
         // 1/21 of the range of it. In LibreOffice 26.2's PDF export of synthetic PptxGenJS 4.0.1 scatter charts the x axis
         // runs 0..8 by 1 for 0..7.6, 0.1..1 by 0.1 for 0.2..0.9, 90..170 by 10 for 100..160, 0..60 by 10 for 0..48,
-        // 0..16 by 2 for 0..15 and 0..3.5 by 0.5 for 0..3 (#519).
+        // 0..16 by 2 for 0..15 and 0..3.5 by 0.5 for 0..3 (#519). A bar, line or area value axis takes the same scale
+        // over its data and 0, a bound at 0 never moving (#547). Its column, horizontal bar, line and area charts (4.4 x
+        // 4.1in, no axis options) draw: max 4 0..4.5 by 0.5; 7 0..8 by 1; 10 and 11 0..12 by 2; 12 0..14 by 2; 16
+        // 0..18 by 2; 20 and 21 0..25 by 5; 48 0..60 by 10; 95 0..100 by 10; 100 0..120 by 20; 100..160 0..180 by 20;
+        // 0.9 0..1 by 0.1; 2.5 0..3 by 0.5; -3..8 -4..10 by 2; -12..7 -15..10 by 5; -7..-2 -8..0 by 1; stacked totals
+        // 12 0..14 by 2 and 16 0..18 by 2; percent-stacked 0..100% by 10%. PowerPoint draws the same scale on a value
+        // axis long enough for its labels (2.5in or taller at 10pt: -6..9 gives -8..10 by 2, 120..170 0..180 by 20).
+        // shortcut: PowerPoint coarsens the step where the labels crowd the axis (short axes, horizontal bars, large
+        // label fonts), drawing a stacked horizontal bar with totals up to 16 as 0..20 by 5; both targets take
+        // LibreOffice's step until that rule is measured (#527).
         automaticScale: Object.freeze({ maxIncrements: 10, borderRatio: 1 / 21 }),
         displayBlanksAs: "span" as const,
         radarStyle: "standard" as const,

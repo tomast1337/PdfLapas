@@ -2241,6 +2241,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartPointColorFixture(presentation);
     populateChartScatterAxesFixture(presentation);
     populateChartTopRightLegendFixture(presentation);
+    populateChartValueAxisFixture(presentation);
 }
 
 /**
@@ -3157,4 +3158,35 @@ export function populateChartTopRightLegendFixture(presentation: Presentation): 
 
     slide.addChart("bar", data, { ...shared, x: 0.4, barGrouping: "stacked" });
     slide.addChart("line", data.slice(0, 2), { ...shared, x: 5.2, lineDataSymbol: "none" });
+}
+
+/**
+ * Value axis steps over 10 (#547): LibreOffice steps a bar, line or area value axis by the smallest 1, 2 or 5 x 10^k
+ * that gives at most 10 steps, so a stacked column chart with totals up to 12 runs 0..14 by 2 and a line chart up to
+ * 48 runs 0..60 by 10. A parity slide after the others (no page number moves) and the WASM chartValueAxis deck, which
+ * crops each chart.
+ */
+export function populateChartValueAxisFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Value axis steps", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b" };
+
+    slide.addChart(
+        "bar",
+        [
+            { name: "Lorem", labels, values: [5, 4, 7, 3] },
+            { name: "Ipsum", labels, values: [7, 3, 4, 6] },
+        ],
+        { ...shared, x: 0.4, barGrouping: "stacked" },
+    );
+    slide.addChart(
+        "line",
+        [
+            { name: "Lorem", labels, values: [12, 30, 48, 25] },
+            { name: "Ipsum", labels, values: [20, 15, 35, 40] },
+        ],
+        { ...shared, x: 5.2, lineDataSymbol: "none" },
+    );
 }

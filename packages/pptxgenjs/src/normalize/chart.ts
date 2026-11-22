@@ -1,4 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
+import { automaticAxisScale } from "#src/chart/axisScale";
 import { UnsupportedChartError } from "#src/chart/errors";
 import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -283,16 +284,9 @@ function automaticValueBounds(type: NormalizedChartType, series: readonly Normal
         return minimum === 0 ? [0, 1] : [minimum, maximum];
     }
 
-    const largest = Math.max(Math.abs(minimum), Math.abs(maximum));
-    const magnitude = 10 ** Math.floor(Math.log10(largest));
-    const normalized = largest / magnitude;
-    const step = normalized <= 1 ? magnitude / 10 : normalized <= 2 ? magnitude / 5 : normalized <= 5 ? magnitude / 2 : magnitude;
-    const upperMultiple = Math.ceil(maximum / step);
-    const lowerMultiple = Math.floor(minimum / step);
-    const upper = (upperMultiple * step === maximum ? upperMultiple + 1 : upperMultiple) * step;
-    const lower = minimum < 0 ? (lowerMultiple * step === minimum ? lowerMultiple - 1 : lowerMultiple) * step : 0;
+    const scale = automaticAxisScale(minimum, maximum);
 
-    return [lower, upper];
+    return [scale.minimum, scale.maximum];
 }
 
 function positiveNumber(value: number | undefined, name: string, fallback: number): number {

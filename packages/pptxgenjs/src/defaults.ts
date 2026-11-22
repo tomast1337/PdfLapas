@@ -293,7 +293,9 @@ export const PPTX_DEFAULTS = Object.freeze({
         gridLine: Object.freeze({ color: "888888", style: "solid" as const, widthPt: 1, cap: "flat" as const }),
         scatterGridLine: Object.freeze({ color: "D9D9D9", widthPt: 1 }),
         barDirection: "col" as const,
-        grouping: Object.freeze({ area: "standard" as const, bar: "clustered" as const, bar3D: "standard" as const }),
+        // `none`: a chart PptxGenJS writes no `<c:grouping>` for (line, radar, pie, scatter, and an area chart other than
+        // stacked), which LibreOffice and PowerPoint draw standard.
+        grouping: Object.freeze({ area: "standard" as const, bar: "clustered" as const, bar3D: "standard" as const, none: "standard" as const }),
         // A stacked or percent-stacked chart's `<c:gapWidth>` when barGapWidthPct is unset or 0.
         stackedGapWidthPct: 50,
         barGapWidthPct: 150,

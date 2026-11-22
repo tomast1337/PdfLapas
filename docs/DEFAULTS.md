@@ -427,6 +427,9 @@ contract includes:
   and LibreOffice, and through the WASM renderer's alias table.
 - Bar direction/grouping, 3D shape, gaps, overlap, and rotations. A stacked or percent-stacked chart's
   gap width is 50% when `barGapWidthPct` is unset or 0, as PptxGenJS writes it (150% otherwise).
+  `barGrouping` applies as PptxGenJS writes `<c:grouping>`: a bar chart is clustered, stacked or
+  percent-stacked (clustered by default and for `standard`), a bar3D chart any of the four (standard by
+  default), an area chart stacked only for `stacked`, and a line or any other chart always standard.
 - Legend, data-label, axis visibility, and data-table flags.
 - Data labels: 12pt black Arial, `#,##0` (a pie or doughnut: `0%` with `showPercent`, else `General`),
   outside a clustered bar's end, in a stacked bar's or a doughnut ring's center, right of a line point

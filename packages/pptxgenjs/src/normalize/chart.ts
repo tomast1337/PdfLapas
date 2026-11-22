@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import { automaticAxisScale } from "#src/chart/axisScale";
+import { automaticAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
 import { UnsupportedChartError } from "#src/chart/errors";
 import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -221,7 +221,8 @@ function normalizeSeries(type: NormalizedChartType, data: readonly PptxGenJS.Opt
     return normalized;
 }
 
-function automaticValueBounds(type: NormalizedChartType, series: readonly NormalizedChartSeries[]): [number, number] {
+/** The lowest and highest values a value axis shows: each value, or each stack's totals or shares (0 to 0 with none). */
+function valueAxisDataRange(type: NormalizedChartType, series: readonly NormalizedChartSeries[]): [number, number] {
     const values: number[] = [];
     // The stacked series by type: each type stacks apart from the others.
     const stacks = new Map<NormalizedChartType, NormalizedChartSeries[]>();
@@ -277,16 +278,7 @@ function automaticValueBounds(type: NormalizedChartType, series: readonly Normal
         }
     }
 
-    const minimum = Math.min(0, ...values);
-    const maximum = Math.max(0, ...values);
-
-    if (minimum === maximum) {
-        return minimum === 0 ? [0, 1] : [minimum, maximum];
-    }
-
-    const scale = automaticAxisScale(minimum, maximum);
-
-    return [scale.minimum, scale.maximum];
+    return values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 0];
 }
 
 function positiveNumber(value: number | undefined, name: string, fallback: number): number {
@@ -309,11 +301,15 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
     return normalized;
 }
 
-function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefined, automatic: [number, number], path: string, chartTypes: PptxGenJS.CHART_NAME[], defaultGridLine: PptxGenJS.OptsChartGridLine): NormalizedChart["valueAxes"][number] {
+function normalizeValueAxis(axisOptions: PptxGenJS.IChartPropsAxisVal | undefined, dataRange: [number, number], path: string, chartTypes: PptxGenJS.CHART_NAME[], defaultGridLine: PptxGenJS.OptsChartGridLine): NormalizedChart["valueAxes"][number] {
     const defaults = PPTX_DEFAULTS.chart.valueAxis;
-    // Check the axis's bounds, scale, unit, tick marks and label format.
-    const minimum = axisOptions?.valAxisMinVal ?? automatic[0];
-    const maximum = axisOptions?.valAxisMaxVal ?? automatic[1];
+    // Check the axis's bounds, scale, unit, tick marks and label format. An automatic bound scales from a fixed one (#556).
+    const fixedMinimum = axisOptions?.valAxisMinVal;
+    const fixedMaximum = axisOptions?.valAxisMaxVal;
+    const fixed: FixedAxisBound = fixedMinimum !== undefined ? { kind: "minimum", value: fixedMinimum } : fixedMaximum !== undefined ? { kind: "maximum", value: fixedMaximum } : { kind: "none" };
+    const scale = automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
+    const minimum = fixedMinimum ?? scale.minimum;
+    const maximum = fixedMaximum ?? scale.maximum;
 
     if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum >= maximum) {
         throw new TypeError("Chart value-axis minimum must be less than its maximum");
@@ -664,8 +660,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         italic: options.dataLabelFontItalic ?? false,
     };
     const axisSeries = (axisIndex: 0 | 1) => series.filter(item => item.valueAxisIndex === axisIndex);
-    const automaticPrimary = automaticValueBounds(normalizedType, axisSeries(0));
-    const automaticSecondary = hasSecondaryValueAxis ? automaticValueBounds(normalizedType, axisSeries(1)) : undefined;
+    const primaryDataRange = valueAxisDataRange(normalizedType, axisSeries(0));
+    const secondaryDataRange = hasSecondaryValueAxis ? valueAxisDataRange(normalizedType, axisSeries(1)) : undefined;
     const catDefaults = PPTX_DEFAULTS.chart.categoryAxis;
     // PptxGenJS 4.0.1 gives a scatter chart (not a bubble chart) `{ color: 'D9D9D9', size: 1 }` gridlines on both axes
     // when catGridLine or valGridLine is unset.
@@ -688,11 +684,11 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
-    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, automaticPrimary, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
+    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {});
     const valueAxes = [primaryAxis];
 
-    if (automaticSecondary) {
-        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], automaticSecondary, "valAxes[1].", chartTypes, {}));
+    if (secondaryDataRange) {
+        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, "valAxes[1].", chartTypes, {}));
     }
 
     // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing

@@ -571,7 +571,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // major unit or the same automatic interval.
         // shortcut: the bubble chart's x scale is not measured against LibreOffice (it may leave room for the bubbles);
         // measure it when a deck has one.
-        const xScale = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues)) : undefined;
+        const xScale = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), { kind: "none" }, false) : undefined;
         const scatter: Record<string, unknown>[] = [];
 
         for (const [seriesIndex, series] of ySeries.entries()) {

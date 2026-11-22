@@ -2242,6 +2242,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartScatterAxesFixture(presentation);
     populateChartTopRightLegendFixture(presentation);
     populateChartValueAxisFixture(presentation);
+    populateChartFixedBoundFixture(presentation);
 }
 
 /**
@@ -3191,5 +3192,36 @@ export function populateChartValueAxisFixture(presentation: Presentation): void 
             { name: "Ipsum", labels, values: [20, 15, 35, 40] },
         ],
         { ...shared, x: 5.2, lineDataSymbol: "none" },
+    );
+}
+
+/**
+ * One fixed value-axis bound (#556): LibreOffice scales the automatic bound and the step from the fixed one and counts
+ * the steps from it, so a column chart with valAxisMinVal 7 and data up to 48 runs 7..52 by 5 (7, 12, 17) and a line
+ * chart with valAxisMaxVal 45 and data down to -20 runs -25..45 by 10. A parity slide after the others (no page number
+ * moves) and the WASM chartFixedBound deck, which crops each chart.
+ */
+export function populateChartFixedBoundFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Fixed value-axis bound", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b" };
+
+    slide.addChart(
+        "bar",
+        [
+            { name: "Lorem", labels, values: [10, 48, 30, 22] },
+            { name: "Ipsum", labels, values: [18, 25, 41, 12] },
+        ],
+        { ...shared, x: 0.4, valAxisMinVal: 7 },
+    );
+    slide.addChart(
+        "line",
+        [
+            { name: "Lorem", labels, values: [-20, 12, 40, 25] },
+            { name: "Ipsum", labels, values: [5, -8, 18, 30] },
+        ],
+        { ...shared, x: 5.2, lineDataSymbol: "none", valAxisMaxVal: 45 },
     );
 }

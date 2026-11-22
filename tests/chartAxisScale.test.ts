@@ -16,7 +16,7 @@ describe("automatic axis scale", () => {
         ];
 
         for (const [low, high, minimum, maximum, interval] of cases) {
-            expect(automaticAxisScale(low, high)).toEqual({ minimum, maximum, interval });
+            expect(automaticAxisScale(low, high, { kind: "none" }, false)).toEqual({ minimum, maximum, interval });
         }
     });
 
@@ -27,9 +27,9 @@ describe("automatic axis scale", () => {
         expect(automaticAxisInterval(0, 0.7)).toBe(0.1);
         expect(automaticAxisInterval(-30, 45)).toBe(10);
         expect(automaticAxisInterval(0, 1e6)).toBe(1e5);
-        // A single value or no range keeps a unit step.
+        // No range keeps a unit step; ScaleAutomatism doubles the maximum of a single value, 5 scaling as 5..10 (drawn 4..10).
         expect(automaticAxisInterval(5, 5)).toBe(1);
-        expect(automaticAxisScale(5, 5)).toEqual({ minimum: 4, maximum: 6, interval: 1 });
+        expect(automaticAxisScale(5, 5, { kind: "none" }, false)).toEqual({ minimum: 4, maximum: 10, interval: 1 });
     });
 
     test("matches LibreOffice 26.2's bar, line and area value axes, which reach to 0 (#547)", () => {
@@ -89,6 +89,62 @@ describe("automatic axis scale", () => {
                 14,
                 2,
             ],
+        ];
+
+        for (const [type, options, values, minimum, maximum, interval] of cases) {
+            const data = values.map((series, index) => ({ name: `S${index}`, labels: ["A", "B", "C"], values: series }));
+            const chart = normalizeChart(type, data, options);
+
+            expect([chart.valueAxisMinimum, chart.valueAxisMaximum, automaticAxisInterval(chart.valueAxisMinimum, chart.valueAxisMaximum)]).toEqual([minimum, maximum, interval]);
+        }
+    });
+
+    test("matches LibreOffice 26.2's value axes beside a fixed bound and on narrow data (#556)", () => {
+        // Measured in its PDF export of synthetic PptxGenJS 4.0.1 charts (4.4 x 4.1in, Arial): chart, options, series
+        // values, then the drawn axis. The renderer counts the labels from the minimum, so 7..52 by 5 reads 7, 12, 17.
+        const cases: [PptxGenJS.CHART_NAME, PptxGenJS.IChartOpts, number[][], number, number, number][] = [
+            ["bar", { valAxisMinVal: 5 }, [[10, 48, 30]], 5, 55, 5],
+            ["bar", { valAxisMinVal: 20 }, [[3, 48, 30]], 20, 50, 5],
+            ["bar", { valAxisMinVal: 7 }, [[10, 48, 30]], 7, 52, 5],
+            ["bar", { valAxisMinVal: -10 }, [[3, 12, 8]], -10, 15, 5],
+            ["bar", { valAxisMinVal: 50 }, [[60, 100, 80]], 50, 110, 10],
+            ["line", { valAxisMinVal: 2 }, [[1, 4, 3]], 2, 4.5, 0.5],
+            ["bar", { valAxisMinVal: 60 }, [[10, 48, 30]], 60, 120, 10],
+            ["line", { valAxisMinVal: 5 }, [[10, 48, 30]], 5, 55, 5],
+            ["bar", { valAxisMinVal: 5, barDir: "bar" }, [[10, 48, 30]], 5, 55, 5],
+            ["bar", { valAxisMaxVal: 30 }, [[3, 48, 20]], 0, 30, 5],
+            ["bar", { valAxisMaxVal: 100 }, [[10, 48, 30]], 0, 100, 10],
+            ["bar", { valAxisMaxVal: 50 }, [[-12, 30, 20]], -20, 50, 10],
+            ["bar", { valAxisMaxVal: 10 }, [[-3, 8, 5]], -4, 10, 2],
+            ["bar", { valAxisMaxVal: 40 }, [[-48, -10, -20]], -60, 40, 10],
+            ["bar", { valAxisMaxVal: -5 }, [[-48, -10, -20]], -55, -5, 5],
+            ["bar", { valAxisMaxVal: 3 }, [[1, 4, 2]], 0, 3, 0.5],
+            ["bar", { valAxisMaxVal: 45 }, [[-20, 48, 10]], -25, 45, 10],
+            ["bar", { valAxisMaxVal: -5 }, [[-48, -2, -20]], -55, -5, 5],
+            ["area", { valAxisMaxVal: 30 }, [[3, 48, 20]], 0, 30, 5],
+            [
+                "bar",
+                { valAxisMinVal: 5, barGrouping: "stacked" },
+                [
+                    [5, 30, 10],
+                    [5, 18, 20],
+                ],
+                5,
+                55,
+                5,
+            ],
+            ["bar", { valAxisMaxVal: 50 }, [[44, 48, 46]], 41, 50, 1],
+            ["bar", {}, [[150, 155, 160]], 144, 162, 2],
+            ["bar", { valAxisMinVal: -5 }, [[-48, -10, -20]], -5, 0, 0.5],
+            ["bar", { valAxisMaxVal: 0 }, [[3, 48, 20]], -1, 0, 0.1],
+            ["bar", { valAxisMinVal: -60 }, [[-48, -10, -20]], -60, 0, 10],
+            ["line", {}, [[150, 155, 160]], 144, 162, 2],
+            ["bar", { valAxisMaxVal: -50 }, [[-48, -10, -20]], -100, -50, 5],
+            ["bar", { valAxisMinVal: 0 }, [[3, 48, 20]], 0, 60, 10],
+            ["bar", {}, [[-150, -155, -160]], -162, -144, 2],
+            ["bar", { valAxisMinVal: 140 }, [[150, 155, 160]], 140, 165, 5],
+            ["bar", { valAxisMinVal: 5 }, [[1, 4, 2]], 5, 10, 0.5],
+            ["bar", { valAxisMaxVal: -2 }, [[-4, -1, -2]], -4.5, -2, 0.5],
         ];
 
         for (const [type, options, values, minimum, maximum, interval] of cases) {

@@ -2284,6 +2284,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartBar3DAxisFixture(presentation);
     populateChartOptionLabelFixture(presentation);
     populateChartOptionAxisFixture(presentation);
+    populateChartComboAreaPieLabelFixture(presentation);
 }
 
 /**
@@ -3353,4 +3354,46 @@ export function populateChartOptionAxisFixture(presentation: Presentation): void
         valGridLine: { color: "00B050" },
     });
     slide.addChart("line", data, { ...shared, x: 6.6, valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts);
+}
+
+/**
+ * Combo areas and pie labels (#538, #558): a combo of stacked bars then areas, whose areas LibreOffice draws behind the
+ * bars and lists first, keeping the categories between the ticks; a line then areas, on the ticks
+ * (`<c:crossBetween val="midCat"/>`); a pie with explicit bestFit labels near the rim; and an outEnd pie whose long
+ * label on the right LibreOffice wraps. Two parity slides after the others (no page number moves) and the WASM
+ * chartComboAreaPieLabels deck, which crops each chart.
+ */
+export function populateChartComboAreaPieLabelFixture(presentation: Presentation): void {
+    const combo = presentation.addSlide();
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b", legendFontFace: "Arial" };
+    const areas: PptxGenJS.IChartMulti = {
+        type: "area",
+        data: [
+            { name: "Sit", labels, values: [2, 3, 2, 3] },
+            { name: "Amet", labels, values: [1, 2, 1, 2] },
+        ],
+        options: {},
+    };
+    const bars: PptxGenJS.IChartMulti = {
+        type: "bar",
+        data: [
+            { name: "Lorem", labels, values: [3, 5, 4, 7] },
+            { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+        ],
+        options: {},
+    };
+    const line: PptxGenJS.IChartMulti = { type: "line", data: [{ name: "Dolor", labels, values: [4, 6, 5, 7] }], options: {} };
+
+    combo.addText("Combo bars and areas", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    (combo.addChart as Function)([bars, areas], { ...shared, x: 0.4, barGrouping: "stacked" });
+    (combo.addChart as Function)([line, areas], { ...shared, x: 5.2 });
+
+    const pie = presentation.addSlide();
+    const data = [{ name: "Share", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }];
+    const pieShared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, dataLabelFontFace: "Arial" };
+
+    pie.addText("Pie bestFit and wrapped outEnd labels", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    pie.addChart("pie", data, { ...pieShared, x: 0.4, showValue: true, dataLabelPosition: "bestFit" });
+    pie.addChart("pie", data, { ...pieShared, x: 5.2, showLabel: true, showPercent: true, showValue: false, dataLabelPosition: "outEnd" });
 }

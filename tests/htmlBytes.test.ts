@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "2ca23700e9543121ba9ed1acc26394c6b01dc82d9ca930141fe88f4236e3f5ff",
+    fixture: "b6e141ad3e5759c7a18f807965b64ba71e1c11ea6daa14f22e2c0ecfc0d77088",
     "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
     "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -41,6 +41,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartScatterAxes": "cccfe2aca9150f8f64e25931e78cdac2c83a1a7d0f6873c3cdf8e803ddb5837e",
     "wasm-chartTopRightLegend": "aaf39b16e26a813435a919b18fdc3fe34472d21b639f684f6f6f23fb62a7cab3",
     "wasm-chartValueAxis": "f10bcbcfa7b15b0dc6e084b343249e1cd7ba7201dbbea188eb85f8d365923073",
+    "wasm-bulletType": "00f6f3cdb9a058f0278081965f24fb3e7663cbc96ce4b11ddff3160652ec1898",
     "wasm-svg": "0ed2222573f3ffa6ec6b887907d3f26a2343fe30f2c4a44a4608df6e0b5fba31",
     "wasm-gif": "cc044a43bcdaa50876fc2da1fedc3d3ede74d271b7a8ce406191ddd96b4dc71e",
     "wasm-webp": "389927c7c8b1506b25d5dece837d9f0131d4af29ad94ee0b361719c07798f1b8",

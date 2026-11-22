@@ -3,6 +3,7 @@
 import type pptxgen from "pptxgenjs";
 import type { PuppeteerGen } from "../../../packages/pptxgenjs/src/node";
 import {
+    populateBulletTypeFixture,
     populateChartAxisLabelFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
@@ -261,6 +262,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
         },
         pages: 1,
         crop: object => object.kind === "chart",
+    },
+    // bulletType: the shared fixture's non-number bullet type slide (#513, #531); every text box gets a crop.
+    bulletType: {
+        populate: presentation => {
+            populateBulletTypeFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: isText,
     },
     // components: the shared fixture's component slide (an HTML and a React progress bar, sized boxes;
     // the reference draws the same bars as PptxGenJS rectangles).

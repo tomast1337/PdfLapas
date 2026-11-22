@@ -207,6 +207,8 @@ export type NormalizedTextParagraph = {
     /** Spacing of the default stops after the last explicit one, in px. */
     defaultTabStop: number;
     bullet?: NormalizedTextBullet;
+    /** Without a bullet: where every line starts, in px from the text area's left edge; absent, 0. */
+    marginLeft?: number;
 };
 
 export type NormalizedTextBox = {

@@ -145,7 +145,7 @@ impl Renderer {
         for (p, paragraph) in (0u32..).zip(&text.paragraphs) {
             let (indent, marker_x) = match &paragraph.bullet {
                 Some(b) => (b.indent, b.indent / (b.level as f32 + 1.0) * b.level as f32),
-                None => (0.0, 0.0),
+                None => (paragraph.margin_left, 0.0),
             };
             let max_w = if text.wrap { Some((inner_w - indent).max(1.0)) } else { None };
 

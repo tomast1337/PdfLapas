@@ -2991,15 +2991,18 @@ export function populateChartStackedFixture(presentation: Presentation): void {
 /**
  * A non-number bullet type (#513): PptxGenJS 4.0.1 writes bullet properties for `bullet: { type }` only when the type is
  * "number", so `type: "bullet"` (even with a characterCode) is a plain paragraph, beside a `bullet: true` one for
- * contrast. A parity slide after the others (no page number moves).
+ * contrast; at indent levels 1 and 2 it has no marL either and takes its master level's, 0.5in a level (#531). A parity slide after the others (no page number moves).
  */
 export function populateBulletTypeFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
     const box = { y: 1.25, w: 4, h: 1.25, fontFace: "Arial", fontSize: 14, color: "363636", valign: "top", fill: { color: "F2F2F2" } } as const;
 
     slide.addText("Bullet type other than number", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
-    slide.addText('type "bullet", characterCode 25BA: no bullet', { x: 0.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
-    slide.addText("Plain paragraph", { ...box, x: 0.5, bullet: { type: "bullet", characterCode: "25BA" } });
+    slide.addText('type "bullet", characterCode 25BA, levels 0-2: no bullet', { x: 0.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
+    slide.addText(
+        [0, 1, 2].map(indentLevel => ({ text: indentLevel ? `Level ${indentLevel} paragraph` : "Plain paragraph", options: { bullet: { type: "bullet", characterCode: "25BA" }, indentLevel, breakLine: true } })),
+        { ...box, x: 0.5 },
+    );
     slide.addText("bullet: true", { x: 5.5, y: 0.85, w: 4, h: 0.25, fontFace: "Arial", fontSize: 11, color: "595959", margin: 0 });
     slide.addText("Bulleted paragraph", { ...box, x: 5.5, bullet: true });
 }

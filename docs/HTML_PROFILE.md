@@ -841,6 +841,7 @@ object-valued field covers the field's presence; its own fields have their own r
 | `NormalizedTextParagraph.tabStops[].position`   | profile | `<position>` in `data-tab-stops`, px.                                                                                      |
 | `NormalizedTextParagraph.tabStops[].alignment`  | profile | `<alignment>` in `data-tab-stops`.                                                                                         |
 | `NormalizedTextParagraph.defaultTabStop`        | profile | `tab-size: <n>px`.                                                                                                         |
+| `NormalizedTextParagraph.marginLeft`            | profile | `padding-left` on a paragraph without a bullet (px), omitted when absent.                                                  |
 | `NormalizedTextParagraph.bullet`                | profile | `span.text-bullet` first child and `data-bullet-*`.                                                                        |
 | `NormalizedTextBullet.kind`                     | profile | `data-bullet-type="bullet\|number"`.                                                                                       |
 | `NormalizedTextBullet.marker`                   | profile | `.text-bullet` text, minus the trailing U+00A0.                                                                            |

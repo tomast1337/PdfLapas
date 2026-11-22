@@ -563,5 +563,12 @@
   "chartValueAxis": {
     "p1-Chart0": 0.0921,
     "p1-Chart1": 0.0885
+  },
+  "bulletType": {
+    "p1-Text0": 0.092,
+    "p1-Text1": 0.0465,
+    "p1-Text2": 0.0165,
+    "p1-Text3": 0.0079,
+    "p1-Text4": 0.0195
   }
 }

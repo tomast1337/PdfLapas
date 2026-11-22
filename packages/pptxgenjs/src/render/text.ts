@@ -286,6 +286,8 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox): { attribu
             // PptxGenJS writes marL = indent and indent = -levelIndent: wrapped lines hang under the first line's text.
             paragraphCss.set("padding-left", `${bullet.indent}px`);
             paragraphCss.set("text-indent", `${-bullet.indent / (bullet.level + 1)}px`);
+        } else if (paragraph.marginLeft) {
+            paragraphCss.set("padding-left", `${paragraph.marginLeft}px`);
         }
 
         paragraphs.push(

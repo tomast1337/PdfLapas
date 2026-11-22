@@ -321,6 +321,8 @@ pub(crate) struct Paragraph {
     /// Spacing of the default stops after the last explicit one, in px.
     pub(crate) default_tab_stop: f32,
     pub(crate) bullet: Option<Bullet>,
+    /// `NormalizedTextParagraph.marginLeft`: without a bullet, where every line starts, in px.
+    pub(crate) margin_left: f32,
 }
 
 /// `NormalizedTextParagraph.tabStops[]`: `position` in px from the text area's left edge.
@@ -630,6 +632,7 @@ pub(crate) mod build {
             tab_stops: Vec::new(),
             default_tab_stop: 96.0,
             bullet: None,
+            margin_left: 0.0,
         }
     }
 

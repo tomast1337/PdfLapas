@@ -368,6 +368,42 @@ describe("text normalization", () => {
         }
     });
 
+    // #531: that paragraph is the only one PptxGenJS writes without a marL, so it takes its level's from the master's
+    // otherStyle (N x 0.5in), as PowerPoint and LibreOffice draw it; every other one writes its own marL.
+    test("indents a paragraph whose dropped bullet writes no marL by its master level", async () => {
+        const cases = [
+            { options: { bullet: { type: "bullet" } }, ooxml: "<a:p><a:r>", marginLeft: undefined },
+            { options: { bullet: { type: "bullet" }, indentLevel: 1 }, ooxml: '<a:pPr lvl="1"></a:pPr>', marginLeft: 48 },
+            { options: { bullet: { type: "bullet" }, indentLevel: 2 }, ooxml: '<a:pPr lvl="2"></a:pPr>', marginLeft: 96 },
+            { options: { bullet: { type: 1 }, indentLevel: 1 }, ooxml: '<a:pPr lvl="1"></a:pPr>', marginLeft: 48 },
+            { options: { bullet: { type: "number" }, indentLevel: 1 }, ooxml: '<a:pPr lvl="1" marL="685800" indent="-342900">', marginLeft: undefined },
+            { options: { bullet: true, indentLevel: 1 }, ooxml: '<a:pPr lvl="1" marL="685800" indent="-342900">', marginLeft: undefined },
+            { options: { indentLevel: 1 }, ooxml: '<a:pPr lvl="1" indent="0" marL="0">', marginLeft: undefined },
+        ] as const;
+
+        for (const { options, ooxml, marginLeft } of cases) {
+            const pptx = new PptxGenJSRuntime();
+            // `as`: the PptxGenJS types allow only "bullet" | "number" for `type`, which the runtime does not check.
+            const textOptions = options as PptxGenJS.TextPropsOptions;
+
+            pptx.addSlide().addText("item", { x: 1, y: 1, w: 2, h: 1, ...textOptions });
+            // `as`: write() returns a Buffer for the nodebuffer output type.
+            const zip = await JSZip.loadAsync((await pptx.write({ outputType: "nodebuffer" })) as Buffer);
+            const xml = (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+            const paragraph = normalizeText("item", textOptions).paragraphs[0];
+
+            expect(xml).toContain(ooxml);
+            expect(paragraph?.marginLeft ?? "none").toBe(marginLeft ?? "none");
+        }
+
+        // A run's own options decide, as they write its paragraph's <a:pPr>; a placeholder keeps no margin (shortcut).
+        const runs = normalizeText([{ text: "a", options: { bullet: { type: "bullet" }, indentLevel: 1, breakLine: true } }, { text: "b" }]).paragraphs;
+        const placeholder = normalizeText("item", { bullet: { type: "bullet" }, indentLevel: 1 }, undefined, undefined, undefined, undefined, { placeholderSpaceBeforeRatio: 0.2 }).paragraphs[0];
+
+        expect(runs.map(paragraph => paragraph.marginLeft)).toEqual([48, undefined]);
+        expect(placeholder?.marginLeft).toBeUndefined();
+    });
+
     // PowerPoint starts a new list at its own startAt when <a:buAutoNum>'s type or startAt changes (sequenceIndex).
     describe("restarts the numbering when the scheme changes", () => {
         const item = (text: string, style: "arabicPeriod" | "alphaUcPeriod" | "alphaLcPeriod" | "romanUcPeriod", numberStartAt: number) => ({ text, options: { bullet: { type: "number" as const, style, numberStartAt }, breakLine: true } });

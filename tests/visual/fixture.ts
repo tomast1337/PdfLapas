@@ -2944,9 +2944,9 @@ export function populateChartBarOrderFixture(presentation: Presentation): void {
 /**
  * Stacked legend order (#508): a vertical legend lists a stacked column or area chart from the last series, in the
  * stack's order. A parity slide after the others (no page number moves) and the WASM chartLegendOrder deck, which crops
- * the chart. It sets its gap width so that the slide does not depend on the stacked default (#503), and it is small:
- * our side legend overlaps the plot area where LibreOffice narrows it (#517), which alone puts a 4.4 x 4.1in chart
- * over the page limit. The stacked area chart's order is unit-tested (its fill, #520).
+ * the chart. It sets its gap width so that the slide does not depend on the stacked default (#503); the right legend's
+ * band beside the plot area (#517) keeps the 4.4 x 4.1in chart under the page limit. The stacked area chart's order is
+ * unit-tested (its fill, #520).
  */
 export function populateChartLegendOrderFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -2958,7 +2958,7 @@ export function populateChartLegendOrderFixture(presentation: Presentation): voi
         { name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 3, 1, 5] },
     ];
 
-    slide.addChart("bar", data, { x: 0.4, y: 0.9, w: 2.8, h: 2.6, barDir: "col", barGrouping: "stacked", barGapWidthPct: 50, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "r" });
+    slide.addChart("bar", data, { x: 0.4, y: 0.9, w: 4.4, h: 4.1, barDir: "col", barGrouping: "stacked", barGapWidthPct: 50, chartColors: ["4472C4", "ED7D31", "A5A5A5"], showLegend: true, legendPos: "r" });
 }
 
 /**

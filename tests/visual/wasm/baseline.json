@@ -540,5 +540,8 @@
   "chartPlotBand": {
     "p1-Chart0": 0.1141,
     "p1-Chart1": 0.0866
+  },
+  "chartCombo": {
+    "p1-Chart0": 0.0928
   }
 }

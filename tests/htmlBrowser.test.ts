@@ -201,7 +201,7 @@ describe("html entry in Chromium", () => {
         expect(nodeHtml).toContain('<meta name="pdflapas-profile" content="2">');
         // Values the CSSOM would rewrite (#69 finding 4) are written verbatim.
         expect(nodeHtml).toContain("left: 14.399999999999999px;");
-        expect(nodeHtml).toContain("font-family: &quot;Arial&quot;;");
+        expect(nodeHtml).toContain("font-family: &quot;Arial&quot;, &quot;DejaVu Sans&quot;, &quot;Noto Sans CJK SC&quot;;");
         expect(nodeHtml).toContain("color: #17365D;");
         expect(browserHtml).toBe(nodeHtml);
     }, 60_000);

@@ -123,8 +123,14 @@ const MIN_DECORATION_LENGTH = 0.01;
  * CHROMIUM_SYNTHETIC_BOLD_STROKE_EM and CHROMIUM_SYNTHETIC_ITALIC_SHEAR, measured in Chromium's PDF output.
  */
 const BROWSER_SYNTHESIS: Synthesis = Object.freeze({ boldStroke: 1 / 32, italicShear: 0.25 });
-/** U+002D then U+2060 WORD JOINER: a U+2011 in a run with `data-non-breaking-hyphen`, drawn with the face's hyphen and still unbreakable. */
-const HYPHEN_MINUS_NO_BREAK = "-\u2060";
+/**
+ * What a U+2011 in a run with each `data-non-breaking-hyphen` value is drawn as: U+002D or U+2010, then U+2060 WORD
+ * JOINER, which keeps it unbreakable.
+ */
+const NON_BREAKING_HYPHEN_DRAWN: ReadonlyMap<string, string> = new Map([
+    ["hyphen-minus", "-\u2060"],
+    ["hyphen", "\u2010\u2060"],
+]);
 const NON_BREAKING_HYPHEN = /\u2011/g;
 /** The value of each underline geometry property that the renderer draws (or the em band, read before these). */
 const UNDERLINE_FROM_FONT = Object.freeze([
@@ -565,15 +571,17 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
 
             reportUnread(child, runStyle, [...read, "data-synthetic-bold", "data-synthetic-italic", "data-non-breaking-hyphen"], report);
             // The run's text in pieces of one `letter-spacing` each: its bare text at the run's, each word span
-            // (`<span style="letter-spacing: ...">`, text only) at its own. U+2011 becomes U+002D U+2060 under `data-non-breaking-hyphen`.
+            // (`<span style="letter-spacing: ...">`, text only) at its own. U+2011 becomes U+002D or U+2010, then U+2060,
+            // under `data-non-breaking-hyphen`.
             const hasHyphen = hasAttribute(child, "data-non-breaking-hyphen");
-            const hyphen = attribute(child, "data-non-breaking-hyphen", "");
+            const hyphenValue = attribute(child, "data-non-breaking-hyphen", "");
+            const hyphen = NON_BREAKING_HYPHEN_DRAWN.get(hyphenValue);
 
-            if (hasHyphen && hyphen !== "hyphen-minus") {
-                throw new Error(`invalid PdfLapas HTML: attribute 'data-non-breaking-hyphen' '${hyphen}' is not hyphen-minus`);
+            if (hasHyphen && hyphen === undefined) {
+                throw new Error(`invalid PdfLapas HTML: attribute 'data-non-breaking-hyphen' '${hyphenValue}' is not hyphen-minus or hyphen`);
             }
 
-            const hyphenated = (value: string) => (hasHyphen ? value.replace(NON_BREAKING_HYPHEN, HYPHEN_MINUS_NO_BREAK) : value);
+            const hyphenated = (value: string) => (hyphen === undefined ? value : value.replace(NON_BREAKING_HYPHEN, hyphen));
             const pieces: { text: string; letterSpacing: number; word: boolean }[] = [];
 
             for (const node of child.childNodes) {

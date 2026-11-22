@@ -305,16 +305,16 @@ describe("Puppeteer print workarounds", () => {
                 ?.getAttribute("style")
                 ?.match(/font-family: ([^;]+);/)?.[1];
 
-        // Carlito and Caladea come first: metric-compatible with Calibri and Cambria, as the WASM renderer maps them.
-        expect(family(".text-bullet")).toBe('"Calibri Light", "Carlito", "Noto Sans", Arial, "Liberation Sans", sans-serif');
-        expect(family(".text-run:nth-of-type(3)")).toBe('"Odd \\"Face\\"", Arial, "Liberation Sans", sans-serif');
-        expect(family(".text-run:nth-of-type(4)")).toBe('"Cambria", "Caladea", Arial, "Liberation Sans", sans-serif');
+        // Carlito and Caladea come right after the face, before its fallback faces: metric-compatible with Calibri and Cambria, as the WASM renderer maps them.
+        expect(family(".text-bullet")).toBe('"Calibri Light", "Carlito", "DejaVu Sans", "Noto Sans CJK SC", "Noto Sans", Arial, "Liberation Sans", sans-serif');
+        expect(family(".text-run:nth-of-type(3)")).toBe('"Odd \\"Face\\"", "DejaVu Sans", "Noto Sans CJK SC", Arial, "Liberation Sans", sans-serif');
+        expect(family(".text-run:nth-of-type(4)")).toBe('"Cambria", "Caladea", "DejaVu Serif", "DejaVu Sans", "Noto Serif CJK SC", Arial, "Liberation Sans", sans-serif');
     });
 
     test("appends Chromium's fallback list after the run's fallback faces, which keep their order", () => {
         const html = `<html><body><span class="text-run" style="font-family: &quot;Calibri&quot;, &quot;Arial&quot;, &quot;Cambria Math&quot;; font-size: 16px;">x</span></body></html>`;
 
-        expect(printHtml(html)).toContain("font-family: &quot;Calibri&quot;, &quot;Arial&quot;, &quot;Cambria Math&quot;, &quot;Carlito&quot;, &quot;Noto Sans&quot;, Arial, &quot;Liberation Sans&quot;, sans-serif;");
+        expect(printHtml(html)).toContain("font-family: &quot;Calibri&quot;, &quot;Carlito&quot;, &quot;Arial&quot;, &quot;Cambria Math&quot;, &quot;Noto Sans&quot;, Arial, &quot;Liberation Sans&quot;, sans-serif;");
     });
 
     test("prints U+2011 as U+002D and a word joiner in a run with data-non-breaking-hyphen, word spans included", () => {
@@ -322,6 +322,8 @@ describe("Puppeteer print workarounds", () => {
 
         expect(printHtml(run(' data-non-breaking-hyphen="hyphen-minus"', 'a‑b&#8209;c <span style="letter-spacing: 1px;">d&#x2011;e</span>'))).toContain('>a-⁠b-⁠c <span style="letter-spacing: 1px;">d-⁠e</span></span>');
         expect(printHtml(run("", "a‑b"))).toContain(">a‑b</span>");
+        // "hyphen": U+2010, the LibreOffice target's.
+        expect(printHtml(run(' data-non-breaking-hyphen="hyphen"', "a‑b"))).toContain(">a‐⁠b</span>");
     });
 
     test("draws a run's strike on a span of its own, in the text colour, and keeps the underline's colour and style on the run (#470)", async () => {

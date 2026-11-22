@@ -520,6 +520,19 @@ describe("PDFKit renderer", () => {
         await expect(renderer.render({ ...bare, html: bare.html.replace("font-family: &quot;", "font-family: Arial, &quot;") })).rejects.toThrow("is not one or more quoted families");
     });
 
+    test("reads the LibreOffice target's non-breaking hyphen, U+2010, and rejects an unknown one", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addText("non‑breaking", { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial", fontSize: 10, margin: 0 });
+        const document = await pres.toHtml();
+
+        expect(document.html).toContain('data-non-breaking-hyphen="hyphen"');
+        await renderer.render(document);
+        expect(renderer.warnings()).toEqual([]);
+        await expect(renderer.render({ ...document, html: document.html.replace('data-non-breaking-hyphen="hyphen"', 'data-non-breaking-hyphen="dash"') })).rejects.toThrow("attribute 'data-non-breaking-hyphen' 'dash' is not hyphen-minus or hyphen");
+    });
+
     test("kerns a pair across a break opportunity, as one shaped run", async () => {
         const fonts = await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ });
         const [file] = fonts;

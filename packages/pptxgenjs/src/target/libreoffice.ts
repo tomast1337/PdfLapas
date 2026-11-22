@@ -1,5 +1,5 @@
 import { CSS_PX_PER_INCH, MILLIMETERS_PER_INCH, type NormalizedDecorationPiece } from "@pdflapas/model";
-import type { DecorationRules, RenderingTargetProfile, UnderlineShape } from "./index";
+import type { DecorationRules, GenericFallback, RenderingTargetProfile, UnderlineShape } from "./index";
 
 /** LibreOffice's hairline, one unit of its 1/100 mm model, in px: the line it strokes a wave with. */
 const HAIRLINE_PX = CSS_PX_PER_INCH / (MILLIMETERS_PER_INCH * 100);
@@ -66,6 +66,57 @@ const LIBREOFFICE_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
 });
 
 /**
+ * Its fallback faces in the visual image (tests/visual/Dockerfile). The serif and monospace faces are those
+ * fontconfig's 45-latin.conf files under them; every other face is sans-serif (49-sansserif.conf).
+ */
+const GENERIC_FALLBACK: GenericFallback = Object.freeze({
+    serif: new Set([
+        "bitstream vera serif",
+        "cambria",
+        "constantia",
+        "dejavu serif",
+        "elephant",
+        "garamond",
+        "georgia",
+        "liberation serif",
+        "luxi serif",
+        "ms serif",
+        "nimbus roman no9 l",
+        "nimbus roman",
+        "palatino linotype",
+        "thorndale amt",
+        "thorndale",
+        "times new roman",
+        "times",
+    ]),
+    monospace: new Set([
+        "andale mono",
+        "bitstream vera sans mono",
+        "consolas",
+        "courier new",
+        "courier std",
+        "courier",
+        "cumberland amt",
+        "cumberland",
+        "dejavu sans mono",
+        "fixedsys",
+        "inconsolata",
+        "liberation mono",
+        "luxi mono",
+        "nimbus mono l",
+        "nimbus mono",
+        "nimbus mono ps",
+        "terminal",
+    ]),
+    emojiFace: "Noto Color Emoji",
+    faces: Object.freeze({ "sans-serif": ["DejaVu Sans"], serif: ["DejaVu Serif", "DejaVu Sans"], monospace: ["DejaVu Sans Mono", "DejaVu Sans"] }),
+    eastAsianFace: Object.freeze({ "sans-serif": "Noto Sans CJK", serif: "Noto Serif CJK", monospace: "Noto Sans Mono CJK" }),
+    regionByLanguage: Object.freeze({ "zh-cn": "SC", "zh-hans": "SC", "zh-tw": "TC", "zh-hant-tw": "TC", zh: "HK", yue: "HK", ja: "JP", ko: "KR" }),
+    otherRegion: "SC",
+    sansSerifRegions: new Set(["HK"]),
+});
+
+/**
  * LibreOffice Impress, the visual reference (tests/visual): it kerns every run whatever its `kern`. A cell's
  * minimum height is its text height plus one unit of its 1/100 mm model, then the margins (svx table
  * Cell::getMinimumHeight, `GetTextHeight()+1`). A numbered paragraph PptxGenJS writes without a run (from a
@@ -92,6 +143,27 @@ const LIBREOFFICE_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * 14pt circles, `lineDataSymbolLineColor: "000000"` and `lineDataSymbolLineSize: 3`, each marker is a 14pt disc in the
  * series color (56px across at 288 dpi), with no black ring and no growth.
  * Its underlines and strikes are LIBREOFFICE_DECORATION's (#489, #397).
+ * It draws a character the run's face lacks from faces that depend on the run face's generic family and the run's
+ * language (`genericFallback`, #289): an emoji from Noto Color Emoji, then DejaVu Sans, DejaVu Serif or DejaVu Sans
+ * Mono (the last two then DejaVu Sans), then Noto Sans CJK, Noto Serif CJK or Noto Sans Mono CJK in the language's
+ * region, Noto Sans CJK HK in every family. Measured in its 26.2 PDF export in the visual image (fonts named by each
+ * page's font resources), "x<c>x" at 20pt for 55 characters (symbols, arrows, dingbats, emoji, Han, kana, Hangul,
+ * Arabic, Hebrew, Greek, Cyrillic) in Arial, Calibri, Times New Roman, Courier New and Segoe UI, and Han, kana and
+ * Hangul under 23 `lang` tags in Arial, Calibri, Times New Roman, Cambria, Georgia and Consolas: ⇒ ℕ ↉ ₹ come from
+ * DejaVu Serif in Times New Roman and Cambria and from DejaVu Sans Mono in Courier New, ① ✓ ☆ ★, which neither has,
+ * from DejaVu Sans; ❤ ✔ ⚠ ☀ ♠, which DejaVu Sans has, from Noto Color Emoji; 这 あ 한 from Noto Serif CJK SC in Times
+ * New Roman, from Noto Sans CJK SC under en-US, fr-FR, zh-CN or zh-Hans, TC under zh-TW, HK under zh, zh-HK, zh-MO,
+ * zh-SG or zh-Hant (Noto Sans CJK HK in Times New Roman and Consolas too), JP under ja and ja-JP, KR under ko, ko-KR and ko-KP. A face
+ * it has no font for (Segoe UI, Georgia, Consolas) is drawn in the family's DejaVu face, which the chain then gives
+ * Chromium too.
+ * shortcut: Ⓐ comes from Noto Sans CJK HK whatever the family and language; under an HK region kana come from the JP
+ * face and Hangul from the KR one, where the chain gives the HK face; ja-Latn takes SC, not JP. Each needs a chain per
+ * character, worth it when a deck shows one.
+ * shortcut: a face it has no font for keeps an emoji its DejaVu face has (❤ or 😀 in Segoe UI) in that face, where the
+ * HTML lists Noto Color Emoji first; the HTML cannot say which faces are installed.
+ * It draws U+2011 NON-BREAKING HYPHEN with the face's U+2010 glyph where the face lacks U+2011 (`nonBreakingHyphen`
+ * "hyphen", HarfBuzz's normalization): in its PDF export Arial, Times New Roman and Courier New (Liberation, which
+ * have U+2010 but not U+2011) draw it in the run's face, Calibri (Carlito, which has neither) in DejaVu Sans.
  * It draws every doughnut's hole half its outer diameter (`readsDoughnutHoleSize` off): in LibreOffice 26.2's PDF
  * export of PptxGenJS doughnuts with `<c:holeSize>` 30, 50 and 75 the hole is 0.496, 0.500 and 0.501 of it.
  * It draws a standard area chart's first series in front (`firstAreaSeriesInFront`, #533): in LibreOffice 26.2.6's PDF
@@ -152,7 +224,8 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     fallbackFaces: [],
     eastAsianFallback: { byFace: {}, otherFaces: [] },
     emojiFace: undefined,
-    nonBreakingHyphen: undefined,
+    genericFallback: GENERIC_FALLBACK,
+    nonBreakingHyphen: "hyphen",
     drawsPictureInnerShadow: false,
     drawsChartMarkerOutline: false,
     decoration: LIBREOFFICE_DECORATION,

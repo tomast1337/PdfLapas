@@ -33,7 +33,7 @@ fn metric_alias(face: &str) -> &str {
     match face.to_ascii_lowercase().as_str() {
         "calibri" | "calibri light" => "Carlito",
         "cambria" => "Caladea",
-        "arial" | "helvetica" | "segoe ui" => "Liberation Sans",
+        "arial" | "helvetica" => "Liberation Sans",
         "arial narrow" => "Liberation Sans Narrow",
         "times new roman" | "times" => "Liberation Serif",
         "courier new" | "courier" => "Liberation Mono",
@@ -59,20 +59,15 @@ const CJK_FALLBACK_BY_LANG: [(&str, &str); 5] = [
     ("zh-hk", "Noto Sans CJK HK"),
 ];
 
-/// Requested face first, then its metric alias, then the run's fallback faces from the HTML (the PowerPoint
-/// target's chain), each followed by its metric alias, then the CJK face of the run's `lang`
-/// (`CJK_FALLBACK_BY_LANG`), then `FALLBACK_FAMILIES`. A face's alias is left out where `registered` says the face
-/// has a font: fontconfig gives Chromium the alias only for a face it has no font for, so an installed Arial's
-/// missing U+2010 goes down the chain (Cambria Math), not to Liberation Sans. Parley skips a fallback face without
-/// a font, as Chromium does. Emoji clusters additionally fall through to the registered `emoji` generic family
-/// (see `add_font`).
+/// Requested face first, then its metric alias, then the run's fallback faces from the HTML (each target's chain,
+/// which names the faces a character the run's face lacks is drawn in), each followed by its metric alias, then the
+/// CJK face of the run's `lang` (`CJK_FALLBACK_BY_LANG`), then `FALLBACK_FAMILIES`, for HTML without a chain. A
+/// face's alias is left out where `registered` says the face has a font: fontconfig gives Chromium the alias only for
+/// a face it has no font for, so an installed Arial's missing U+2010 goes down the chain (Cambria Math), not to
+/// Liberation Sans. Parley skips a fallback face without a font, as Chromium does. Emoji clusters additionally fall
+/// through to the registered `emoji` generic family (see `add_font`).
 pub(crate) fn family_stack(face: &str, fallback_faces: &[String], lang: Option<&str>, mut registered: impl FnMut(&str) -> bool) -> String {
     let quote = |s: &str| format!("\"{}\"", s.replace('"', ""));
-    // shortcut: serif and monospace faces without their alias fall back to sans faces, where
-    // fontconfig would pick a serif/mono default; add per-class fallbacks when a deck needs them.
-    // shortcut: without data-non-breaking-hyphen, HarfBuzz draws U+2011 with the face's U+2010 glyph when the face
-    // lacks it (hb-ot-shape-normalize.cc, harfrust's normalize.rs), so Chromium keeps an Arial run's U+2011 in
-    // Liberation Sans; parley picks a face by cmap coverage first and takes DejaVu Sans (#289).
     let mut with_alias = |family: &str| match metric_alias(family) {
         alias if alias == family || registered(family) => format!("{}, ", quote(family)),
         alias => format!("{}, {}, ", quote(family), quote(alias)),
@@ -127,10 +122,8 @@ impl Renderer {
     /// `find_missing_fonts` for one text box of object `index` on slide `slide`.
     fn find_missing_in(&mut self, text: &TextBox, slide: u32, index: usize, style: &ObjectStyle) {
         for run in text.paragraphs.iter().flat_map(|paragraph| &paragraph.runs) {
-            // Segoe UI's alias keeps it in a sans face but is not metric-compatible: Chromium does not take Liberation
-            // Sans for it either, so it is still reported.
             let face = &run.font_face;
-            if self.has_family(face) || (!face.eq_ignore_ascii_case("segoe ui") && self.has_family(metric_alias(face))) {
+            if self.has_family(face) || self.has_family(metric_alias(face)) {
                 continue;
             }
             let object = match &style.object_name {
@@ -313,7 +306,7 @@ mod tests {
             // Arial resolves to its metric alias, Liberation Sans itself is registered.
             build::text_object(named("Body"), text("Arial")),
             build::text_object(named("Body"), text("liberation sans")),
-            // Drawn in Liberation Sans, but not metric-compatible: reported, as Chromium's fallback is.
+            // No font and no metric alias: reported.
             build::text_object(named("Note"), text("Segoe UI")),
         ]);
         r.find_missing_fonts(&deck);

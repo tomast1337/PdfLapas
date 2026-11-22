@@ -115,7 +115,7 @@ const textRun = z
         kerning: z.literal(false).optional(),
         syntheticBold: nonNegative.optional(),
         syntheticItalic: finite.optional(),
-        nonBreakingHyphen: z.literal("hyphen-minus").optional(),
+        nonBreakingHyphen: z.enum(["hyphen-minus", "hyphen"]).optional(),
         highlight: cssColor.optional(),
         outline: z.strictObject({ color: cssColor, width: nonNegative }).optional(),
         glow: shadow.optional(),

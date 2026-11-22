@@ -31,6 +31,7 @@ import {
     populateChartTopRightLegendFixture,
     populateChartValueAxisFixture,
     populateComponentFixture,
+    populateFallbackFaceFixture,
     populateImageFixture,
     populatePlaceholderFixture,
     populateSlidePropertiesFixture,
@@ -283,6 +284,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     bulletType: {
         populate: presentation => {
             populateBulletTypeFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: isText,
+    },
+    // fallbackFaces: the shared fixture's fallback faces slide (#289); every text box gets a crop.
+    fallbackFaces: {
+        populate: presentation => {
+            populateFallbackFaceFixture(presentation);
 
             return presentation;
         },

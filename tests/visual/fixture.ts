@@ -2285,6 +2285,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartOptionLabelFixture(presentation);
     populateChartOptionAxisFixture(presentation);
     populateChartComboAreaPieLabelFixture(presentation);
+    populateFallbackFaceFixture(presentation);
 }
 
 /**
@@ -3396,4 +3397,34 @@ export function populateChartComboAreaPieLabelFixture(presentation: Presentation
     pie.addText("Pie bestFit and wrapped outEnd labels", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
     pie.addChart("pie", data, { ...pieShared, x: 0.4, showValue: true, dataLabelPosition: "bestFit" });
     pie.addChart("pie", data, { ...pieShared, x: 5.2, showLabel: true, showPercent: true, showValue: false, dataLabelPosition: "outEnd" });
+}
+
+/**
+ * Fallback faces by family and language (#289): characters Arial, Times New Roman, Courier New and Georgia lack, which
+ * LibreOffice draws from DejaVu Sans, DejaVu Serif or DejaVu Sans Mono, Noto Color Emoji and the regional Noto CJK face
+ * of the run's family, and U+2011, which it draws with the face's U+2010. A parity slide after the others (no page
+ * number moves) and the WASM fallbackFaces deck, which crops each box: a face of each generic family under en-US, then
+ * Han, kana and Hangul alone under three regions (LibreOffice widens a space between Latin and Han under one; HK takes
+ * its kana and Hangul from the JP and KR faces, a shortcut in target/libreoffice.ts).
+ */
+export function populateFallbackFaceFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    // Symbols and emoji only under en-US: under an East Asian lang LibreOffice 26.2 lays out ⇒ ① ✓ ★ and the emoji
+    // with the run's Asian font settings, overlapping them (zh-HK, ko-KR) or closing their spaces (zh-TW), a layout
+    // the profile does not state.
+    const cases = [
+        ["Arial", "en-US", "Lorem ⇒ ① ✓ ★ ↉ ₹ ⠁ non‑breaking ❤ ✔ ⚠ 这是 骨 あ 한"],
+        ["Times New Roman", "en-US", "Lorem ⇒ ① ✓ ★ ↉ ₹ ⠁ non‑breaking ❤ ✔ ⚠ 这是 骨 あ 한"],
+        ["Courier New", "en-US", "Lorem ⇒ ① ✓ ★ ↉ ₹ ⠁ non‑breaking ❤ ✔ ⚠ 这是 骨 あ 한"],
+        ["Georgia", "zh-TW", "这是骨直次化角今令あア한글"],
+        ["Times New Roman", "zh-HK", "这是骨直次化角今令"],
+        ["Courier New", "ja-JP", "这是骨直次化角今令あア한글"],
+    ] as const;
+
+    slide.addText("Fallback faces by family and language", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    for (const [index, [fontFace, lang, text]] of cases.entries()) {
+        const box = { x: 0.4 + (index % 2) * 4.7, y: 0.9 + Math.floor(index / 2) * 1.5, w: 4.4, h: 1.3 };
+
+        slide.addText(text, { ...box, fontFace, lang, fontSize: 20, color: "363636", fill: { color: "F2F2F2" }, margin: 6, valign: "middle" });
+    }
 }

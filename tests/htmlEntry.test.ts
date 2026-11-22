@@ -96,7 +96,7 @@ describe("printHtml()", () => {
 
         // 18pt (24px) default: the paragraph moves 24 - 14.375 down (the strut baseline, printWorkarounds), as in the PDF.
         expect(parseFloat(page.querySelector<HTMLElement>(".text-paragraph")?.style.top ?? "")).toBeCloseTo(9.625, 9);
-        expect(page.querySelector<HTMLElement>(".text-run")?.getAttribute("style")).toContain('font-family: "Calibri", "Carlito", "Noto Sans", Arial');
+        expect(page.querySelector<HTMLElement>(".text-run")?.getAttribute("style")).toContain('font-family: "Calibri", "Carlito", "DejaVu Sans", "Noto Sans CJK SC", "Noto Sans", Arial');
     });
 });
 

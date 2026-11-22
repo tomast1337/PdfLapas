@@ -54,8 +54,11 @@ const PARAGRAPH_CSS: &[&str] = &[
     "padding-left",
     "text-indent",
 ];
-/// U+002D, which the face has, then U+2060 WORD JOINER: a U+2011 in a run with `data-non-breaking-hyphen`.
+/// U+002D, which the face has, then U+2060 WORD JOINER: a U+2011 in a run with `data-non-breaking-hyphen="hyphen-minus"`.
 const HYPHEN_MINUS_NO_BREAK: &str = "-\u{2060}";
+/// U+2010, from the first face that has it, then U+2060 WORD JOINER: a U+2011 in a run with
+/// `data-non-breaking-hyphen="hyphen"`.
+const HYPHEN_NO_BREAK: &str = "\u{2010}\u{2060}";
 const BULLET_CSS: &[&str] = &["display", "width", "font-family", "font-size", "color"];
 const RUN_ATTRS: &[&str] = &[
     "lang",
@@ -413,14 +416,15 @@ fn run(dom: &Dom<'_>, element: &Element<'_>) -> Result<Run, String> {
     }
     let style = Style::of(element)?;
     allow(element, &style, &[RUN_ATTRS], &[RUN_CSS])?;
-    // U+2011 drawn with the face's U+002D glyph: parley picks a face by the character, so it would draw U+2011 in a
-    // fallback face where the run's face lacks it. The word joiner keeps its no-break.
-    let hyphen_minus = match element.attr("data-non-breaking-hyphen")?.as_deref() {
-        None => false,
-        Some("hyphen-minus") => true,
-        Some(other) => return Err(format!("attribute 'data-non-breaking-hyphen': '{other}' is not hyphen-minus")),
+    // U+2011 drawn with U+002D or U+2010, as the HTML says: parley picks a face by the character, so it would draw
+    // U+2011 in a fallback face where the run's face lacks it. The word joiner keeps its no-break.
+    let hyphen = match element.attr("data-non-breaking-hyphen")?.as_deref() {
+        None => None,
+        Some("hyphen-minus") => Some(HYPHEN_MINUS_NO_BREAK),
+        Some("hyphen") => Some(HYPHEN_NO_BREAK),
+        Some(other) => return Err(format!("attribute 'data-non-breaking-hyphen': '{other}' is not hyphen-minus or hyphen")),
     };
-    let (content, word_spacing) = run_text(dom, element, hyphen_minus)?;
+    let (content, word_spacing) = run_text(dom, element, hyphen)?;
     let mut families = font_families(style.require("font-family")?)
         .map_err(|e| format!("CSS property 'font-family': {e}"))?
         .into_iter();
@@ -526,12 +530,12 @@ fn run(dom: &Dom<'_>, element: &Element<'_>) -> Result<Run, String> {
 
 /// A run's text and the byte range of each word wrapped in a `<span>` of its own `letter-spacing`
 /// (`wordCharacterSpacing`), with that spacing. A word span holds text only and has no other attribute or CSS.
-fn run_text(dom: &Dom<'_>, run: &Element<'_>, hyphen_minus: bool) -> Result<(String, Vec<WordSpacing>), String> {
+fn run_text(dom: &Dom<'_>, run: &Element<'_>, hyphen: Option<&str>) -> Result<(String, Vec<WordSpacing>), String> {
     let mut text = String::new();
     let mut words = Vec::new();
-    let push = |text: &mut String, piece: &str| match hyphen_minus {
-        true => text.push_str(&piece.replace('\u{2011}', HYPHEN_MINUS_NO_BREAK)),
-        false => text.push_str(piece),
+    let push = |text: &mut String, piece: &str| match hyphen {
+        Some(hyphen) => text.push_str(&piece.replace('\u{2011}', hyphen)),
+        None => text.push_str(piece),
     };
     for node in &run.children {
         match *node {
@@ -769,6 +773,18 @@ mod tests {
     }
 
     #[test]
+    fn draws_u2011_as_u2010_under_hyphen() {
+        let html = format!(
+            r#"<div class="text-paragraph" data-line-baseline="16" style="{PARAGRAPH_STYLE}"><span class="text-run" data-non-breaking-hyphen="hyphen" style="{RUN_STYLE}">a&#8209;b <span style="letter-spacing: 1px;">c‑d</span></span></div>"#
+        );
+        let text = text_object(&html).unwrap().text.expect("text");
+        let [a] = &text.paragraphs[0].runs[..] else { panic!("one run") };
+        assert_eq!(a.text, "a\u{2010}\u{2060}b c\u{2010}\u{2060}d");
+        // U+2010 is three bytes in UTF-8, as U+2011 is: the word span keeps its range.
+        assert_eq!(a.word_spacing, [(9..17, 1.0)]);
+    }
+
+    #[test]
     fn reads_the_synthetic_styles_and_falls_back_to_the_browsers() {
         let html = format!(
             r#"<div class="text-paragraph" data-line-baseline="16" style="{PARAGRAPH_STYLE}"><span class="text-run" data-synthetic-bold="0.03333333333333333" data-synthetic-italic="0.3462535606" style="{RUN_STYLE}">a</span><span class="text-run" style="{RUN_STYLE}">b</span></div>"#
@@ -922,7 +938,7 @@ mod tests {
             ),
             (
                 run(" data-non-breaking-hyphen=\"en-dash\"", "", "x"),
-                "attribute 'data-non-breaking-hyphen': 'en-dash' is not hyphen-minus",
+                "attribute 'data-non-breaking-hyphen': 'en-dash' is not hyphen-minus or hyphen",
             ),
             (
                 run("", "", "x").replace("text-decoration-style: solid", "text-decoration-style: groove"),

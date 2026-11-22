@@ -165,7 +165,7 @@ export function normalizeTextRun(
     const underlineShape = underline === undefined || underline === "" || underline === "none" ? undefined : decorationRules.underlines[underline as UnderlineType];
     const underlined = underlineShape !== undefined;
     const fontFace = options.fontFace ?? PPTX_DEFAULTS.text.fontFace;
-    const fallbacks = fallbackChain(fontFace, target);
+    const fallbacks = fallbackChain(fontFace, options.lang ?? PPTX_DEFAULTS.theme.language, target);
     const color = normalizeColor({ color: options.color ?? defaultColor, transparency: options.transparency });
     let underlineStyle: NormalizedTextRun["decoration"]["underlineStyle"] = "solid";
 
@@ -405,7 +405,7 @@ function fallbackRuns(text: string, options: PptxGenJS.TextPropsOptions, target:
     const fontFace = options.fontFace ?? PPTX_DEFAULTS.text.fontFace;
     const bold = options.bold ?? PPTX_DEFAULTS.text.bold;
     const italic = options.italic ?? PPTX_DEFAULTS.text.italic;
-    const fallback = fallbackSegments(text, fontFace, bold, italic, target, fontMetrics);
+    const fallback = fallbackSegments(text, fontFace, bold, italic, options.lang ?? PPTX_DEFAULTS.theme.language, target, fontMetrics);
     const font = RENDERING_TARGETS[target].advanceGridPt === undefined ? undefined : fontMetrics.glyphAdvances?.(fontFace, bold, italic);
     let segments: FallbackSegment[] = fallback;
 

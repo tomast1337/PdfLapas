@@ -29,11 +29,29 @@ function eastAsianFaces(fontFace: string, target: RenderingTarget): readonly str
     return (Object.hasOwn(byFace, face) ? byFace[face] : undefined) ?? otherFaces;
 }
 
-/** The target's chain for a run in `fontFace`: `fallbackFaces`, then its East Asian faces, without `fontFace`. */
-export function fallbackChain(fontFace: string, target: RenderingTarget): readonly string[] {
+/**
+ * The target's chain for a run in `fontFace` and `language`: `fallbackFaces`, then its generic family's faces
+ * (`genericFallback`), then its East Asian faces, without `fontFace`.
+ */
+export function fallbackChain(fontFace: string, language: string, target: RenderingTarget): readonly string[] {
     const face = fontFace.toLowerCase();
+    const { fallbackFaces, genericFallback } = RENDERING_TARGETS[target];
+    const chain = [...fallbackFaces];
 
-    return [...RENDERING_TARGETS[target].fallbackFaces, ...eastAsianFaces(fontFace, target)].filter((value, index, all) => value.toLowerCase() !== face && all.indexOf(value) === index);
+    if (genericFallback !== undefined) {
+        const { serif, monospace, faces, eastAsianFace, regionByLanguage, otherRegion, sansSerifRegions } = genericFallback;
+        const family = serif.has(face) ? "serif" : monospace.has(face) ? "monospace" : "sans-serif";
+        const tag = language.toLowerCase();
+        const primary = tag.split("-")[0] ?? tag;
+        // Own keys only: a tag named like an Object.prototype member is just another language.
+        const region = (Object.hasOwn(regionByLanguage, tag) ? regionByLanguage[tag] : undefined) ?? (Object.hasOwn(regionByLanguage, primary) ? regionByLanguage[primary] : undefined) ?? otherRegion;
+
+        chain.push(...faces[family], `${eastAsianFace[sansSerifRegions.has(region) ? "sans-serif" : family]} ${region}`);
+    }
+
+    chain.push(...eastAsianFaces(fontFace, target));
+
+    return chain.filter((value, index, all) => value.toLowerCase() !== face && all.indexOf(value) === index);
 }
 
 /**
@@ -48,11 +66,32 @@ export function fallbackChain(fontFace: string, target: RenderingTarget): readon
  * Gothic); join such runs, and cut at the line, when a deck shows it. An emoji the run's face has (☺ in Arial) stays
  * in that face, where PowerPoint draws it from `emojiFace`; that needs a run face override in the model, worth it
  * when a deck shows one.
+ * With `genericFallback` (LibreOffice), no face's characters are looked up: `text` is cut around each emoji, whose
+ * stretch lists `genericFallback.emojiFace` first.
  */
-export function fallbackSegments(text: string, fontFace: string, bold: boolean, italic: boolean, target: RenderingTarget, fontMetrics: FontMetricsLookup): FallbackSegment[] {
-    const chain = fallbackChain(fontFace, target);
-    const { emojiFace } = RENDERING_TARGETS[target];
+export function fallbackSegments(text: string, fontFace: string, bold: boolean, italic: boolean, language: string, target: RenderingTarget, fontMetrics: FontMetricsLookup): FallbackSegment[] {
+    const chain = fallbackChain(fontFace, language, target);
+    const { emojiFace, genericFallback } = RENDERING_TARGETS[target];
     const lookup = fontMetrics.glyphAdvances;
+
+    if (genericFallback !== undefined) {
+        const emojiChain = [genericFallback.emojiFace, ...chain.filter(face => face !== genericFallback.emojiFace)];
+        const stretches: { text: string; fallbackFaces: readonly string[] }[] = [];
+
+        for (const { segment } of GRAPHEMES.segment(text)) {
+            const fallbackFaces = PICTOGRAPHIC.test(segment) ? emojiChain : chain;
+            const last = stretches.at(-1);
+
+            if (last?.fallbackFaces === fallbackFaces) {
+                last.text += segment;
+            } else {
+                stretches.push({ text: segment, fallbackFaces });
+            }
+        }
+
+        // An empty text keeps its one run.
+        return stretches.length ? stretches : [{ text, fallbackFaces: chain }];
+    }
 
     if (lookup === undefined || !chain.length) {
         return [{ text, fallbackFaces: chain }];

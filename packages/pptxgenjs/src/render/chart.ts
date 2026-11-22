@@ -2,6 +2,7 @@ import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts
 import { GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
 import { type EChartsCoreOption, format, init, use } from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
+import { automaticAxisInterval, automaticAxisScale } from "#src/chart/axisScale";
 import { formatChartNumber } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import type { ChartExtensionInput } from "#src/chart/types";
@@ -541,6 +542,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         }
 
         const maxBubble = Math.max(1, ...bubbleSizes);
+        // LibreOffice scales the x axis to the x values (not to zero), and the y axis to the value axis's bounds by its
+        // major unit or the same automatic interval.
+        // shortcut: the bubble chart's x scale is not measured against LibreOffice (it may leave room for the bubbles);
+        // measure it when a deck has one.
+        const xScale = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues)) : undefined;
         const scatter: Record<string, unknown>[] = [];
 
         for (const [seriesIndex, series] of ySeries.entries()) {
@@ -568,8 +574,32 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...common,
             grid,
             // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine.
-            xAxis: { type: "value", ...axisStyle, splitLine: gridLineOption(categoryAxisModel) },
-            yAxis: { type: "value", ...axisStyle, splitLine: firstAxis ? gridLineOption(firstAxis) : { show: false } },
+            xAxis: {
+                type: "value",
+                ...axisStyle,
+                ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
+                axisTick: tickOption(chart.categoryMajorTickMark, chart.gridLineColor, chart.gridLineWidth),
+                splitLine: gridLineOption(categoryAxisModel),
+            },
+            yAxis: firstAxis
+                ? {
+                      type: "value",
+                      ...axisStyle,
+                      min: firstAxis.minimum,
+                      max: firstAxis.maximum,
+                      interval: firstAxis.majorUnit ?? automaticAxisInterval(firstAxis.minimum, firstAxis.maximum),
+                      axisLabel: {
+                          color: firstAxis.labelColor,
+                          fontFamily: firstAxis.labelFontFace,
+                          fontSize: pointsToPixels(firstAxis.labelFontSize),
+                          fontWeight: firstAxis.labelBold ? "bold" : "normal",
+                          fontStyle: firstAxis.labelItalic ? "italic" : "normal",
+                          formatter: (value: number) => formatChartNumber(value, firstAxis.labelFormatCode),
+                      },
+                      axisTick: tickOption(firstAxis.majorTickMark, firstAxis.lineColor, firstAxis.lineWidth),
+                      splitLine: gridLineOption(firstAxis),
+                  }
+                : { type: "value", ...axisStyle, splitLine: { show: false } },
             series: scatter,
         };
     } else {

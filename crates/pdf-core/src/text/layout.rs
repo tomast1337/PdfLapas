@@ -13,7 +13,7 @@ use krilla::paint::Stroke;
 use crate::Renderer;
 use crate::color::Rgba;
 use crate::effect::Effect;
-use crate::model::{EmBand, LineBox, ParagraphAlign, Synthesis, TextBox, TextDirection, TextFit, UnderlineStyle};
+use crate::model::{Decoration, LineBox, ParagraphAlign, Synthesis, TextBox, TextDirection, TextFit};
 use crate::text::tabs::{MAX_TAB_REBREAK_BYTES, TAB_PLACEHOLDER, TabRuler, place_tabs, tab_box};
 
 /// Blink's `LayoutUnit`, the grid its line breaker measures on: 1/64 CSS px (`kFractionalBits` = 6 in
@@ -29,14 +29,7 @@ pub(crate) struct RunPaint {
     pub(crate) color: Rgba,
     pub(crate) highlight: Option<Rgba>,
     pub(crate) outline: Option<TextStroke>,
-    pub(crate) underline: bool,
-    pub(crate) underline_style: UnderlineStyle,
-    pub(crate) underline_color: Option<Rgba>,
-    pub(crate) underline_from_font: bool,
-    pub(crate) underline_band: Option<EmBand>,
-    pub(crate) underline_heavy: bool,
-    pub(crate) strike: bool,
-    pub(crate) double_strike: bool,
+    pub(crate) decoration: Decoration,
     pub(crate) baseline_offset: f32,
     /// How the glyphs are emboldened or slanted when the face lacks the run's style.
     pub(crate) synthesis: Synthesis,
@@ -231,14 +224,7 @@ impl Renderer {
                         miter_limit: Stroke::default().miter_limit,
                         under: false,
                     }),
-                    underline: run.decoration.underline,
-                    underline_style: run.decoration.underline_style,
-                    underline_color: run.decoration.underline_color,
-                    underline_from_font: run.decoration.underline_from_font,
-                    underline_band: run.decoration.underline_band,
-                    underline_heavy: run.decoration.underline_heavy,
-                    strike: run.decoration.strike,
-                    double_strike: run.decoration.double_strike,
+                    decoration: run.decoration.clone(),
                     baseline_offset: run.baseline_offset,
                     synthesis: run.synthesis,
                     link: run.link.is_some().then_some(RunRef { paragraph: p, run: r }),
@@ -347,14 +333,7 @@ impl Renderer {
                         color: run.color,
                         highlight: None,
                         outline: None,
-                        underline: false,
-                        underline_style: UnderlineStyle::Solid,
-                        underline_color: None,
-                        underline_from_font: false,
-                        underline_band: None,
-                        underline_heavy: false,
-                        strike: false,
-                        double_strike: false,
+                        decoration: Decoration::default(),
                         baseline_offset: 0.0,
                         synthesis: run.synthesis,
                         link: None,

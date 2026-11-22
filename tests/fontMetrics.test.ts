@@ -155,14 +155,15 @@ describe("fontMetrics option", () => {
         const decoration = (fontFace: string, target: "powerpoint" | "libreoffice" = "powerpoint", options: PptxGenJS.TextPropsOptions = { underline: { style: "sng" } }) =>
             normalizeText("Line", { fontFace, fontSize: 18, ...options }, target, lookup).paragraphs[0]?.runs[0]?.decoration;
 
-        expect(decoration("My Brand Sans")).toMatchObject({ underlineFromFont: true, underlineBand: { position: -0.045, thickness: 0.072 } });
-        // Without one, the post band; not underlined, or on the LibreOffice target, no band at all.
-        expect(decoration("My Brand Serif")?.underlineFromFont).toBe(true);
-        expect(decoration("My Brand Serif")?.underlineBand).toBeUndefined();
-        expect(decoration("My Brand Sans", "powerpoint", {})?.underlineBand).toBeUndefined();
-        expect(decoration("My Brand Sans", "libreoffice")).not.toHaveProperty("underlineBand");
+        expect(decoration("My Brand Sans")?.underlineShape).toEqual({ band: { position: -0.045, thickness: 0.072 }, pieces: [{ kind: "line", top: 0, height: 1 }] });
+        expect(decoration("My Brand Sans")?.underlineLineBand).toBe(true);
+        // Without one, the post band, which only the renderer reads here (no glyph advances lookup); not underlined, no
+        // shape; on the LibreOffice target, the band from the face's descent (250 / 1000: d/4 tall, centred d/2 below).
+        expect(decoration("My Brand Serif")?.underlineShape?.band).toBeUndefined();
+        expect(decoration("My Brand Sans", "powerpoint", {})?.underlineShape).toBeUndefined();
+        expect(decoration("My Brand Sans", "libreoffice")?.underlineShape?.band).toEqual({ position: 0.03125 - 0.125, thickness: 0.0625 });
         // The heavy band derives from the same band.
-        expect(decoration("My Brand Sans", "powerpoint", { underline: { style: "heavy" } })).toMatchObject({ underlineHeavy: true, underlineBand: { position: -0.045, thickness: 0.072 } });
+        expect(decoration("My Brand Sans", "powerpoint", { underline: { style: "heavy" } })?.underlineShape).toEqual({ band: { position: -0.045, thickness: 0.072 }, pieces: [{ kind: "line", top: -1, height: 1.5 }] });
 
         const html = async (presentation: PuppeteerGen) => {
             presentation.addSlide().addText(
@@ -185,7 +186,8 @@ describe("fontMetrics option", () => {
             "text-decoration-thickness: from-font; text-underline-position: from-font;",
         ]);
         expect(await html(new PuppeteerGenPowerPoint(undefined, { fontMetrics }))).toBe(powerPoint);
-        expect(await html(new PuppeteerGenLibreOffice(undefined, { fontMetrics }))).toBe(await html(new PuppeteerGenLibreOffice()));
+        // The LibreOffice target reads the descent, not the entry's underline.
+        expect(await html(new PuppeteerGenLibreOffice(undefined, { fontMetrics }))).toBe(await html(new PuppeteerGenLibreOffice(undefined, { fontMetrics: { "My Brand Sans": BRAND, "My Brand Serif": BRAND } })));
     });
 
     test("looks the caller's faces up over FONT_WIN_METRICS, case-insensitively, frozen", () => {

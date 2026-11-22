@@ -13,13 +13,13 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "b65bc5b1cee07e9ba99c6ccf8d8bbec5055fad3fb29ca227cf61a637d3fd29a5",
-    "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
-    "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
+    fixture: "5ab625b787f29d4320b7f85e596f78562e01810afc587ad0a8d9455c52b9fbc5",
+    "cross-runtime": "c2e697d0d8c7cb7bb87f876cbafa52560823c7c65931f9b5a109d46f3454743e",
+    "wasm-text": "8fd50aaacf2518ba08215451e2fb3b6c5dcf2ef46221ce8c80abd5c1fc5a5efb",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
     "wasm-layout": "1a866c565c2aefbe0befd5a09d56edf9b5f9faf4e8fdeb57218ba0247704adbd",
     "wasm-shapes": "74ad079c7bdf417daf5b4f8e368ea35b487c607565958ef68bd38ba862d5027c",
-    "wasm-tables": "9db006ff1efc30aadf23d6a778a023f8f365eff14875d520687566383e68a917",
+    "wasm-tables": "c77616811ce84c1945ee69de97d8b213e00a34fcbb59d81ebf6b7470d7d287a4",
     "wasm-images": "acedb8d02711e608c7933252c27af2c6b534fecb709e45d621ca170a3ef0d6ce",
     "wasm-effects": "c66bddedfa6557470ca3ff722723e60f28892ce2815af183d8afdc680a427207",
     "wasm-charts": "fb29e38a7cf3ad5c54e3bf3a888ed84a646ab24fa3b087799bc98365e9ed174c",
@@ -53,7 +53,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-slides": "7ceb86e4a5ef2d6629dc1766f6fd1bcaaa752d9b7fbd35b2d91fd4c915be61f2",
     "wasm-chartLabels": "2282dc2f2915e3fb504d6235bc549b54d99e950c2512232f00ce0f8663f2338d",
     "wasm-components": "306e319217049fcad4206767ddeae2b4777b4986127957b685f076fcd603f576",
-    "wasm-options": "0b57e9c0b341e62b4bfcaa71dba88f9c554cc801d88a78347189590697f70da3",
+    "wasm-options": "3c970ba3a5a464d97d94b9eb4dfcbac196378a00a130d47cfc22b1aa06536dc9",
     "wasm-tableOptions": "97ffa9ab07f395f5cc0c99085665bbdda51f361f20aa7f5a4e0d65ff810e168f",
 };
 

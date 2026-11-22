@@ -1,4 +1,4 @@
-import type { NormalizedShadow, NormalizedTextBox, NormalizedTextParagraph, NormalizedTextRun } from "@pdflapas/model";
+import type { NormalizedDecorationPiece, NormalizedShadow, NormalizedTextBox, NormalizedTextParagraph, NormalizedTextRun } from "@pdflapas/model";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { isSpaces, isWord, runPieces } from "#src/normalize/advanceGrid";
 import { type InlineStyle, styleAttribute } from "./css";
@@ -9,6 +9,26 @@ import { shadowInsetAttribute } from "./style";
 const EMPTY_RUN_TEXT = "\u200B";
 /** U+00A0 after the bullet marker: a no-break space, so the marker stays with its first word. */
 const BULLET_GAP = "\u00A0";
+
+/** A decoration value as the profile writes it: at most six decimals, so float noise stays out of the HTML. */
+const decimal = (value: number): string => String(Number(value.toFixed(6)));
+
+/** A decoration's pieces as `data-underline` and `data-strike` write them (docs/HTML_PROFILE.md). */
+function piecesAttribute(pieces: readonly NormalizedDecorationPiece[]): string {
+    const written: string[] = [];
+
+    for (const piece of pieces) {
+        if (piece.kind === "line") {
+            written.push(`line(${[piece.top, piece.height, ...(piece.dashes ?? [])].map(decimal).join(" ")})`);
+        } else if (piece.kind === "wave") {
+            written.push(`wave(${decimal(piece.centre)} ${decimal(piece.amplitude)} ${decimal(piece.halfPeriod)} ${decimal(piece.stroke)}px)`);
+        } else {
+            written.push(`zigzag(${decimal(piece.top)} ${decimal(piece.height)} ${decimal(piece.thickness)}px)`);
+        }
+    }
+
+    return written.join(" ");
+}
 
 /** A glow or shadow as a CSS text-shadow entry; "none" when it is not visible. */
 function shadowCSS(shadow?: NormalizedShadow): { kind: "shadow"; css: string } | { kind: "none" } {
@@ -132,15 +152,18 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox): { attribu
                 runCss.set("text-decoration-color", run.decoration.underlineColor);
             }
 
-            // The face's post table band, which Chromium draws only when told (target/powerpoint.ts `underlineFromFont`), or the
-            // caller's band in its place (`underlineBand`): CSS's offset is the band's top below the baseline.
-            if (run.decoration.underlineFromFont) {
-                const band = run.decoration.underlineBand;
+            // The underline's band in em, or the face's post band where it is not known here: CSS's offset is the band's
+            // top below the baseline.
+            const underlineShape = run.decoration.underline ? run.decoration.underlineShape : undefined;
+            const strikeShape = run.decoration.strike ? run.decoration.strikeShape : undefined;
 
-                runCss.set("text-decoration-thickness", band ? `${band.thickness}em` : "from-font");
+            if (underlineShape) {
+                const band = underlineShape.band;
+
+                runCss.set("text-decoration-thickness", band ? `${decimal(band.thickness)}em` : "from-font");
 
                 if (band) {
-                    runCss.set("text-underline-offset", `${-band.position}em`);
+                    runCss.set("text-underline-offset", `${decimal(-band.position)}em`);
                 } else {
                     runCss.set("text-underline-position", "from-font");
                 }
@@ -248,7 +271,10 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox): { attribu
                         ["data-slide", link?.slide ? String(link.slide) : undefined],
                         ["data-double-strike", run.decoration.doubleStrike ? "" : undefined],
                         ["data-underline-style", run.decoration.doubleStrike ? run.decoration.underlineStyle : undefined],
-                        ["data-underline-heavy", run.decoration.underlineHeavy ? "" : undefined],
+                        ["data-underline", underlineShape ? piecesAttribute(underlineShape.pieces) : undefined],
+                        ["data-underline-line-band", underlineShape && run.decoration.underlineLineBand ? "" : undefined],
+                        ["data-strike", strikeShape ? piecesAttribute(strikeShape.pieces) : undefined],
+                        ["data-strike-band", strikeShape?.band ? `${decimal(-strikeShape.band.position)}em ${decimal(strikeShape.band.thickness)}em` : undefined],
                         ["data-vertical-align", run.verticalAlign !== "baseline" ? run.verticalAlign : undefined],
                         ["data-synthetic-bold", run.syntheticBold === undefined ? undefined : String(run.syntheticBold)],
                         ["data-synthetic-italic", run.syntheticItalic === undefined ? undefined : String(run.syntheticItalic)],

@@ -7,8 +7,8 @@ use super::object::link;
 use super::style::{Style, font_families, integer, keyword, number, px, shadow, size_px, split_top_level};
 use crate::color::parse_color;
 use crate::model::{
-    Bullet, Decoration, EmBand, LineBox, Outline, Paragraph, ParagraphAlign, Run, Shadow, ShadowKind, Shrink, Synthesis, TabAlign, TabStop, TextBox,
-    TextDirection, TextFit, UnderlineStyle, VerticalAlign, WordSpacing,
+    Bullet, Decoration, DecorationPiece, DecorationShape, EmBand, LineBox, Outline, Paragraph, ParagraphAlign, Run, Shadow, ShadowKind, Shrink, Synthesis,
+    TabAlign, TabStop, TextBox, TextDirection, TextFit, VerticalAlign, WordSpacing,
 };
 
 /// Attributes of the element that holds a text box.
@@ -64,7 +64,10 @@ const RUN_ATTRS: &[&str] = &[
     "data-slide",
     "data-double-strike",
     "data-underline-style",
-    "data-underline-heavy",
+    "data-underline",
+    "data-underline-line-band",
+    "data-strike",
+    "data-strike-band",
     "data-vertical-align",
     "data-synthetic-bold",
     "data-synthetic-italic",
@@ -95,7 +98,7 @@ const RUN_CSS: &[&str] = &[
     "-webkit-text-stroke",
     "text-shadow",
 ];
-/// The only value each underline geometry property takes: the one `draw_decorations` draws.
+/// The value each underline geometry property takes without an em band: the face's `post` band, over the descenders.
 const UNDERLINE_FROM_FONT: [(&str, &str); 3] = [
     ("text-decoration-thickness", "from-font"),
     ("text-underline-position", "from-font"),
@@ -283,23 +286,88 @@ fn underline_band(style: &Style<'_>) -> Result<Option<EmBand>, String> {
     }
 }
 
-fn underline_style(element: &Element<'_>, style: &Style<'_>) -> Result<UnderlineStyle, String> {
+/// Checks the style; Chromium reads it, `data-underline` says what every renderer draws.
+fn underline_style(element: &Element<'_>, style: &Style<'_>) -> Result<(), String> {
     let attr = element.attr("data-underline-style")?;
     let (what, value) = match attr.as_deref() {
         Some(value) => ("attribute 'data-underline-style'", value),
         None => ("CSS property 'text-decoration-style'", style.get("text-decoration-style").unwrap_or("solid")),
     };
-    keyword(
-        what,
-        value,
-        &[
-            ("solid", UnderlineStyle::Solid),
-            ("double", UnderlineStyle::Double),
-            ("dotted", UnderlineStyle::Dotted),
-            ("dashed", UnderlineStyle::Dashed),
-            ("wavy", UnderlineStyle::Wavy),
-        ],
-    )
+    one_of(what, value, &["solid", "double", "dotted", "dashed", "wavy"])?;
+    Ok(())
+}
+
+/// Smallest dash, half-wave or zigzag height a decoration piece takes, in thicknesses, and smallest stroke or zigzag line,
+/// in px: below them a segment would take more pieces than are worth drawing.
+const MIN_DECORATION_LENGTH: f32 = 0.01;
+
+/// `data-underline` or `data-strike` (`what` names it): `line(...)`, `wave(...)` and `zigzag(...)` separated by spaces.
+fn decoration_pieces(what: &str, value: &str) -> Result<Vec<DecorationPiece>, String> {
+    let invalid = |why: &str| format!("{what}: '{value}' {why}");
+    let grammar = "is not pieces 'line(<top> <height> [<on> <off> ...])', 'wave(<centre> <amplitude> <half> <w>px)' or 'zigzag(<top> <height> <w>px)' separated by spaces";
+    let length = |n: f32, name: &str| {
+        if n >= MIN_DECORATION_LENGTH {
+            Ok(n)
+        } else {
+            Err(invalid(&format!("has {name} {n}, below {MIN_DECORATION_LENGTH}")))
+        }
+    };
+    let mut pieces = Vec::new();
+    let mut rest = value.trim_ascii();
+    while !rest.is_empty() {
+        let (name, after) = rest.split_once('(').ok_or_else(|| invalid(grammar))?;
+        let (args, after) = after.split_once(')').ok_or_else(|| invalid(grammar))?;
+        if !after.is_empty() && !after.starts_with(' ') {
+            return Err(invalid(grammar));
+        }
+        rest = after.trim_ascii_start();
+        // The stroke or zigzag line, last, is in px.
+        let args = match name {
+            "wave" | "zigzag" => args.strip_suffix("px").filter(|a| !a.ends_with(' ')).ok_or_else(|| invalid(grammar))?,
+            _ => args,
+        };
+        let mut numbers = Vec::new();
+        for word in args.split_ascii_whitespace() {
+            numbers.push(number(word).map_err(|e| format!("{what}: {e}"))?);
+        }
+        pieces.push(match (name, numbers.as_slice()) {
+            ("line", [top, height, dashes @ ..]) if dashes.len().is_multiple_of(2) => {
+                for &dash in dashes {
+                    length(dash, "a dash")?;
+                }
+                DecorationPiece::Line {
+                    top: *top,
+                    height: length(*height, "a height")?,
+                    dashes: dashes.to_vec(),
+                }
+            }
+            ("wave", &[centre, amplitude, half, stroke]) if amplitude >= 0.0 => DecorationPiece::Wave {
+                centre,
+                amplitude,
+                half: length(half, "a half-wave")?,
+                stroke: length(stroke, "a stroke")?,
+            },
+            ("zigzag", &[top, height, line]) => DecorationPiece::Zigzag {
+                top,
+                height: length(height, "a height")?,
+                line: length(line, "a line")?,
+            },
+            _ => return Err(invalid(grammar)),
+        });
+    }
+    if pieces.is_empty() {
+        return Err(invalid("names no piece"));
+    }
+    Ok(pieces)
+}
+
+/// `data-strike-band`: `<O>em <T>em`, the band's top O below the baseline (above when negative) and its thickness T.
+fn strike_band(value: &str) -> Result<EmBand, String> {
+    let em = |n: &str| n.strip_suffix("em").and_then(|n| number(n).ok());
+    match value.split_once(' ').map(|(top, size)| (em(top), em(size))) {
+        Some((Some(top), Some(size))) if size > 0.0 => Ok(EmBand { offset: -top, size }),
+        _ => Err(format!("attribute 'data-strike-band': '{value}' is not '<n>em <positive n>em'")),
+    }
 }
 
 /// `<position>:<alignment>` in `data-tab-stops`.
@@ -370,8 +438,8 @@ fn run(dom: &Dom<'_>, element: &Element<'_>) -> Result<Run, String> {
         return Err(format!("CSS property 'text-decoration-line': '{line}' is not underline or line-through"));
     }
     let underline_band = underline_band(&style)?;
-    // The underline is always drawn from the face's post table, or the band above, over the descenders; these say so
-    // for Chromium.
+    // Without an em band the underline is drawn around the face's post band, over the descenders; these say so for
+    // Chromium.
     for (property, value) in UNDERLINE_FROM_FONT {
         if underline_band.is_some() && property == "text-decoration-thickness" {
             continue;
@@ -380,13 +448,36 @@ fn run(dom: &Dom<'_>, element: &Element<'_>) -> Result<Run, String> {
             one_of(&format!("CSS property '{property}'"), given, &[value])?;
         }
     }
-    let underline_from_font = style.get("text-decoration-thickness").is_some();
-    let underline_heavy = element.has_attr("data-underline-heavy");
-    if underline_heavy && !underline_from_font {
-        return Err(
-            "attribute 'data-underline-heavy' needs 'text-decoration-thickness: from-font': the heavy band is PowerPoint's, around the face's post band".into(),
-        );
+    underline_style(element, &style)?;
+    let underlined = lines.split_ascii_whitespace().any(|l| l == "underline");
+    let struck = lines.split_ascii_whitespace().any(|l| l == "line-through") || element.has_attr("data-double-strike");
+    for (attr, needs) in [
+        ("data-underline", underlined),
+        ("data-underline-line-band", underlined),
+        ("data-strike", struck),
+        ("data-strike-band", struck),
+    ] {
+        if !needs && element.has_attr(attr) {
+            return Err(format!(
+                "attribute '{attr}' decorates nothing: the run has no {}",
+                if attr.starts_with("data-underline") {
+                    "underline"
+                } else {
+                    "line-through or data-double-strike"
+                }
+            ));
+        }
     }
+    let shape = |attr: &str, band: Option<EmBand>| -> Result<DecorationShape, String> {
+        Ok(DecorationShape {
+            band,
+            pieces: match element.attr(attr)? {
+                Some(pieces) => decoration_pieces(&format!("attribute '{attr}'"), &pieces)?,
+                None => DecorationShape::solid().pieces,
+            },
+        })
+    };
+    let strike_band = element.attr("data-strike-band")?.as_deref().map(strike_band).transpose()?;
     let outline = match style.get("-webkit-text-stroke") {
         Some(stroke) => {
             let (width, color) = stroke
@@ -409,14 +500,10 @@ fn run(dom: &Dom<'_>, element: &Element<'_>) -> Result<Run, String> {
         bold: one_of("CSS property 'font-weight'", style.require("font-weight")?, &["bold", "normal"])? == "bold",
         italic: one_of("CSS property 'font-style'", style.require("font-style")?, &["italic", "normal"])? == "italic",
         decoration: Decoration {
-            underline: lines.split_ascii_whitespace().any(|l| l == "underline"),
-            underline_style: underline_style(element, &style)?,
+            underline: underlined.then(|| shape("data-underline", underline_band)).transpose()?,
             underline_color: style.color("text-decoration-color")?,
-            underline_from_font,
-            underline_band,
-            underline_heavy,
-            strike: lines.split_ascii_whitespace().any(|l| l == "line-through"),
-            double_strike: element.has_attr("data-double-strike"),
+            underline_line_band: element.has_attr("data-underline-line-band"),
+            strike: struck.then(|| shape("data-strike", strike_band)).transpose()?,
         },
         // `top` is the negated offset, omitted at 0.
         baseline_offset: style.px("top")?.map_or(0.0, |top| -top),
@@ -511,7 +598,9 @@ fn glow(element: &Element<'_>, style: &Style<'_>) -> Result<Option<Shadow>, Stri
 #[cfg(test)]
 mod tests {
     use crate::color::Rgba;
-    use crate::model::{EmBand, ParagraphAlign, Shrink, SlideObject, Synthesis, TabAlign, TextFit, TextObject, UnderlineStyle, VerticalAlign};
+    use crate::model::{
+        DecorationPiece, DecorationShape, EmBand, ParagraphAlign, Shrink, SlideObject, Synthesis, TabAlign, TextFit, TextObject, VerticalAlign,
+    };
     use crate::profile::parse;
     use crate::profile::tests::document;
 
@@ -536,7 +625,7 @@ mod tests {
     #[test]
     fn reads_paragraphs_bullets_and_runs() {
         let html = format!(
-            r#"<div class="text-paragraph" data-line-baseline="16" data-tab-stops="96:left,192.5:decimal" data-bullet-level="1" data-bullet-type="number" data-bullet-indent="27" data-bullet-start="3" style="{PARAGRAPH_STYLE} padding-left: 13.5px; text-indent: 0px;"><span class="text-bullet" style="display: inline-block; width: 13.5px;">3.&nbsp;</span><span class="text-run" lang="en-US" data-vertical-align="super" data-text-shadow="glow shadow" data-double-strike="" data-underline-style="wavy" data-underline-heavy="" style="{RUN_STYLE} text-decoration-line: underline line-through; text-decoration-color: #00FF00; text-decoration-thickness: from-font; text-underline-position: from-font; text-decoration-skip-ink: none; position: relative; top: -4.5px; letter-spacing: 1.5px; font-kerning: none; background-color: #FFFF00; -webkit-text-stroke: 0.75px rgba(1, 2, 3, 0.5); text-shadow: 0px 0px 6px rgba(255, 0, 0, 0.6), 2px 2px 3px #000000;">a &amp; b</span><br><a class="text-run" href="https://x.test/?a=1&amp;b=2" title="Tip" data-slide="2" data-soft-break-before="" style="{RUN_STYLE}">c</a><span class="text-run" data-empty="" style="{RUN_STYLE}">&#8203;</span></div>"#
+            r#"<div class="text-paragraph" data-line-baseline="16" data-tab-stops="96:left,192.5:decimal" data-bullet-level="1" data-bullet-type="number" data-bullet-indent="27" data-bullet-start="3" style="{PARAGRAPH_STYLE} padding-left: 13.5px; text-indent: 0px;"><span class="text-bullet" style="display: inline-block; width: 13.5px;">3.&nbsp;</span><span class="text-run" lang="en-US" data-vertical-align="super" data-text-shadow="glow shadow" data-double-strike="" data-underline-style="wavy" data-underline="line(-1 1.5)" data-underline-line-band="" data-strike="line(-0.46 0.64) line(1.46 0.64)" data-strike-band="-0.25em 0.05em" style="{RUN_STYLE} text-decoration-line: underline line-through; text-decoration-color: #00FF00; text-decoration-thickness: from-font; text-underline-position: from-font; text-decoration-skip-ink: none; position: relative; top: -4.5px; letter-spacing: 1.5px; font-kerning: none; background-color: #FFFF00; -webkit-text-stroke: 0.75px rgba(1, 2, 3, 0.5); text-shadow: 0px 0px 6px rgba(255, 0, 0, 0.6), 2px 2px 3px #000000;">a &amp; b</span><br><a class="text-run" href="https://x.test/?a=1&amp;b=2" title="Tip" data-slide="2" data-soft-break-before="" style="{RUN_STYLE}">c</a><span class="text-run" data-empty="" style="{RUN_STYLE}">&#8203;</span></div>"#
         );
         let object = text_object(&html).unwrap();
         let text = object.text.expect("text");
@@ -557,13 +646,28 @@ mod tests {
             (a.text.as_str(), a.font_face.as_str(), a.baseline_offset, a.character_spacing),
             ("a & b", "Calibri", 4.5, 1.5)
         );
-        assert!(a.decoration.underline && a.decoration.strike && a.decoration.double_strike);
-        assert!(a.decoration.underline_from_font && a.decoration.underline_heavy);
-        // The double strike took text-decoration-style; the underline keeps data-underline-style.
+        let line = |top: f32, height: f32| DecorationPiece::Line {
+            top,
+            height,
+            dashes: Vec::new(),
+        };
+        // A from-font underline: the face's post band, PowerPoint's heavy piece around it.
         assert_eq!(
-            (a.decoration.underline_style, c.decoration.underline_style),
-            (UnderlineStyle::Wavy, UnderlineStyle::Solid)
+            a.decoration.underline,
+            Some(DecorationShape {
+                band: None,
+                pieces: vec![line(-1.0, 1.5)]
+            })
         );
+        assert!(a.decoration.underline_line_band);
+        assert_eq!(
+            a.decoration.strike,
+            Some(DecorationShape {
+                band: Some(EmBand { offset: 0.25, size: 0.05 }),
+                pieces: vec![line(-0.46, 0.64), line(1.46, 0.64)]
+            })
+        );
+        assert!(c.decoration.underline.is_none() && c.decoration.strike.is_none());
         assert_eq!(
             (a.decoration.underline_color, a.highlight),
             (Some(Rgba(0, 255, 0, 1.0)), Some(Rgba(255, 255, 0, 1.0)))
@@ -597,22 +701,53 @@ mod tests {
     }
 
     #[test]
-    fn reads_each_underline_style() {
-        for (css, wants) in [
-            ("solid", UnderlineStyle::Solid),
-            ("double", UnderlineStyle::Double),
-            ("dotted", UnderlineStyle::Dotted),
-            ("dashed", UnderlineStyle::Dashed),
-            ("wavy", UnderlineStyle::Wavy),
-        ] {
-            let style = RUN_STYLE.replace("text-decoration-style: solid", &format!("text-decoration-style: {css}"));
+    fn reads_decoration_pieces_and_defaults_to_one_line_around_the_face_band() {
+        let decoration = |attrs: &str, css: &str| {
             let html = format!(
-                r#"<div class="text-paragraph" data-line-baseline="16" style="{PARAGRAPH_STYLE}"><span class="text-run" style="{style} text-decoration-line: underline;">x</span></div>"#
+                r#"<div class="text-paragraph" data-line-baseline="16" style="{PARAGRAPH_STYLE}"><span class="text-run"{attrs} style="{RUN_STYLE}{css}">x</span></div>"#
             );
             let text = text_object(&html).unwrap().text.expect("text");
-            let style = text.paragraphs.first().and_then(|p| p.runs.first()).map(|r| r.decoration.underline_style);
-            assert_eq!(style, Some(wants), "{css}");
-        }
+            text.paragraphs
+                .into_iter()
+                .next()
+                .and_then(|p| p.runs.into_iter().next())
+                .expect("run")
+                .decoration
+        };
+        let underline = decoration(
+            r#" data-underline="line(0 1 4 2 1 2) wave(0.5 2 4 0.037795px) zigzag(-0.5 2 0.16px)""#,
+            " text-decoration-line: underline;",
+        );
+        assert_eq!(
+            underline.underline.map(|u| u.pieces),
+            Some(vec![
+                DecorationPiece::Line {
+                    top: 0.0,
+                    height: 1.0,
+                    dashes: vec![4.0, 2.0, 1.0, 2.0]
+                },
+                DecorationPiece::Wave {
+                    centre: 0.5,
+                    amplitude: 2.0,
+                    half: 4.0,
+                    stroke: 0.037795
+                },
+                DecorationPiece::Zigzag {
+                    top: -0.5,
+                    height: 2.0,
+                    line: 0.16
+                },
+            ])
+        );
+        assert!(underline.strike.is_none());
+        // Omitted, each decoration is one line filling the face's band.
+        let plain = decoration("", " text-decoration-line: underline line-through;");
+        assert_eq!(
+            (plain.underline, plain.strike),
+            (Some(DecorationShape::solid()), Some(DecorationShape::solid()))
+        );
+        // A double strike alone strikes the run.
+        assert_eq!(decoration(r#" data-double-strike="""#, "").strike, Some(DecorationShape::solid()));
     }
 
     #[test]
@@ -671,8 +806,7 @@ mod tests {
         );
         let text = text_object(&html).unwrap().text.expect("text");
         let decoration = &text.paragraphs[0].runs[0].decoration;
-        assert!(decoration.underline_from_font);
-        assert_eq!(decoration.underline_band, Some(EmBand { offset: -0.045, size: 0.072 }));
+        assert_eq!(decoration.underline.as_ref().and_then(|u| u.band), Some(EmBand { offset: -0.045, size: 0.072 }));
     }
 
     #[test]
@@ -751,9 +885,40 @@ mod tests {
                 "attribute 'data-synthetic-bold': -0.1 is negative",
             ),
             (run(" data-synthetic-italic=\"slanted\"", "", "x"), "attribute 'data-synthetic-italic'"),
+            (run(" data-underline-heavy=\"\"", "", "x"), "attribute 'data-underline-heavy'"),
+            (run(" data-underline=\"line(0 1)\"", "", "x"), "attribute 'data-underline' decorates nothing"),
             (
-                run(" data-underline-heavy=\"\"", " text-decoration-line: underline;", "x"),
-                "attribute 'data-underline-heavy' needs 'text-decoration-thickness: from-font'",
+                run(" data-strike-band=\"0em 0.1em\"", "", "x"),
+                "attribute 'data-strike-band' decorates nothing",
+            ),
+            (
+                run(" data-underline=\"line(0 1 4)\"", " text-decoration-line: underline;", "x"),
+                "attribute 'data-underline': 'line(0 1 4)' is not pieces",
+            ),
+            (
+                run(" data-underline=\"line(0 1)wave(0 1 1 1px)\"", " text-decoration-line: underline;", "x"),
+                "is not pieces",
+            ),
+            (
+                run(" data-underline=\"wave(0 1 1 1)\"", " text-decoration-line: underline;", "x"),
+                "is not pieces",
+            ),
+            (
+                run(" data-underline=\"line(0 1 0 1)\"", " text-decoration-line: underline;", "x"),
+                "has a dash 0, below 0.01",
+            ),
+            (
+                run(" data-underline=\"zigzag(0 2 0px)\"", " text-decoration-line: underline;", "x"),
+                "has a line 0, below 0.01",
+            ),
+            (run(" data-underline=\" \"", " text-decoration-line: underline;", "x"), "names no piece"),
+            (
+                run(" data-strike-band=\"0.1em\"", " text-decoration-line: line-through;", "x"),
+                "attribute 'data-strike-band': '0.1em' is not '<n>em <positive n>em'",
+            ),
+            (
+                run(" data-strike-band=\"0.1em -0.05em\"", " text-decoration-line: line-through;", "x"),
+                "attribute 'data-strike-band'",
             ),
             (
                 run(" data-non-breaking-hyphen=\"en-dash\"", "", "x"),

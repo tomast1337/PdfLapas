@@ -1,5 +1,5 @@
 import { PPTX_DEFAULTS } from "#src/defaults";
-import type { RenderingTargetProfile } from "./index";
+import type { DecorationRules, RenderingTargetProfile, UnderlineShape } from "./index";
 
 // PowerPoint's grid for each glyph's advance width and for a line's room, 1/576 in, 0.125pt (`advanceGridPt`,
 // `wrapWidthGridPt`).
@@ -19,6 +19,90 @@ const EAST_ASIAN_FALLBACK = Object.freeze({
 const EMOJI_FACE = "Segoe UI Emoji";
 /** The marks measured hanging past a line's end, by language (`hangingMarks`). */
 const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』】〕),.;:!?]}", ja: "，。" });
+
+/** Its zigzag's line, one step of its 1/600 in device grid tall, in px. */
+const WAVE_LINE_PX = PPTX_DEFAULTS.units.cssDpi / BASELINE_GRID_PER_INCH;
+/** `wavyHeavy`'s zigzag line, in those steps. */
+const HEAVY_WAVE_LINES = 6;
+const line = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: 0, height: 1, ...(dashes ? { dashes } : {}) }] });
+/** A heavy type's line: 1.5T from P - T, as `heavy`, with the light type's dash pattern. */
+const heavyLine = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: -1, height: 1.5, ...(dashes ? { dashes } : {}) }] });
+// Dash patterns, in thicknesses: dots and their gaps one long, dashes 3 and long dashes 7, the gaps after them 2 and 4.
+const DOTS = [1, 1];
+const DASHES = [3, 2];
+const LONG_DASHES = [7, 4];
+const DOT_DASHES = [3, 2, 1, 2];
+const DOT_DOT_DASHES = [3, 2, 1, 2, 1, 2];
+
+/**
+ * PowerPoint's underlines and strikes. It draws an underline from the face's `post` table, unbroken under descenders,
+ * where Chromium's default is about 0.1em thick at its own offset with gaps for descenders: measured against its PDF
+ * export of a synthetic deck (Arial, Calibri and Times New Roman at 8, 10, 12, 18 and 24pt, regular and bold), the
+ * band's top is underlinePosition below the baseline and its height underlineThickness, the bold face's when bold,
+ * each within one 1/600 in step: 12pt Arial 0.84pt thick (post 0.879), bold 1.2 (1.26), Calibri 0.84 (0.785), Times
+ * New Roman 0.6 (0.586), tops 1.27pt below the baseline (1.271, 1.359, 1.307); Chromium drew 1.125pt for each at
+ * 0.66pt. The underline colour is used when set. On some faces PowerPoint draws another band, by a rule not yet known
+ * (#391): a `fontMetrics` entry's `underline` gives that band in place of the `post` one.
+ * Around that band (top P, thickness T), in the same export: double is two T/2 lines from P - T to P + T (12pt Arial
+ * 0.48pt lines 0.72pt apart from 0.43pt below the baseline, T 0.84), heavy one 1.5T band from P - T (12pt Arial 1.32pt
+ * from 0.48pt, 24pt 2.76pt from 0.70pt), wavy a 1/600 in zigzag of 45-degree slopes filling 2T from P - T/2. A line's
+ * underlined runs share one band, their P and T averaged by width: a 12pt then a 24pt Arial run gets 1.44pt from
+ * 2.06pt below the baseline, where 12pt alone is 0.84 from 1.27 and 24pt alone 1.80 from 2.42.
+ * The other types and the strike, measured in its PDF export of the parity fixture's text-option slides (Arial, 20pt
+ * underlines, 24 and 32pt strikes, 48pt `dbl` with `sngStrike`; PR #571), where it fills each piece and rounds every
+ * length to its 1/600 in grid (20pt Arial: T 1.44pt, post 1.47): every dash pattern is in T, the same for the light
+ * line and the heavy one (1.5T from P - T, as `heavy`): dotted 1.44pt dots 1.44pt apart (DOTS), dash 4.32pt dashes
+ * 2.88pt apart (3T, 2T), dashLong 10.08 and 5.76 (7T, 4T), dotDash 4.32, 2.88, 1.44, 2.88 and dotDotDash 4.32,
+ * 2.88, 1.44, 2.88, 1.44, 2.88; under a 20pt and a 32pt run on one line the dash is 4.68pt and the gap 3.12pt, 3T and
+ * 2T of the line's 1.56pt band, starting again with each run. `wavyHeavy` is `wavy`'s zigzag drawn with a 0.72pt
+ * line (six grid steps; 2.16pt half-waves filling the same 2.88pt), `wavyDbl` two 1/600 in zigzags each filling T,
+ * from P - T and from P (1.32pt half-waves). `words` is one unbroken line under the words and the spaces, as `sng`.
+ * The 48pt `dbl` keeps the rule above: 1.80pt lines from 1.49 and 6.65pt below the baseline, the rule's 1.76 from 1.57
+ * and 6.85 (T 3.52, P 5.09). The strike is the face's OS/2 band (32pt Arial 1.56pt from 8.30pt above the baseline,
+ * yStrikeoutSize 1.597 from yStrikeoutPosition 8.298; 48pt 2.40 from 12.55, 2.392 from 12.43), and a double strike
+ * two lines of its thickness S, one right above the band and one right below it, the band itself left empty (24pt
+ * Arial 1.20pt lines from 7.49 and 5.09pt above the baseline, S 1.196 from 6.217; 32pt 1.56 from 9.86 and 6.74, S
+ * 1.597 from 8.298).
+ * shortcut: `wavyHeavy`'s line is measured at 20pt only, so it is taken as six grid steps whatever the size, and a
+ * zigzag starts again with each run where PowerPoint's runs on across a line's runs; measure larger sizes when a deck
+ * needs them (#569).
+ */
+const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
+    bands: Object.freeze({ kind: "font" as const }),
+    underlines: Object.freeze({
+        sng: line(),
+        dbl: {
+            pieces: [
+                { kind: "line", top: -1, height: 0.5 },
+                { kind: "line", top: 0.5, height: 0.5 },
+            ],
+        },
+        heavy: heavyLine(),
+        dotted: line(DOTS),
+        dottedHeavy: heavyLine(DOTS),
+        dash: line(DASHES),
+        dashHeavy: heavyLine(DASHES),
+        dashLong: line(LONG_DASHES),
+        dashLongHeavy: heavyLine(LONG_DASHES),
+        dotDash: line(DOT_DASHES),
+        dotDashHeavy: heavyLine(DOT_DASHES),
+        dotDotDash: line(DOT_DOT_DASHES),
+        dotDotDashHeavy: heavyLine(DOT_DOT_DASHES),
+        wavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }] },
+        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: HEAVY_WAVE_LINES * WAVE_LINE_PX }] },
+        wavyDbl: {
+            pieces: [
+                { kind: "zigzag", top: -1, height: 1, thickness: WAVE_LINE_PX },
+                { kind: "zigzag", top: 0, height: 1, thickness: WAVE_LINE_PX },
+            ],
+        },
+        words: line(),
+    }),
+    doubleStrike: Object.freeze([
+        { kind: "line", top: -1, height: 1 },
+        { kind: "line", top: 1, height: 1 },
+    ]),
+});
 
 /**
  * PowerPoint kerns a run only from its `kern` size: from 12pt, and never with `charSpacing`, and only from the face's
@@ -202,22 +286,7 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
  * legend font sizes under the last key's center.
  * shortcut: fitted on one chart (10pt, three entries, 4.1in tall), assuming its key is 0.6 legend font sizes as in
  * LibreOffice; measure other sizes and entry counts when a deck needs them.
- * It draws an underline from the face's `post` table, unbroken under descenders (`underlineFromFont`), where
- * Chromium's default is about 0.1em thick at its own offset with gaps for descenders: measured against its PDF
- * export of a synthetic deck (Arial, Calibri and Times New Roman at 8, 10, 12, 18 and 24pt, regular and bold), the
- * band's top is underlinePosition below the baseline and its height underlineThickness, the bold face's when bold,
- * each within one 1/600 in step: 12pt Arial 0.84pt thick (post 0.879), bold 1.2 (1.26), Calibri 0.84 (0.785), Times
- * New Roman 0.6 (0.586), tops 1.27pt below the baseline (1.271, 1.359, 1.307); Chromium drew 1.125pt for each at
- * 0.66pt. The underline colour is used when set. On some faces PowerPoint draws another band, by a rule not yet known
- * (#391): a `fontMetrics` entry's `underline` gives that band in place of the `post` one (`underlineBand`).
- * Around that band (top P, thickness T), in the same export: double is two T/2 lines from P - T to P + T (12pt Arial
- * 0.48pt lines 0.72pt apart from 0.43pt below the baseline, T 0.84), heavy one 1.5T band from P - T (12pt Arial 1.32pt
- * from 0.48pt, 24pt 2.76pt from 0.70pt; `underlineHeavy`), wavy a 1/600 in zigzag of 45-degree slopes filling 2T from
- * P - T/2. A line's underlined runs share one band, their P and T averaged by width: a 12pt then a 24pt Arial run gets
- * 1.44pt from 2.06pt below the baseline, where 12pt alone is 0.84 from 1.27 and 24pt alone 1.80 from 2.42.
- * shortcut: pdf-core and the PDFKit renderer draw those shapes and the line's band; Chromium cannot from the HTML
- * alone (its explicit thickness at least 1px, its double gap 1px, its wave at least 5px tall) and keeps its own
- * double and wavy, a normal-thickness heavy and a band per run (#396).
+ * Its underlines and strikes are POWERPOINT_DECORATION's (`decoration`).
  * It draws a doughnut's hole `holeSize` percent of its outer diameter (`readsDoughnutHoleSize`), as OOXML defines
  * `<c:holeSize>`: in its PDF export of examples/company-report.ts slide 6, `holeSize: 55`, the hole is 0.55 of the ring.
  */
@@ -249,7 +318,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     nonBreakingHyphen: "hyphen-minus",
     drawsPictureInnerShadow: true,
     drawsChartMarkerOutline: true,
-    underlineFromFont: true,
+    decoration: POWERPOINT_DECORATION,
     readsDoughnutHoleSize: true,
     // PowerPoint's PDF export of a synthetic deck (an area chart, Lorem [3, 5, 4, 7] then Ipsum [5, 2, 6, 4]) draws the
     // last series in front: Ipsum covers Lorem, which shows only above Ipsum's line (#533).

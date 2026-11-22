@@ -1,8 +1,30 @@
-import type { NormalizedChart } from "@pdflapas/model";
+import type { NormalizedChart, NormalizedDecorationPiece } from "@pdflapas/model";
 import { LIBREOFFICE } from "./libreoffice";
 import { POWERPOINT } from "./powerpoint";
 
 export { POWERPOINT_FACES, type PowerPointFace, type PowerPointFaceRole } from "./powerpoint";
+
+/** The OOXML underline types (ST_TextUnderlineType) PptxGenJS writes as `<a:rPr u>`, but `none`. */
+export const UNDERLINE_TYPES = Object.freeze(["sng", "dbl", "heavy", "dotted", "dottedHeavy", "dash", "dashHeavy", "dashLong", "dashLongHeavy", "dotDash", "dotDashHeavy", "dotDotDash", "dotDotDashHeavy", "wavy", "wavyHeavy", "wavyDbl", "words"] as const);
+export type UnderlineType = (typeof UNDERLINE_TYPES)[number];
+
+/** An underline type's shape: its pieces around the band. */
+export type UnderlineShape = { readonly pieces: readonly NormalizedDecorationPiece[] };
+
+/**
+ * Where a target draws underlines and strikes, and their shapes around the band (docs/HTML_PROFILE.md). `bands`
+ * "font": the face's `post` underline and OS/2 strikeout bands, the bold face's when bold, and the underlines of one
+ * line share their bands averaged by width. "descent": both from the face's descent d (usWinDescent over unitsPerEm),
+ * each `thickness` d tall, the underline's centre `underlineCentre` d below the baseline and the strike's
+ * `strikeCentre` (1 - d) above it; each run keeps its own.
+ */
+export type DecorationRules = {
+    readonly bands: { readonly kind: "font" } | { readonly kind: "descent"; readonly thickness: number; readonly underlineCentre: number; readonly strikeCentre: number };
+    /** Each type's shape; undefined: the type draws no underline. */
+    readonly underlines: Readonly<Record<UnderlineType, UnderlineShape | undefined>>;
+    /** A double strike's (`dblStrike`) pieces; a single strike is one line filling the band. */
+    readonly doubleStrike: readonly NormalizedDecorationPiece[];
+};
 
 /**
  * A rendering target: the application whose drawing of the PptxGenJS file the PDF matches, where applications differ.
@@ -143,13 +165,8 @@ export type RenderingTargetProfile = {
      * `<c:marker><c:spPr>`, `lineDataSymbolLineSize` in `lineDataSymbolLineColor`), or the marker without it.
      */
     readonly drawsChartMarkerOutline: boolean;
-    /**
-     * Whether it draws an underline as the face's `post` table band (underlineThickness tall, its top
-     * underlinePosition below the baseline) unbroken under descenders (`NormalizedTextDecoration.underlineFromFont`),
-     * with PowerPoint's double, wavy and heavy shapes around it and one band per line (docs/HTML_PROFILE.md), or the
-     * renderer's own underline.
-     */
-    readonly underlineFromFont: boolean;
+    /** How it draws underlines and strikes (`NormalizedTextDecoration.underlineShape`, `strikeShape`). */
+    readonly decoration: DecorationRules;
     /**
      * Whether a doughnut's hole is `holeSize` percent of its outer diameter (`<c:holeSize>`, which PptxGenJS writes
      * from `holeSize`), or always PPTX_DEFAULTS.chart.doughnutHoleSizePct whatever it says.

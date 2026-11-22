@@ -507,15 +507,17 @@ PDF from PowerPoint, and measure the band's top below the baseline and its heigh
 `position = -top / size * unitsPerEm` and `thickness = height / size * unitsPerEm`. The band applies to the
 face in every weight and style, and PowerPoint's double, wavy and heavy underlines are drawn around it as
 around the `post` band. `toHtml()` states it as `text-decoration-thickness` and `text-underline-offset` in em
-on the run. `readFontWinMetrics` (and so the default resolver) never sets it.
+on the run, as it states every band it knows (docs/HTML_PROFILE.md). `readFontWinMetrics` (and so the default resolver) never sets it.
 
 The constructor checks each entry: `unitsPerEm` a positive integer, `winAscent` and `winDescent`
 non-negative integers with a positive sum, `pairKerning` a boolean if present, `underline` if present an
 object with a finite `position` and a positive finite `thickness` and nothing else, and no other field. An
 invalid entry throws a `TypeError` naming the face and field. `readFontWinMetrics(bytes, faceIndex = 0)` is browser-safe (it takes bytes,
 not a path) and throws `FontFileError` on bytes that are not a readable TrueType or OpenType font. The
-LibreOffice target ignores `fontMetrics` (its `underline` too: it draws its own underline) and `resolveFontMetrics`, as LibreOffice's line box does not
-depend on the font; it never calls the resolver.
+LibreOffice target's line box ignores `fontMetrics` and `resolveFontMetrics`, as LibreOffice's line box does not
+depend on the font; it reads a face's `winDescent` and `unitsPerEm` (an entry's, the resolver's or
+`FONT_WIN_METRICS`') only for the underline and strike, which LibreOffice sizes and places from the face's descent,
+and never an entry's `underline`.
 
 `resolveFontMetrics` takes a face name and returns `{ kind: "metrics", metrics }`, or `{ kind: "unknown" }` to
 fall through to `FONT_WIN_METRICS`, or `{ kind: "unreadable", face, path, reason }` for a font file it found
@@ -683,6 +685,10 @@ WASM also writes them to the XMP packet; Puppeteer writes no XMP.
 - `underline`: `{ style?, color? }` - Underlined text; `style` is an OOXML underline type (`"sng"`,
   `"dbl"`, `"heavy"`, `"dash"`, ...). The deprecated string form (`underline: "heavy"`) and `true`
   (`"sng"`) work as in PptxGenJS; in a table cell PptxGenJS writes nothing for `true`, so it draws none.
+  All 17 OOXML types are drawn, with the rendering target's geometry: `words` is one unbroken line under the
+  words and the spaces on the PowerPoint target, as PowerPoint draws it, and nothing on the LibreOffice target, as
+  LibreOffice 26.2 does. A style that is not an OOXML type throws a `TypeError` naming it (PptxGenJS 4.0.1's types list
+  `"dotDashHeave"`, a misspelling PowerPoint rejects; use `"dotDashHeavy"`).
 - `color`: string - Text color
 - `fill`: { color: string } - Background color
 - `align`: "left" | "center" | "right" | "justify" - Horizontal alignment

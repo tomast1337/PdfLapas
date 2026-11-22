@@ -5,18 +5,22 @@ import { attribute, children, type Element, hasAttribute, hasClass, isElement, t
 import { type Effect, glowEffect } from "#src/effect/index";
 import type { FaceRequest } from "#src/fonts";
 
+/**
+ * A piece of a decoration around its band (docs/HTML_PROFILE.md "Underline and strike geometry"), lengths in band
+ * thicknesses T down from the band's top: a stripe (cut into `dashes`, on and off in turn), a stroked wave, a zigzag.
+ */
+export type DecorationPiece =
+    | { readonly kind: "line"; readonly top: number; readonly height: number; readonly dashes: readonly number[] }
+    | { readonly kind: "wave"; readonly centre: number; readonly amplitude: number; readonly half: number; readonly stroke: number }
+    | { readonly kind: "zigzag"; readonly top: number; readonly height: number; readonly line: number };
+
 export type Decoration = {
-    readonly style: "solid" | "double" | "dashed" | "dotted" | "wavy";
     readonly color: Color;
-    /** `text-decoration-thickness: from-font` on an underline: PowerPoint's shapes, on the line's averaged band (draw.ts). */
-    readonly fromFont?: boolean;
-    /**
-     * `text-decoration-thickness: <t>em; text-underline-offset: <o>em` (the model's `underlineBand`): a from-font
-     * underline's band in place of the face's `post` band, in em: its top `position` above the baseline (-o), `thickness` t.
-     */
-    readonly band?: { readonly position: number; readonly thickness: number };
-    /** `data-underline-heavy` on a from-font underline: PowerPoint's heavy band. */
-    readonly heavy?: boolean;
+    readonly pieces: readonly DecorationPiece[];
+    /** The band the HTML states, in em: its top `top` below the baseline, `thickness` tall. Without it, the face's (draw.ts). */
+    readonly band?: { readonly top: number; readonly thickness: number };
+    /** `data-underline-line-band`: the underline takes its line's averaged band. */
+    readonly lineBand?: boolean;
 };
 
 export type Run = {
@@ -106,7 +110,14 @@ const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 /** A letter of any other script: a strong left-to-right character. */
 const LTR_LETTER = /(?![\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF])\p{L}/u;
 const ANCHORS: ReadonlySet<string> = new Set(["flex-start", "center", "flex-end"]);
-const DECORATION_STYLES: ReadonlySet<string> = new Set(["solid", "double", "dashed", "dotted", "wavy"]);
+/** A decoration without `data-underline` or `data-strike`: one stripe filling its band. */
+const BAND_PIECES: readonly DecorationPiece[] = Object.freeze([{ kind: "line", top: 0, height: 1, dashes: [] }]);
+/** The pieces of a `data-underline` or `data-strike` value, a closing parenthesis then spaces apart. */
+const PIECE_SEPARATOR = /(?<=\))\s+/;
+const PIECE = /^(line|wave|zigzag)\(([^()]*)\)$/;
+const PX_ARGUMENT = /^(.*)px$/;
+/** The smallest decoration length the profile accepts (docs/HTML_PROFILE.md): below it a segment would take more pieces than are worth drawing. */
+const MIN_DECORATION_LENGTH = 0.01;
 /**
  * Chromium's synthetic styles, the default for HTML that does not state them: pdf-core's
  * CHROMIUM_SYNTHETIC_BOLD_STROKE_EM and CHROMIUM_SYNTHETIC_ITALIC_SHEAR, measured in Chromium's PDF output.
@@ -115,7 +126,7 @@ const BROWSER_SYNTHESIS: Synthesis = Object.freeze({ boldStroke: 1 / 32, italicS
 /** U+002D then U+2060 WORD JOINER: a U+2011 in a run with `data-non-breaking-hyphen`, drawn with the face's hyphen and still unbreakable. */
 const HYPHEN_MINUS_NO_BREAK = "-\u2060";
 const NON_BREAKING_HYPHEN = /\u2011/g;
-/** The value of each underline geometry property that the renderer draws. */
+/** The value of each underline geometry property that the renderer draws (or the em band, read before these). */
 const UNDERLINE_FROM_FONT = Object.freeze([
     ["text-decoration-thickness", "from-font"],
     ["text-underline-position", "from-font"],
@@ -190,6 +201,80 @@ function readColor(value: string, what: string, report: Report): { kind: "color"
     }
 
     return { kind: "color", color: parsed.value };
+}
+
+/** A `data-underline` or `data-strike` value as its pieces, or what is wrong with it. */
+function readPieces(value: string): { kind: "pieces"; pieces: DecorationPiece[] } | { kind: "invalid"; reason: string } {
+    const pieces: DecorationPiece[] = [];
+
+    for (const written of value.trim().split(PIECE_SEPARATOR)) {
+        const match = PIECE.exec(written);
+        const [kind, list] = [match?.[1], match?.[2]];
+
+        if (kind === undefined || list === undefined) {
+            return { kind: "invalid", reason: `'${written}' is not line(...), wave(...) or zigzag(...)` };
+        }
+
+        // The arguments as numbers; the last of a wave or zigzag is a px length.
+        const words = list.trim().split(/\s+/);
+        const numbers: number[] = [];
+
+        for (const [index, word] of words.entries()) {
+            const pxLength = kind !== "line" && index === words.length - 1;
+            const digits = pxLength ? PX_ARGUMENT.exec(word)?.[1] : word;
+            const number = digits === undefined || digits === "" ? Number.NaN : Number(digits);
+
+            if (!Number.isFinite(number)) {
+                return { kind: "invalid", reason: `'${written}' has '${word}' where a ${pxLength ? "px length" : "number"} goes` };
+            }
+
+            numbers.push(number);
+        }
+
+        const [first = 0, second = 0, third = 0, fourth = 0] = numbers;
+
+        if (kind === "line") {
+            const dashes = numbers.slice(2);
+
+            if (numbers.length < 2 || dashes.length % 2 !== 0 || second < MIN_DECORATION_LENGTH || dashes.some(length => length < MIN_DECORATION_LENGTH)) {
+                return { kind: "invalid", reason: `'${written}' is not line(<top> <height>) with a height and an even count of dash lengths of at least ${MIN_DECORATION_LENGTH}` };
+            }
+
+            pieces.push({ kind: "line", top: first, height: second, dashes });
+        } else if (kind === "wave") {
+            if (numbers.length !== 4 || second < 0 || third < MIN_DECORATION_LENGTH || fourth < MIN_DECORATION_LENGTH) {
+                return { kind: "invalid", reason: `'${written}' is not wave(<centre> <amplitude> <half> <w>px) with an amplitude of at least 0, and a half and width of at least ${MIN_DECORATION_LENGTH}` };
+            }
+
+            pieces.push({ kind: "wave", centre: first, amplitude: second, half: third, stroke: fourth });
+        } else {
+            if (numbers.length !== 3 || second < MIN_DECORATION_LENGTH || third < MIN_DECORATION_LENGTH) {
+                return { kind: "invalid", reason: `'${written}' is not zigzag(<top> <height> <w>px) with a height and width of at least ${MIN_DECORATION_LENGTH}` };
+            }
+
+            pieces.push({ kind: "zigzag", top: first, height: second, line: third });
+        }
+    }
+
+    return { kind: "pieces", pieces };
+}
+
+/** The pieces of decoration attribute `name`: one stripe filling the band when it is omitted, or malformed (reported). */
+function decorationPieces(element: Element, name: string, report: Report): readonly DecorationPiece[] {
+    if (!hasAttribute(element, name)) {
+        return BAND_PIECES;
+    }
+
+    const value = attribute(element, name, "");
+    const read = readPieces(value);
+
+    if (read.kind === "invalid") {
+        report(`attribute '${name}' '${value}' is not drawn: ${read.reason} (drawn as line(0 1))`);
+
+        return BAND_PIECES;
+    }
+
+    return read.pieces;
 }
 
 function readFace(element: Element, style: Style): FaceRequest {
@@ -343,8 +428,8 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             const decorationColorValue = take(runStyle, "text-decoration-color", "");
             const decorationColorRead = hasDecorationColor ? readColor(decorationColorValue, "text-decoration-color", report) : { kind: "none" as const };
             const decorationColor = decorationColorRead.kind === "color" ? decorationColorRead.color : runColor;
-            // A caller's underline band (`underlineBand`): `text-underline-offset` and `text-decoration-thickness` in em,
-            // without `text-underline-position`; both taken from the style. None without an offset; any other form is reported.
+            // The underline's band in em: `text-underline-offset` and `text-decoration-thickness`, without
+            // `text-underline-position`; both taken from the style. None without an offset; any other form is reported.
             const hasOffset = runStyle.has("text-underline-offset");
             const offset = take(runStyle, "text-underline-offset", "");
             let band: Decoration["band"];
@@ -357,14 +442,11 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
                     report(`CSS property 'text-underline-offset: ${offset}' is not drawn: an underline band is '<n>em' with 'text-decoration-thickness' a positive '<n>em' and no 'text-underline-position'`);
                 } else {
                     runStyle.delete("text-decoration-thickness");
-                    band = { position: -offsetEm.value, thickness: thicknessEm.value };
+                    band = { top: offsetEm.value, thickness: thicknessEm.value };
                 }
             }
 
-            // The underline is always drawn from the face's post table, or the band above, over the descenders (draw.ts); any
-            // other value is reported.
-            const fromFontSet: boolean[] = [];
-
+            // Without an em band the underline takes the face's post band (draw.ts); any other value is reported.
             for (const [property, drawn] of UNDERLINE_FROM_FONT) {
                 const declared = runStyle.has(property);
                 const value = take(runStyle, property, "");
@@ -372,33 +454,44 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
                 if (declared && value !== drawn) {
                     report(`CSS property '${property}: ${value}' is not drawn (drawn as ${drawn})`);
                 }
-
-                fromFontSet.push(declared);
             }
 
-            const fromFont = fromFontSet[0] || band !== undefined;
-            const heavyAttribute = hasAttribute(child, "data-underline-heavy");
-
-            if (heavyAttribute && !fromFont) {
-                report("attribute 'data-underline-heavy' without 'text-decoration-thickness: from-font' is not drawn (drawn at the normal thickness)");
-            }
-
-            const heavy = heavyAttribute && fromFont;
             const doubleStrike = hasAttribute(child, "data-double-strike");
-            // A double strike takes text-decoration-style; the underline's own style is then in data-underline-style.
+            const underlined = decorationLines.includes("underline");
+            // The underline's CSS style is Chromium's fallback: data-underline states what is drawn. A double strike
+            // takes text-decoration-style, the underline's own style then being in data-underline-style.
             const underlineStyle = doubleStrike ? attribute(child, "data-underline-style", "solid") : cssStyle;
-            // `as`: checked against DECORATION_STYLES.
-            const drawnUnderlineStyle = DECORATION_STYLES.has(underlineStyle) ? (underlineStyle as Decoration["style"]) : "solid";
 
-            if (decorationLines.includes("underline") && drawnUnderlineStyle !== underlineStyle) {
-                report(`underline style '${underlineStyle}' is not drawn (drawn solid)`);
+            if (underlined && underlineStyle !== "solid" && !hasAttribute(child, "data-underline")) {
+                report(`underline style '${underlineStyle}' without 'data-underline' is not drawn (drawn as line(0 1))`);
+            }
+
+            // The strike's band in em: data-strike-band="<top below the baseline>em <thickness>em".
+            const strikeBandValue = attribute(child, "data-strike-band", "");
+            const [strikeTop = "", strikeThickness = "", ...strikeRest] = strikeBandValue.trim().split(/\s+/);
+            const [strikeTopEm, strikeThicknessEm] = [em(strikeTop), em(strikeThickness)];
+            let strikeBand: Decoration["band"];
+
+            if (hasAttribute(child, "data-strike-band")) {
+                if (strikeTopEm.kind === "invalid" || strikeThicknessEm.kind === "invalid" || strikeThicknessEm.value <= 0 || strikeRest.length > 0) {
+                    report(`attribute 'data-strike-band' '${strikeBandValue}' is not drawn: it is '<top>em <thickness>em' with a positive thickness (drawn with the face's strikeout band)`);
+                } else {
+                    strikeBand = { top: strikeTopEm.value, thickness: strikeThicknessEm.value };
+                }
             }
 
             // text-decoration-color is the underline's (docs/HTML_PROFILE.md): the strike is in the text colour, as
             // PowerPoint and pdf-core draw it (OOXML gives a strike no colour of its own).
+            const underline: Decoration = {
+                color: decorationColor,
+                pieces: decorationPieces(child, "data-underline", report),
+                ...(band ? { band } : {}),
+                ...(hasAttribute(child, "data-underline-line-band") ? { lineBand: true } : {}),
+            };
+            const strike: Decoration = { color: runColor, pieces: decorationPieces(child, "data-strike", report), ...(strikeBand ? { band: strikeBand } : {}) };
             const decorations: Pick<Run, "underline" | "strike"> = {
-                ...(decorationLines.includes("underline") ? { underline: { style: drawnUnderlineStyle, color: decorationColor, ...(fromFont ? { fromFont } : {}), ...(band ? { band } : {}), ...(heavy ? { heavy } : {}) } } : {}),
-                ...(decorationLines.includes("line-through") || doubleStrike ? { strike: { style: doubleStrike ? "double" : "solid", color: runColor } } : {}),
+                ...(underlined ? { underline } : {}),
+                ...(decorationLines.includes("line-through") || doubleStrike ? { strike } : {}),
             };
             // `-webkit-text-stroke: <width>px <color>`; any other value is reported.
             const hasOutline = runStyle.has("-webkit-text-stroke");
@@ -455,7 +548,20 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
                 synthesis: { boldStroke, italicShear: syntheticNumber("data-synthetic-italic", BROWSER_SYNTHESIS.italicShear) },
                 ...(glow ? { glow } : {}),
             };
-            const read = ["data-double-strike", "data-underline-style", "data-underline-heavy", "data-vertical-align", "data-empty", "data-soft-break-before", "data-slide", "data-text-shadow", "data-shadow-inset"];
+            const read = [
+                "data-double-strike",
+                "data-underline-style",
+                "data-underline",
+                "data-underline-line-band",
+                "data-strike",
+                "data-strike-band",
+                "data-vertical-align",
+                "data-empty",
+                "data-soft-break-before",
+                "data-slide",
+                "data-text-shadow",
+                "data-shadow-inset",
+            ];
 
             reportUnread(child, runStyle, [...read, "data-synthetic-bold", "data-synthetic-italic", "data-non-breaking-hyphen"], report);
             // The run's text in pieces of one `letter-spacing` each: its bare text at the run's, each word span

@@ -34,28 +34,3 @@ export const TEXT_LINE_SNAP_CROP_THRESHOLDS: Readonly<Record<string, number>> = 
     "text-line-hairline": 0.088,
     "text-line-feed-tail-run": 0.082,
 };
-
-/**
- * Puppeteer crops of the double underlines on the "Underline styles" slide. The HTML says
- * `text-decoration-style: double`; at 20pt Chromium prints it as one 5px band (rows 148-152 at 96 dpi, the
- * two lines and their gap merged), where LibreOffice draws two 1px lines 3px apart (rows 148 and 151), and
- * draws `wavyDbl` as a faint double wave. The glyphs match. text-underline-dbl 0.0854, text-underline-wavyDbl
- * 0.1073, measured with `bun run test:visual` outside the pinned image (#205); the Visual parity job's
- * scores replace these.
- */
-export const UNDERLINE_DOUBLE_CROP_THRESHOLDS: Readonly<Record<string, number>> = {
-    "text-underline-dbl": 0.088,
-    "text-underline-wavyDbl": 0.11,
-};
-
-/**
- * Puppeteer crops of a red underline with a strike over blue 32pt Arial (#470). The colours match LibreOffice's; the
- * geometry does not (#489): Chromium draws its auto thickness, 4px rows against LibreOffice's 2px (strike rows 31-34
- * against 33-35, underline 48-51 against 49-50, at 96 dpi), a double strike as one 8px band, and skips ink under
- * the "p". Measured in the pinned image: sngStrike 0.1245, dblStrike 0.1433 (before #470, with the strike in the
- * underline's red: 0.1586 and 0.2252).
- */
-export const STRIKE_DECORATION_CROP_THRESHOLDS: Readonly<Record<string, number>> = {
-    "text-underline-colour-sngStrike": 0.13,
-    "text-underline-colour-dblStrike": 0.15,
-};

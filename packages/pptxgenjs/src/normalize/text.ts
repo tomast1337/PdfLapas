@@ -1,8 +1,8 @@
 import type PptxGenJS from "pptxgenjs";
-import { type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#src/defaults";
-import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
+import { type FontBand, type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#src/defaults";
+import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget, UNDERLINE_TYPES, type UnderlineType } from "#src/target/index";
 import { builtInFontMetrics } from "#src/fontMetrics";
-import type { NormalizedTextBox, NormalizedTextBullet, NormalizedTextParagraph, NormalizedTextRun } from "@pdflapas/model";
+import type { NormalizedDecorationPiece, NormalizedTextBox, NormalizedTextBullet, NormalizedTextParagraph, NormalizedTextRun, NormalizedUnderlineBand } from "@pdflapas/model";
 import { inchesToPixels, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
 import { inch2EmuToPixels } from "#src/units";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, type GridSpacing, runPieces, wordAfter } from "./advanceGrid";
@@ -24,6 +24,9 @@ const WORD_JOINER = "⁠";
 const BEFORE_OPENING_BRACKET = /(?<=[)\]}%])(?=[([{])/gu;
 /** U+2011 NON-BREAKING HYPHEN (RENDERING_TARGETS.nonBreakingHyphen). */
 const NON_BREAKING_HYPHEN = "‑";
+const UNDERLINE_TYPE_NAMES: ReadonlySet<string> = new Set(UNDERLINE_TYPES);
+/** A single strike: one line filling its band. */
+const SINGLE_LINE: readonly NormalizedDecorationPiece[] = Object.freeze([{ kind: "line", top: 0, height: 1 }]);
 
 type TextPiece = {
     text: string;
@@ -150,8 +153,17 @@ export function normalizeTextRun(
     const defaultColor = link && options.color === undefined ? PPTX_DEFAULTS.theme.colors.hyperlink : PPTX_DEFAULTS.text.color;
     const bold = options.bold ?? PPTX_DEFAULTS.text.bold;
     const italic = options.italic ?? PPTX_DEFAULTS.text.italic;
-    const { syntheticBoldStrokeEm, syntheticItalicShear, nonBreakingHyphen, underlineFromFont } = RENDERING_TARGETS[target];
-    const underlined = Boolean(underline) && underline !== "none";
+    const { syntheticBoldStrokeEm, syntheticItalicShear, nonBreakingHyphen, decoration: decorationRules } = RENDERING_TARGETS[target];
+
+    // `u=""`, which only the string form writes, is no underline type: it draws none. Any other string PptxGenJS writes
+    // as given, an `<a:rPr u>` outside ST_TextUnderlineType that PowerPoint does not open.
+    if (underline !== undefined && underline !== "" && underline !== "none" && !UNDERLINE_TYPE_NAMES.has(underline)) {
+        throw new TypeError(`underline style ${JSON.stringify(underline)} is not an OOXML underline type (<a:rPr u>): use one of ${UNDERLINE_TYPES.join(", ")}, or "none".`);
+    }
+
+    // `as`: checked against UNDERLINE_TYPE_NAMES above.
+    const underlineShape = underline === undefined || underline === "" || underline === "none" ? undefined : decorationRules.underlines[underline as UnderlineType];
+    const underlined = underlineShape !== undefined;
     const fontFace = options.fontFace ?? PPTX_DEFAULTS.text.fontFace;
     const fallbacks = fallbackChain(fontFace, target);
     const color = normalizeColor({ color: options.color ?? defaultColor, transparency: options.transparency });
@@ -168,21 +180,54 @@ export function normalizeTextRun(
     }
 
     const underlineColor = typeof options.underline === "object" && options.underline.color ? normalizeColor(options.underline.color) : undefined;
-    // The caller's `fontMetrics` underline for the face (#391), in em: the band drawn in place of its `post` band.
-    const faceMetrics: FontMetricsResult = underlined && underlineFromFont ? fontMetrics(fontFace) : { kind: "unknown" };
-    const metrics = faceMetrics.kind === "metrics" ? faceMetrics.metrics : undefined;
-    const band = metrics?.underline;
+    const doubleStrike = options.strike === "dblStrike";
+    // The underline and strike bands in em (target/index.ts DecorationRules); undefined: the face's own, which only the
+    // renderer reads (a face whose font is not known here).
+    let underlineBand: NormalizedUnderlineBand | undefined;
+    let strikeBand: NormalizedUnderlineBand | undefined;
+
+    if (underlined || strike) {
+        const { bands } = decorationRules;
+        const faceMetrics: FontMetricsResult = fontMetrics(fontFace);
+        const metrics = faceMetrics.kind === "metrics" ? faceMetrics.metrics : undefined;
+
+        if (bands.kind === "descent") {
+            const descent = metrics ? metrics.winDescent / metrics.unitsPerEm : PPTX_DEFAULTS.text.lineDescentEm;
+            const thickness = bands.thickness * descent;
+
+            underlineBand = { position: thickness / 2 - bands.underlineCentre * descent, thickness };
+            strikeBand = { position: bands.strikeCentre * (1 - descent) + thickness / 2, thickness };
+        } else {
+            // The caller's `fontMetrics` underline for the face (#391) first, then the bold or italic face's own.
+            const advances = fontMetrics.glyphAdvances?.(fontFace, bold, italic);
+            const face = advances?.kind === "advances" ? advances.advances : undefined;
+            const em = (band: FontBand, unitsPerEm: number): NormalizedUnderlineBand => ({ position: band.position / unitsPerEm, thickness: band.thickness / unitsPerEm });
+
+            if (metrics?.underline) {
+                underlineBand = em(metrics.underline, metrics.unitsPerEm);
+            } else if (face?.underline) {
+                underlineBand = em(face.underline, face.unitsPerEm);
+            }
+
+            if (face?.strikeout) {
+                strikeBand = em(face.strikeout, face.unitsPerEm);
+            }
+        }
+    }
+
     const decoration: NormalizedTextRun["decoration"] = {
-        // `u=""`, which only the string form writes, is no underline type: it draws none.
         underline: underlined,
         underlineStyle,
         underlineColor,
-        ...(underlined && underlineFromFont ? { underlineFromFont, ...(metrics && band ? { underlineBand: { position: band.position / metrics.unitsPerEm, thickness: band.thickness / metrics.unitsPerEm } } : {}) } : {}),
-        // shortcut: only `heavy` is measured; dashHeavy, dottedHeavy, wavyHeavy and the other heavy dashes draw at
-        // their normal thickness (#397), measure them against PowerPoint's PDF export when a deck uses one.
-        ...(underlined && underlineFromFont && underline === "heavy" ? { underlineHeavy: true } : {}),
+        ...(underlineShape
+            ? {
+                  underlineShape: { ...(underlineBand ? { band: underlineBand } : {}), pieces: underlineShape.pieces },
+                  ...(decorationRules.bands.kind === "font" ? { underlineLineBand: true } : {}),
+              }
+            : {}),
         strike,
-        doubleStrike: options.strike === "dblStrike",
+        doubleStrike,
+        ...(strike ? { strikeShape: { ...(strikeBand ? { band: strikeBand } : {}), pieces: doubleStrike ? decorationRules.doubleStrike : SINGLE_LINE } } : {}),
     };
     let runVerticalAlign: "sub" | "super" | "baseline" = "baseline";
 

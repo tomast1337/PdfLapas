@@ -10,77 +10,192 @@ use krilla::paint::Stroke;
 use krilla::surface::Surface;
 use krilla::text::{Font, GlyphId, KrillaGlyph};
 use kurbo::{BezPath, Rect};
-use parley::{FontMetrics, GlyphRun, Layout, Line, PositionedLayoutItem};
+use parley::{GlyphRun, Layout, Line, PositionedLayoutItem};
 
 use crate::Renderer;
 use crate::color::{Rgba, fill_of, unit};
 use crate::effect::Effect;
 use crate::effect::EffectSource;
 use crate::link::page_quad;
-use crate::model::{TextBox, TextDirection, UnderlineStyle, VerticalAlign};
-use crate::path::{rect_path, stroke_width};
+use crate::model::{DecorationPiece, DecorationShape, TextBox, TextDirection, VerticalAlign};
+use crate::path::{rect_path, stroke_width, to_path};
 use crate::text::layout::{BoxLayout, Brush, BulletMarker, RunPaint, RunRef, TextStroke};
 use crate::text::outline::glyph_outlines;
 
 /// Most distinct glows drawn under one text box.
 const MAX_GLOWS_PER_BOX: usize = 16;
 
-// Underline patterns in units of the font's underline thickness, read from LibreOffice's PDF export of the
-// visual fixture's "Underline styles" slide (Liberation Sans 20pt, a 1.95px thickness): dashes 6px with 3px
-// gaps, a wave about 11px long and 2px high, a double line of two 1px lines 2px apart; dots are one
-// thickness long, as in Chromium.
-const DOT_ON: f32 = 1.0;
-const DOT_OFF: f32 = 1.0;
-const DASH_ON: f32 = 3.0;
-const DASH_OFF: f32 = 1.5;
-const DOUBLE_LINE: f32 = 0.5;
-const DOUBLE_GAP: f32 = 1.0;
-const WAVE_PERIOD: f32 = 6.0;
-const WAVE_HEIGHT: f32 = 1.0;
-/// LibreOffice draws its wave thinner than the straight line.
-const WAVE_THICKNESS: f32 = 0.5;
-
-// PowerPoint's underline shapes around the face's `post` band (top P below the baseline, thickness T), measured
-// against its PDF export of a synthetic deck (Arial, Calibri and Times New Roman at 8 to 24pt), each within about one
-// 1/600 in step, its device grid. Double: two T/2 lines, the first from P - T, the second ending at P + T (12pt Arial
-// 0.48pt lines 0.72pt apart from 0.43pt below the baseline, T 0.84). Heavy: one band 1.5T tall from P - T (12pt Arial
-// 1.32pt from 0.48pt, 24pt 2.76pt from 0.70pt). Wavy: a zigzag of 45-degree slopes, one grid step tall, filling the
-// 2T from P - T/2, with whole half-waves (it runs past the text to finish the last one).
-const PPT_DOUBLE_LINE: f32 = 0.5;
-const PPT_HEAVY: f32 = 1.5;
-const PPT_WAVE_BAND: f32 = 2.0;
-/// PowerPoint's device grid in its PDF export, steps per inch (the PowerPoint target's advance and baseline grid).
-const PPT_GRID_PER_IN: f32 = 600.0;
+/// Thinnest band a decoration is drawn around, px (docs/HTML_PROFILE.md).
+const MIN_DECORATION_PX: f32 = 0.5;
+/// Widest gap, px, between two glyph runs of one run that still continue one decoration segment: parley sums their
+/// offsets, so a run split by a style change meets itself again up to float rounding.
+const SEGMENT_JOIN_PX: f32 = 1e-3;
 /// Widest a font's box reaches from a glyph's pen position, in em: the full i16 range of `head`'s
 /// box over the smallest units per em (1), so the text placement check holds for any font.
 const FONT_BOX_EM: f64 = 65536.0;
-/// The wave's vertical thickness: one grid step.
-const PPT_WAVE_LINE: f32 = crate::PX_PER_IN / PPT_GRID_PER_IN;
 
-/// PowerPoint's underline of `style` (heavy when `heavy`) around the `post` band `t` px tall from `top`, over
-/// `advance` px from `start` (y down).
-fn powerpoint_underline_path(style: UnderlineStyle, heavy: bool, start: f32, top: f32, advance: f32, t: f32) -> BezPath {
-    match style {
-        UnderlineStyle::Solid if heavy => rect_path(start, top - t, advance, PPT_HEAVY * t, 0.0),
-        UnderlineStyle::Double => {
-            let line = PPT_DOUBLE_LINE * t;
-            let mut path = rect_path(start, top - t, advance, line, 0.0);
-            path.extend(rect_path(start, top + t - line, advance, line, 0.0));
-            path
+/// A decoration band in px: its top `offset` above the baseline (below it when negative), `size` tall.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) struct Band {
+    pub(crate) offset: f32,
+    pub(crate) size: f32,
+}
+
+/// What one decoration is drawn along: a run's part on one line.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Segment {
+    /// The run's paint, its parley brush.
+    pub(crate) paint: usize,
+    /// The strike's segment, else the underline's.
+    pub(crate) strike: bool,
+    pub(crate) start: f32,
+    pub(crate) end: f32,
+    pub(crate) baseline: f32,
+    /// The face's own band for this decoration: `post` for the underline, OS/2 for the strike.
+    pub(crate) face: Band,
+    pub(crate) font_size: f32,
+}
+
+impl Segment {
+    /// The band `shape` states, in em, else the face's.
+    fn band(&self, shape: &DecorationShape) -> Band {
+        match shape.band {
+            Some(band) => Band {
+                offset: band.offset * self.font_size,
+                size: band.size * self.font_size,
+            },
+            None => self.face,
         }
-        UnderlineStyle::Wavy => zigzag(start, top - t / 2.0, advance, PPT_WAVE_BAND * t),
-        // shortcut: PowerPoint's dotted and dashed underlines were not measured, so they keep LibreOffice's patterns
-        // around the band; measure them when a deck needs them (#397).
-        _ => underline_path(style, start, top, advance, t),
     }
 }
 
-/// A zigzag PPT_WAVE_LINE tall filling `band` px from `top`, 45-degree slopes, from `start` down first, over whole
+/// Fills `out` with the decoration segments of `line`, drawn with its top at `oy` and its start at `ox`: each run's
+/// glyph runs on the line joined into one.
+pub(crate) fn line_segments(line: &Line<'_, Brush>, paints: &[RunPaint], (ox, oy): (f32, f32), out: &mut Vec<Segment>) {
+    out.clear();
+    for item in line.items() {
+        let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+        let index = glyph_run.style().brush.0 as usize;
+        let Some(paint) = paints.get(index) else { continue };
+        let decoration = &paint.decoration;
+        if decoration.underline.is_none() && decoration.strike.is_none() {
+            continue;
+        }
+        let run = glyph_run.run();
+        let metrics = run.font_metrics();
+        let start = ox + glyph_run.offset();
+        let segment = |strike: bool, start: f32, end: f32| Segment {
+            paint: index,
+            strike,
+            start,
+            end,
+            baseline: oy + glyph_run.baseline() - paint.baseline_offset,
+            face: if strike {
+                Band {
+                    offset: metrics.strikethrough_offset,
+                    size: metrics.strikethrough_size,
+                }
+            } else {
+                Band {
+                    offset: metrics.underline_offset,
+                    size: metrics.underline_size,
+                }
+            },
+            font_size: run.font_size(),
+        };
+        if decoration.strike.is_some() {
+            join_segment(out, segment(true, start, start + glyph_run.advance()));
+        }
+        if decoration.underline.is_some() {
+            join_segment(out, segment(false, start, start + glyph_run.advance()));
+        }
+    }
+}
+
+/// Adds `segment`, or continues the last segment of its kind when that one is its run's and ends where it starts.
+fn join_segment(out: &mut Vec<Segment>, segment: Segment) {
+    match out.iter_mut().rev().find(|s| s.strike == segment.strike) {
+        Some(last) if last.paint == segment.paint && (segment.start - last.end).abs() < SEGMENT_JOIN_PX => last.end = segment.end,
+        _ => out.push(segment),
+    }
+}
+
+/// The band of a line's `data-underline-line-band` underlines: their own bands averaged by their segments' widths (a
+/// 12pt then a 24pt Arial run on the PowerPoint target: 1.44pt thick, its top 2.06pt below the baseline, where 12pt
+/// alone is 0.84/1.27 and 24pt alone 1.80/2.42, measured against its PDF export of a synthetic deck). None when the
+/// line has no such underline.
+pub(crate) fn line_band(segments: &[Segment], paints: &[RunPaint]) -> Option<Band> {
+    let (mut width, mut offset, mut size) = (0.0, 0.0, 0.0);
+    for segment in segments.iter().filter(|s| !s.strike) {
+        let decoration = paints.get(segment.paint).map(|paint| &paint.decoration);
+        if let Some(shape) = decoration.filter(|d| d.underline_line_band).and_then(|d| d.underline.as_ref()) {
+            let (advance, band) = (segment.end - segment.start, segment.band(shape));
+            width += advance;
+            offset += advance * band.offset;
+            size += advance * band.size;
+        }
+    }
+    (width > 0.0).then(|| Band {
+        offset: offset / width,
+        size: size / width,
+    })
+}
+
+/// `piece` from `start` to `end` around the band `t` px thick from `top` (y down): the path, and the width it is stroked
+/// with, or None when it is filled.
+fn piece_path(piece: &DecorationPiece, start: f32, end: f32, top: f32, t: f32) -> (BezPath, Option<f32>) {
+    match piece {
+        DecorationPiece::Line { top: at, height, dashes } => {
+            let (y, h) = (top + at * t, height * t);
+            if dashes.is_empty() {
+                return (rect_path(start, y, end - start, h, 0.0), None);
+            }
+            // The pattern starts again with each segment; the last dash is cut at its end.
+            let mut path = BezPath::new();
+            let mut x = start;
+            for (i, length) in dashes.iter().cycle().enumerate() {
+                if x >= end {
+                    break;
+                }
+                let length = length * t;
+                if i.is_multiple_of(2) {
+                    path.extend(rect_path(x, y, length.min(end - x), h, 0.0));
+                }
+                x += length;
+            }
+            (path, None)
+        }
+        DecorationPiece::Wave {
+            centre,
+            amplitude,
+            half,
+            stroke,
+        } => (wave(start, end, top + centre * t, amplitude * t, half * t), Some(*stroke)),
+        DecorationPiece::Zigzag { top: at, height, line } => (zigzag(start, top + at * t, end - start, height * t, *line), None),
+    }
+}
+
+/// Cubic half-waves `half` long about `centre`, `amplitude` off it, the first up (toward the baseline) and the next
+/// ones alternating, from `start` until they cover `end` (the last one runs past it): each half-wave's first control
+/// point on its start, its second at its middle, as LibreOffice's PDF export draws them.
+fn wave(start: f32, end: f32, centre: f32, amplitude: f32, half: f32) -> BezPath {
+    // A finite length over a half-wave of at least MIN_DECORATION_LENGTH thicknesses: a whole count of at least 1.
+    let halves = ((end - start) / half).ceil().max(1.0) as u32;
+    let point = |x: f32, y: f32| (f64::from(x), f64::from(y));
+    let mut path = BezPath::new();
+    path.move_to(point(start, centre));
+    for i in 0..halves {
+        let x = start + half * i as f32;
+        let peak = if i.is_multiple_of(2) { centre - amplitude } else { centre + amplitude };
+        path.curve_to(point(x, centre), point(x + half / 2.0, peak), point(x + half, centre));
+    }
+    path
+}
+
+/// A zigzag `line` px tall filling `band` px from `top`, 45-degree slopes, from `start` down first, over whole
 /// half-waves covering `advance`.
-// shortcut: each glyph run (a run, or a word of one with its own spacing) starts its own zigzag, where PowerPoint draws
-// one per line; join them when a deck shows the seams.
-fn zigzag(start: f32, top: f32, advance: f32, band: f32) -> BezPath {
-    let reach = (band - PPT_WAVE_LINE).max(PPT_WAVE_LINE);
+fn zigzag(start: f32, top: f32, advance: f32, band: f32, line: f32) -> BezPath {
+    let reach = (band - line).max(line);
     // A finite advance over a positive reach: a whole count of at least 1.
     let halves = (advance / reach).ceil().max(1.0) as u32;
     let point = |i: u32, y: f32| (f64::from(start + reach * i as f32), f64::from(y));
@@ -88,115 +203,13 @@ fn zigzag(start: f32, top: f32, advance: f32, band: f32) -> BezPath {
     let mut path = BezPath::new();
     path.move_to(point(0, top));
     for i in 0..=halves {
-        path.line_to(point(i, edge(i) + PPT_WAVE_LINE));
+        path.line_to(point(i, edge(i) + line));
     }
     for i in (0..=halves).rev() {
         path.line_to(point(i, edge(i)));
     }
     path.close_path();
     path
-}
-
-/// The filled outline of an underline of `style` whose straight form is the `thickness` px tall band from
-/// `top`, over `advance` px from `start` (y down).
-fn underline_path(style: UnderlineStyle, start: f32, top: f32, advance: f32, thickness: f32) -> BezPath {
-    let t = thickness;
-    match style {
-        UnderlineStyle::Solid => rect_path(start, top, advance, t, 0.0),
-        // Two thinner lines centred on the single line.
-        UnderlineStyle::Double => {
-            let (line, gap) = (DOUBLE_LINE * t, DOUBLE_GAP * t);
-            let first = top + t / 2.0 - gap / 2.0 - line;
-            let mut path = rect_path(start, first, advance, line, 0.0);
-            path.extend(rect_path(start, first + line + gap, advance, line, 0.0));
-            path
-        }
-        UnderlineStyle::Dotted => dashes(start, top, advance, t, DOT_ON * t, DOT_OFF * t),
-        UnderlineStyle::Dashed => dashes(start, top, advance, t, DASH_ON * t, DASH_OFF * t),
-        UnderlineStyle::Wavy => wave(start, top + t / 2.0, advance, t),
-    }
-}
-
-/// `on`-long pieces of the band, `off` apart, from `start`; the last one is cut at the end.
-fn dashes(start: f32, top: f32, advance: f32, t: f32, on: f32, off: f32) -> BezPath {
-    let end = start + advance;
-    let mut path = BezPath::new();
-    let mut x = start;
-    while x < end {
-        path.extend(rect_path(x, top, on.min(end - x), t, 0.0));
-        x += on + off;
-    }
-    path
-}
-
-/// A band WAVE_THICKNESS thicknesses tall along a wave centred on `middle`: quadratic half-waves, as many
-/// whole ones as fit nearest to WAVE_PERIOD, so it starts and ends on `middle`.
-fn wave(start: f32, middle: f32, advance: f32, t: f32) -> BezPath {
-    let halves = (advance / (WAVE_PERIOD * t / 2.0)).round().max(1.0);
-    let half = advance / halves;
-    // A quadratic's control point is twice as far from the chord as the curve's peak.
-    let reach = WAVE_HEIGHT * t;
-    let band = WAVE_THICKNESS * t / 2.0;
-    let point = |x: f32, y: f32| (f64::from(x), f64::from(y));
-    // halves is a whole number of at least 1, from a finite advance in px.
-    let count = halves as u32;
-    let control = |i: u32| if i.is_multiple_of(2) { -reach } else { reach };
-    let mut path = BezPath::new();
-    path.move_to(point(start, middle - band));
-    for i in 0..count {
-        let x = start + half * i as f32;
-        path.quad_to(point(x + half / 2.0, middle - band + control(i)), point(x + half, middle - band));
-    }
-    path.line_to(point(start + advance, middle + band));
-    for i in (0..count).rev() {
-        let x = start + half * i as f32;
-        path.quad_to(point(x + half / 2.0, middle + band + control(i)), point(x, middle + band));
-    }
-    path.close_path();
-    path
-}
-
-/// A `post` underline band: its top `offset` px above the baseline (below it when negative), `size` px tall.
-#[derive(Clone, Copy)]
-pub(crate) struct UnderlineBand {
-    pub(crate) offset: f32,
-    pub(crate) size: f32,
-}
-
-/// A from-font run's own band at `font_size` px: the HTML's (`underline_band`, in em), else the face's `post` band.
-fn run_underline_band(paint: &RunPaint, metrics: &FontMetrics, font_size: f32) -> UnderlineBand {
-    match paint.underline_band {
-        Some(band) => UnderlineBand {
-            offset: band.offset * font_size,
-            size: band.size * font_size,
-        },
-        None => UnderlineBand {
-            offset: metrics.underline_offset,
-            size: metrics.underline_size,
-        },
-    }
-}
-
-/// The band PowerPoint underlines a line's from-font runs with: their `post` bands averaged by width (a 12pt then a
-/// 24pt Arial run: 1.44pt thick, its top 2.06pt below the baseline, where 12pt alone is 0.84/1.27 and 24pt alone
-/// 1.80/2.42, measured against its PDF export of a synthetic deck). None when the line has no such run.
-pub(crate) fn line_underline_band(line: &Line<'_, Brush>, paints: &[RunPaint]) -> Option<UnderlineBand> {
-    let (mut width, mut offset, mut size) = (0.0, 0.0, 0.0);
-    for item in line.items() {
-        let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
-        let paint = paints.get(glyph_run.style().brush.0 as usize);
-        if let Some(paint) = paint.filter(|paint| paint.underline && paint.underline_from_font) {
-            let run = glyph_run.run();
-            let (advance, band) = (glyph_run.advance(), run_underline_band(paint, run.font_metrics(), run.font_size()));
-            width += advance;
-            offset += advance * band.offset;
-            size += advance * band.size;
-        }
-    }
-    (width > 0.0).then(|| UnderlineBand {
-        offset: offset / width,
-        size: size / width,
-    })
 }
 
 /// Shears what is drawn on `baseline` (y down) by `shear` to the right above it and to the left below it.
@@ -321,30 +334,66 @@ impl Renderer {
         (ox, oy): (f32, f32),
         baselines: &[f32],
     ) {
+        let mut segments = std::mem::take(&mut self.decoration_segments);
         for (line, baseline) in layout.lines().zip(baselines) {
             let oy = oy + baseline - line.metrics().baseline;
-            let band = line_underline_band(&line, paints);
             for item in line.items() {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
                 #[allow(clippy::expect_used)] // internal invariant, stated in the message
                 let paint = paints
                     .get(glyph_run.style().brush.0 as usize)
                     .expect("layout_text sets every brush to the index of the paint it pushes alongside");
-                self.draw_glyph_run(surface, &glyph_run, paint, text, (ox, oy), band);
+                self.draw_glyph_run(surface, &glyph_run, paint, text, (ox, oy));
+            }
+            // Decorations go along each run's whole part of the line, so a dash pattern or a wave does not restart where
+            // parley splits the run.
+            line_segments(&line, paints, (ox, oy), &mut segments);
+            let band = line_band(&segments, paints);
+            for segment in &segments {
+                self.draw_decoration(surface, paints, segment, band);
+            }
+        }
+        self.decoration_segments = segments;
+    }
+
+    /// One segment's underline or strike: its pieces around its band (the line's `band` for a line-band underline), the
+    /// underline in its colour, the strike in the run's.
+    fn draw_decoration(&mut self, surface: &mut Surface, paints: &[RunPaint], segment: &Segment, band: Option<Band>) {
+        let Some(paint) = paints.get(segment.paint) else { return };
+        let decoration = &paint.decoration;
+        let (shape, color, band) = match (segment.strike, &decoration.strike, &decoration.underline) {
+            (true, Some(shape), _) => (shape, paint.color, segment.band(shape)),
+            (false, _, Some(shape)) => {
+                let own = segment.band(shape);
+                let band = if decoration.underline_line_band { band.unwrap_or(own) } else { own };
+                (shape, decoration.underline_color.unwrap_or(paint.color), band)
+            }
+            _ => return,
+        };
+        if segment.end <= segment.start {
+            return;
+        }
+        let (top, t) = (segment.baseline - band.offset, band.size.max(MIN_DECORATION_PX));
+        for piece in &shape.pieces {
+            match piece_path(piece, segment.start, segment.end, top, t) {
+                (path, None) => self.fill(surface, &path, color),
+                (path, Some(width)) => {
+                    if let (Some(stroke), Some(pdf)) = (stroke_of(color, width), to_path(&path))
+                        && self.placed(surface, &path, Some(&stroke))
+                    {
+                        self.effects.capture_stroke(surface.ctm(), &path, &stroke);
+                        surface.set_fill(None);
+                        surface.set_stroke(Some(stroke));
+                        surface.draw_path(&pdf);
+                        surface.set_stroke(None);
+                    }
+                }
             }
         }
     }
 
-    /// One glyph run of a line whose top is `oy`: its link area and highlight, glyphs and decorations.
-    fn draw_glyph_run(
-        &mut self,
-        surface: &mut Surface,
-        glyph_run: &GlyphRun<'_, Brush>,
-        paint: &RunPaint,
-        text: &str,
-        (ox, oy): (f32, f32),
-        line_band: Option<UnderlineBand>,
-    ) {
+    /// One glyph run of a line whose top is `oy`: its link area and highlight, and its glyphs.
+    fn draw_glyph_run(&mut self, surface: &mut Surface, glyph_run: &GlyphRun<'_, Brush>, paint: &RunPaint, text: &str, (ox, oy): (f32, f32)) {
         let run = glyph_run.run();
         let metrics = *run.font_metrics();
         let baseline = oy + glyph_run.baseline() - paint.baseline_offset;
@@ -368,16 +417,6 @@ impl Renderer {
             return;
         };
         self.draw_glyphs(surface, glyph_run, paint, font, text, (ox, oy));
-        // A from-font underline takes the line's band; every other the face's.
-        let band = if paint.underline_from_font {
-            line_band.unwrap_or_else(|| run_underline_band(paint, &metrics, run.font_size()))
-        } else {
-            UnderlineBand {
-                offset: metrics.underline_offset,
-                size: metrics.underline_size,
-            }
-        };
-        self.draw_decorations(surface, paint, &metrics, start, baseline, advance, band);
     }
 
     /// The run's glyphs in `font`: an outline under them, the fill (synthetic bold and italic
@@ -473,40 +512,6 @@ impl Renderer {
         self.positioned = positioned;
         self.glyphs = glyphs;
     }
-
-    /// Underline and strikethrough over `advance` px from `start`; the underline around `band`.
-    #[allow(clippy::too_many_arguments)] // the run's place on its line, as draw_glyph_run has it
-    fn draw_decorations(
-        &mut self,
-        surface: &mut Surface,
-        paint: &RunPaint,
-        metrics: &FontMetrics,
-        start: f32,
-        baseline: f32,
-        advance: f32,
-        band: UnderlineBand,
-    ) {
-        let deco = paint.underline_color.unwrap_or(paint.color);
-        if paint.underline {
-            let (top, t) = (baseline - band.offset, band.size.max(0.5));
-            let path = if paint.underline_from_font {
-                powerpoint_underline_path(paint.underline_style, paint.underline_heavy, start, top, advance, t)
-            } else {
-                underline_path(paint.underline_style, start, top, advance, t)
-            };
-            self.fill(surface, &path, deco);
-        }
-        if paint.strike || paint.double_strike {
-            let t = metrics.strikethrough_size.max(0.5);
-            let y = baseline - metrics.strikethrough_offset;
-            if paint.double_strike {
-                self.fill(surface, &rect_path(start, y - t, advance, t, 0.0), paint.color);
-                self.fill(surface, &rect_path(start, y + t, advance, t, 0.0), paint.color);
-            } else {
-                self.fill(surface, &rect_path(start, y, advance, t, 0.0), paint.color);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -541,65 +546,96 @@ mod tests {
         boxes
     }
 
-    #[test]
-    fn solid_and_double_underlines_are_one_and_two_bands() {
-        assert_eq!(
-            pieces(&underline_path(UnderlineStyle::Solid, 10.0, 20.0, 100.0, 2.0)),
-            [(10.0, 20.0, 110.0, 22.0)]
-        );
-        // Half as thick, a thickness apart, centred on the single band's middle (21).
-        assert_eq!(
-            pieces(&underline_path(UnderlineStyle::Double, 10.0, 20.0, 100.0, 2.0)),
-            [(10.0, 19.0, 110.0, 20.0), (10.0, 22.0, 110.0, 23.0)]
-        );
+    fn line(top: f32, height: f32, dashes: &[f32]) -> DecorationPiece {
+        DecorationPiece::Line {
+            top,
+            height,
+            dashes: dashes.to_vec(),
+        }
+    }
+
+    /// `piece` from 10 to 110 around a band 2px thick from 20, as filled boxes.
+    fn filled(piece: &DecorationPiece) -> Vec<(f64, f64, f64, f64)> {
+        let (path, stroke) = piece_path(piece, 10.0, 110.0, 20.0, 2.0);
+        assert_eq!(stroke, None);
+        pieces(&path)
     }
 
     #[test]
-    fn dotted_and_dashed_underlines_repeat_and_cut_the_last_piece() {
-        let dots = pieces(&underline_path(UnderlineStyle::Dotted, 0.0, 0.0, 9.0, 2.0));
-        assert_eq!(dots, [(0.0, 0.0, 2.0, 2.0), (4.0, 0.0, 6.0, 2.0), (8.0, 0.0, 9.0, 2.0)]);
-        let dashes = pieces(&underline_path(UnderlineStyle::Dashed, 0.0, 0.0, 15.0, 2.0));
-        assert_eq!(dashes, [(0.0, 0.0, 6.0, 2.0), (9.0, 0.0, 15.0, 2.0)]);
+    fn lines_are_stripes_in_thicknesses_from_the_band_top() {
+        assert_eq!(filled(&line(0.0, 1.0, &[])), [(10.0, 20.0, 110.0, 22.0)]);
+        // Two half-thickness lines, one above the band and one below it.
+        assert_eq!(filled(&line(-0.5, 0.5, &[])), [(10.0, 19.0, 110.0, 20.0)]);
+        assert_eq!(filled(&line(1.5, 0.5, &[])), [(10.0, 23.0, 110.0, 24.0)]);
     }
 
     #[test]
-    fn powerpoint_double_and_heavy_underlines_fill_around_the_post_band() {
-        // The band is 20..22: double is two 1px lines from 18 to the band's bottom, heavy 3px from 18.
-        assert_eq!(
-            pieces(&powerpoint_underline_path(UnderlineStyle::Double, false, 10.0, 20.0, 100.0, 2.0)),
-            [(10.0, 18.0, 110.0, 19.0), (10.0, 21.0, 110.0, 22.0)]
-        );
-        assert_eq!(
-            pieces(&powerpoint_underline_path(UnderlineStyle::Solid, true, 10.0, 20.0, 100.0, 2.0)),
-            [(10.0, 18.0, 110.0, 21.0)]
-        );
-        assert_eq!(
-            pieces(&powerpoint_underline_path(UnderlineStyle::Solid, false, 10.0, 20.0, 100.0, 2.0)),
-            [(10.0, 20.0, 110.0, 22.0)]
-        );
+    fn dash_patterns_cycle_from_the_segment_start_and_cut_the_last_dash() {
+        // dotDash on a 1px band: dash 4, gap 2, dot 1, gap 2, then the dash again, cut at 12.
+        let (path, _) = piece_path(&line(0.0, 1.0, &[4.0, 2.0, 1.0, 2.0]), 0.0, 12.0, 0.0, 1.0);
+        assert_eq!(pieces(&path), [(0.0, 0.0, 4.0, 1.0), (6.0, 0.0, 7.0, 1.0), (9.0, 0.0, 12.0, 1.0)]);
     }
 
     #[test]
-    fn powerpoint_wavy_underline_is_a_thin_zigzag_over_twice_the_band() {
-        let [(x0, y0, x1, y1)] = pieces(&powerpoint_underline_path(UnderlineStyle::Wavy, false, 10.0, 20.0, 100.0, 2.0))[..] else {
-            panic!("one zigzag")
+    fn waves_are_stroked_cubic_half_waves_starting_up_and_covering_the_segment() {
+        let wave = DecorationPiece::Wave {
+            centre: 0.5,
+            amplitude: 2.0,
+            half: 4.0,
+            stroke: 0.25,
         };
+        let (path, stroke) = piece_path(&wave, 0.0, 10.0, 20.0, 1.0);
+        assert_eq!(stroke, Some(0.25));
+        // Three half-waves cover 10px of 4px halves; the last runs past the end.
+        let elements = path.elements();
+        assert_eq!(elements.len(), 4);
+        let curve = |i: usize| match elements.get(i) {
+            Some(kurbo::PathEl::CurveTo(a, b, c)) => (*a, *b, *c),
+            other => panic!("{other:?} is not a cubic"),
+        };
+        let (a, b, c) = curve(1);
+        assert_eq!((a.x, a.y, b.x, b.y, c.x, c.y), (0.0, 20.5, 2.0, 18.5, 4.0, 20.5));
+        let (_, b, c) = curve(2);
+        assert_eq!((b.x, b.y, c.x), (6.0, 22.5, 8.0));
+        assert_eq!(curve(3).2.x, 12.0);
+    }
+
+    #[test]
+    fn zigzags_fill_their_height_with_whole_half_waves() {
+        let zigzag = DecorationPiece::Zigzag {
+            top: -0.5,
+            height: 2.0,
+            line: 0.25,
+        };
+        let [(x0, y0, x1, y1)] = filled(&zigzag)[..] else { panic!("one zigzag") };
         // From half a thickness above the band, 2 thicknesses tall; whole half-waves, so it may run past the text.
-        let reach = f64::from(4.0 - PPT_WAVE_LINE);
+        let reach = 4.0 - 0.25;
         assert!((y0 - 19.0).abs() < 1e-4 && (y1 - 23.0).abs() < 1e-4, "{y0}..{y1}");
-        assert!(x0 == 10.0 && (x1 - (10.0 + reach * (100.0 / reach).ceil())).abs() < 1e-3, "{x0}..{x1}");
+        assert!(x0 == 10.0 && (x1 - (10.0 + reach * (100.0_f64 / reach).ceil())).abs() < 1e-3, "{x0}..{x1}");
     }
 
     #[test]
-    fn wavy_underlines_span_the_run_around_the_single_line() {
-        let [(x0, y0, x1, y1)] = pieces(&underline_path(UnderlineStyle::Wavy, 10.0, 20.0, 100.0, 2.0))[..] else {
-            panic!("one band")
+    fn segments_join_a_runs_glyph_runs_but_not_other_runs_or_gaps() {
+        let segment = |paint: usize, strike: bool, start: f32, end: f32| Segment {
+            paint,
+            strike,
+            start,
+            end,
+            baseline: 0.0,
+            face: Band { offset: 0.0, size: 1.0 },
+            font_size: 10.0,
         };
-        assert!((x0, x1) == (10.0, 110.0), "{x0}..{x1}");
-        // Centred on 21: half the WAVE_HEIGHT plus half the band either side.
-        let reach = f64::from(WAVE_HEIGHT * 2.0 / 2.0 + WAVE_THICKNESS * 2.0 / 2.0);
-        assert!((y0 - (21.0 - reach)).abs() < 1e-4 && (y1 - (21.0 + reach)).abs() < 1e-4, "{y0}..{y1}");
-        // A run shorter than half a wave still draws one half-wave.
-        assert_eq!(pieces(&underline_path(UnderlineStyle::Wavy, 0.0, 0.0, 1.0, 2.0)).len(), 1);
+        let mut out = Vec::new();
+        join_segment(&mut out, segment(0, false, 0.0, 10.0));
+        join_segment(&mut out, segment(0, true, 0.0, 10.0));
+        // The underline continues past the strike that came between, then a gap (a space) and another run split it.
+        join_segment(&mut out, segment(0, false, 10.0, 20.0));
+        join_segment(&mut out, segment(0, false, 25.0, 30.0));
+        join_segment(&mut out, segment(1, false, 30.0, 40.0));
+        let spans: Vec<_> = out.iter().map(|s| (s.paint, s.strike, s.start, s.end)).collect();
+        assert_eq!(
+            spans,
+            [(0, false, 0.0, 20.0), (0, true, 0.0, 10.0), (0, false, 25.0, 30.0), (1, false, 30.0, 40.0)]
+        );
     }
 }

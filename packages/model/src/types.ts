@@ -97,7 +97,7 @@ export type NormalizedObjectStyle = {
 
 export type NormalizedTextDirection = "horizontal" | "vertical" | "vertical270" | "stacked";
 
-/** An underline band in em of the run's font size. */
+/** A decoration band in em of the run's font size. */
 export type NormalizedUnderlineBand = {
     /** The band's top above the baseline, negative below (the sign of `post.underlinePosition`). */
     position: number;
@@ -105,24 +105,41 @@ export type NormalizedUnderlineBand = {
     thickness: number;
 };
 
+/**
+ * One piece of an underline or strike, in thicknesses T of its band, measured down from the band's top
+ * (docs/HTML_PROFILE.md, `data-underline`).
+ */
+export type NormalizedDecorationPiece =
+    /** A straight stripe `height` tall from `top`, cut into `dashes` (on, off, on, ... lengths) from its start when given. */
+    | { kind: "line"; top: number; height: number; dashes?: readonly number[] }
+    /**
+     * A wave stroked `stroke` px wide around the line `centre` down: cubic half-waves `halfPeriod` long, each with its
+     * first control point on its start and its second at its middle, `amplitude` off the line, the first toward the baseline.
+     */
+    | { kind: "wave"; centre: number; amplitude: number; halfPeriod: number; stroke: number }
+    /** A zigzag of 45-degree slopes filling the band from `top`, `height` tall, its line `thickness` px tall. */
+    | { kind: "zigzag"; top: number; height: number; thickness: number };
+
+/** An underline or strike: its pieces around a band. */
+export type NormalizedDecorationShape = {
+    /** Omitted: the face's own band, its `post` underline or OS/2 strikeout (the bold face's when bold). */
+    band?: NormalizedUnderlineBand;
+    pieces: readonly NormalizedDecorationPiece[];
+};
+
 export type NormalizedTextDecoration = {
     underline: boolean;
+    /** The CSS `text-decoration-style` closest to the underline's shape, for a browser's own drawing. */
     underlineStyle: "solid" | "double" | "dashed" | "dotted" | "wavy";
     underlineColor?: CssColor;
-    /**
-     * The underline is the face's `post` table band (underlineThickness tall, its top underlinePosition below the
-     * baseline), drawn over descenders; omitted: the renderer's own underline.
-     */
-    underlineFromFont?: boolean;
-    /** With `underlineFromFont`: the band to draw in place of the face's `post` band; omitted: the `post` band. */
-    underlineBand?: NormalizedUnderlineBand;
-    /**
-     * PptxGenJS's `heavy` underline, with `underlineFromFont`: a band 1.5 times the `post` band's thickness, from
-     * one thickness above its top to half one below its bottom, as PowerPoint draws it.
-     */
-    underlineHeavy?: boolean;
+    /** The underline's geometry; omitted: a solid line on the face's `post` band. */
+    underlineShape?: NormalizedDecorationShape;
+    /** Its band is its line's: the bands of the line's underlines that have this, averaged by their widths. */
+    underlineLineBand?: boolean;
     strike: boolean;
     doubleStrike: boolean;
+    /** The strike's geometry; omitted: a solid line on the face's OS/2 strikeout band. */
+    strikeShape?: NormalizedDecorationShape;
 };
 
 export type NormalizedTextLink = {

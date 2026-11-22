@@ -1,4 +1,69 @@
-import type { RenderingTargetProfile } from "./index";
+import { CSS_PX_PER_INCH, MILLIMETERS_PER_INCH, type NormalizedDecorationPiece } from "@pdflapas/model";
+import type { DecorationRules, RenderingTargetProfile, UnderlineShape } from "./index";
+
+/** LibreOffice's hairline, one unit of its 1/100 mm model, in px: the line it strokes a wave with. */
+const HAIRLINE_PX = CSS_PX_PER_INCH / (MILLIMETERS_PER_INCH * 100);
+/** Its heavy wave's line, three of them (`wavyHeavy`). */
+const HEAVY_HAIRLINES = 3;
+/** Its double underline's and double strike's lines: each 0.64 T, the first centred T above the single line's centre, the second 2T below. */
+const DOUBLE_LINES: readonly NormalizedDecorationPiece[] = Object.freeze([
+    { kind: "line", top: -0.46, height: 0.64 },
+    { kind: "line", top: 1.46, height: 0.64 },
+]);
+const line = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: 0, height: 1, ...(dashes ? { dashes } : {}) }] });
+/** A heavy type's line: twice as thick about the same centre, its dashes twice as long. */
+const heavyLine = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: -0.5, height: 2, ...(dashes ? { dashes: dashes.map(length => 2 * length) } : {}) }] });
+const wave = (stroke: number): UnderlineShape => ({ pieces: [{ kind: "wave", centre: 0.5, amplitude: 2, halfPeriod: 4, stroke }] });
+// Dash patterns, in thicknesses: dots one long, dashes 4 and long dashes 8, gaps 1 after a dot alone and 2 otherwise.
+const DOTS = [1, 1];
+const DASHES = [4, 2];
+const LONG_DASHES = [8, 2];
+const DOT_DASHES = [4, 2, 1, 2];
+const DOT_DOT_DASHES = [4, 2, 1, 2, 1, 2];
+
+/**
+ * LibreOffice 26.2.6's underlines and strikes, read from its PDF export of a synthetic PptxGenJS 4.0.1 deck ("Lorem ipsum
+ * dolor", each underline type, `sngStrike` and `dblStrike`, in Arial and Times New Roman at 12, 24 and 48pt, regular
+ * and bold), where it strokes each as a line of a dash pattern or a wave: vcl's text line sizes from the face's
+ * descent d, the same in bold. Underline and strike are d/4 thick (48pt Arial: 2.608pt, d/4 2.543), the underline's
+ * centre d/2 below the baseline (5.187pt, 5.087) and the strike's (1 - d)/3 above it (12.614pt, 12.609), each within
+ * 0.12pt at 48pt, its 1/100 mm rounding. Around that band (thickness T): a double underline or strike is two 0.64T
+ * lines centred T above and 2T below the single one's centre (1.587pt at 3.6 and 8.391pt), heavy one 2T line on the
+ * same centre (5.102pt), and each dash pattern is in thicknesses (DOTS, DASHES...), doubled with the heavy line; it
+ * draws `dashLongHeavy` light (1.304pt, 8T and 2T at 24pt). `wavy` is a hairline wave about the centre, cubic
+ * half-waves 4T long whose second control point is 2T off the line (24pt Arial: 5.216 and 2.608pt), `wavyHeavy` the
+ * same three hairlines wide, `wavyDbl` two hairline waves 4/3 T off their lines, 8/3 T long, centred T/3 and T below
+ * the centre (3.033 and 3.969pt at 24pt). A wave runs past the text to end its last half-wave. `words` draws no
+ * underline. A dash pattern restarts with each run, and runs of different sizes keep their own bands.
+ */
+const LIBREOFFICE_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
+    bands: Object.freeze({ kind: "descent" as const, thickness: 0.25, underlineCentre: 0.5, strikeCentre: 1 / 3 }),
+    underlines: Object.freeze({
+        sng: line(),
+        dbl: { pieces: DOUBLE_LINES },
+        heavy: heavyLine(),
+        dotted: line(DOTS),
+        dottedHeavy: heavyLine(DOTS),
+        dash: line(DASHES),
+        dashHeavy: heavyLine(DASHES),
+        dashLong: line(LONG_DASHES),
+        dashLongHeavy: line(LONG_DASHES),
+        dotDash: line(DOT_DASHES),
+        dotDashHeavy: heavyLine(DOT_DASHES),
+        dotDotDash: line(DOT_DOT_DASHES),
+        dotDotDashHeavy: heavyLine(DOT_DOT_DASHES),
+        wavy: wave(HAIRLINE_PX),
+        wavyHeavy: wave(HEAVY_HAIRLINES * HAIRLINE_PX),
+        wavyDbl: {
+            pieces: [
+                { kind: "wave", centre: 0.5 + 1 / 3, amplitude: 4 / 3, halfPeriod: 8 / 3, stroke: HAIRLINE_PX },
+                { kind: "wave", centre: 1.5, amplitude: 4 / 3, halfPeriod: 8 / 3, stroke: HAIRLINE_PX },
+            ],
+        },
+        words: undefined,
+    }),
+    doubleStrike: DOUBLE_LINES,
+});
 
 /**
  * LibreOffice Impress, the visual reference (tests/visual): it kerns every run whatever its `kern`. A cell's
@@ -26,9 +91,7 @@ import type { RenderingTargetProfile } from "./index";
  * It draws no outline on a chart marker (`drawsChartMarkerOutline`): in its PDF export of a synthetic line chart with
  * 14pt circles, `lineDataSymbolLineColor: "000000"` and `lineDataSymbolLineSize: 3`, each marker is a 14pt disc in the
  * series color (56px across at 288 dpi), with no black ring and no growth.
- * Its underline is not the face's `post` table band (`underlineFromFont`): on the visual fixture's "Underline
- * styles" slide (Arial 20pt) its PDF export draws it thinner and lower, closer to Chromium's own underline than to
- * the band (text-underline-sng 0.0867 with the band, over the 0.08 crop target that Chromium's underline meets).
+ * Its underlines and strikes are LIBREOFFICE_DECORATION's (#489, #397).
  * It draws every doughnut's hole half its outer diameter (`readsDoughnutHoleSize` off): in LibreOffice 26.2's PDF
  * export of PptxGenJS doughnuts with `<c:holeSize>` 30, 50 and 75 the hole is 0.496, 0.500 and 0.501 of it.
  * It draws a standard area chart's first series in front (`firstAreaSeriesInFront`, #533): in LibreOffice 26.2.6's PDF
@@ -80,7 +143,7 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     nonBreakingHyphen: undefined,
     drawsPictureInnerShadow: false,
     drawsChartMarkerOutline: false,
-    underlineFromFont: false,
+    decoration: LIBREOFFICE_DECORATION,
     readsDoughnutHoleSize: false,
     firstAreaSeriesInFront: true,
     chartPointKeepsSeriesFill: false,

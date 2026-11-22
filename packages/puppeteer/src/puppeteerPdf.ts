@@ -706,6 +706,339 @@ async function prepareForPrint(): Promise<string[]> {
         }
     }
 
+    // Draws the underline and strike of each run the print step marked (data-print-decoration) from the profile's
+    // geometry (docs/HTML_PROFILE.md, Text, "Underline and strike geometry"), which CSS cannot state: Chromium draws its
+    // own double, wavy and thick underlines, and one band per run (#396). A segment is the run's part on one line,
+    // measured from its text's client rects; its baseline sits where a probe in the run's font puts it in the text's
+    // content box. The pieces go into one SVG per text box, after its .text-content, in the box's CSS px, so they turn
+    // with the box. Read after the text has settled: shrinking, raises and justification move it.
+    // shortcut: horizontal text only; a vertical box keeps Chromium's decorations at the same em bands, until vertical
+    // text is measured against LibreOffice.
+    {
+        const drawn: HTMLElement[] = [];
+
+        for (const run of Array.from(document.querySelectorAll<HTMLElement>(".text-run[data-print-decoration]"))) {
+            if (run.closest<HTMLElement>("[data-text-direction]")?.dataset.textDirection === "horizontal") {
+                drawn.push(run);
+            } else {
+                run.style.textDecorationLine = run.dataset.printDecoration ?? "";
+            }
+        }
+
+        if (drawn.length) {
+            const SVG = "http://www.w3.org/2000/svg";
+            const NUMBER = String.raw`-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?`;
+            const EM = new RegExp(`^(${NUMBER})em$`);
+            const STRIKE_BAND = new RegExp(`^(${NUMBER})em (${NUMBER})em$`);
+            const PIECE = new RegExp(`^(line|wave|zigzag)\\(([^()]*)\\)$`);
+            const PX = new RegExp(`^${NUMBER}px$`);
+            // The smallest dash, height, half-wave, stroke or zigzag line the profile accepts (docs/HTML_PROFILE.md).
+            const MIN_LENGTH = 0.01;
+            const PLAIN = new RegExp(`^${NUMBER}$`);
+            // The thinnest band the profile draws, in CSS px.
+            const MIN_BAND = 0.5;
+            const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+
+            type Piece = { kind: "line"; top: number; height: number; dashes: number[] } | { kind: "wave"; centre: number; amplitude: number; half: number; stroke: number } | { kind: "zigzag"; top: number; height: number; line: number };
+            // A band in CSS px: its top below the baseline and its thickness.
+            type Band = { offset: number; thickness: number };
+            // A segment in client px, with its band.
+            type Segment = { left: number; right: number; top: number; height: number; band: Band };
+            type Decoration = { pieces: Piece[]; color: string; segments: Segment[] };
+            type Placed = { run: HTMLElement; svg: SVGSVGElement; origin: DOMRect; baseline: number; decorations: Decoration[] };
+            const fail: (run: HTMLElement, what: string) => never = (run, what) => {
+                throw new Error(`Cannot print '${run.closest<HTMLElement>("[data-object-name]")?.dataset.objectName ?? "unnamed object"}': a .text-run has ${what} (PdfLapas HTML profile, Text, Underline and strike geometry)`);
+            };
+            // data-underline or data-strike: pieces in thicknesses, each wave's and zigzag's last value a px stroke.
+            const pieces = (run: HTMLElement, name: string): Piece[] => {
+                const value = run.getAttribute(name) ?? "line(0 1)";
+                const parsed: Piece[] = [];
+
+                for (const written of value.match(/\S+\([^()]*\)/g) ?? []) {
+                    const [, kind, list = ""] = written.match(PIECE) ?? [];
+                    const parts = list.split(" ");
+                    const last = parts.length - 1;
+                    const values = parts.map(part => parseFloat(part));
+                    const [a = NaN, b = NaN, c = NaN, d = NaN] = values;
+                    const plain = parts.every((part, index) => (kind !== "line" && index === last ? PX : PLAIN).test(part));
+
+                    if (kind === "line" && plain && parts.length >= 2 && parts.length % 2 === 0 && b >= MIN_LENGTH && values.slice(2).every(length => length >= MIN_LENGTH)) {
+                        parsed.push({ kind, top: a, height: b, dashes: values.slice(2) });
+                    } else if (kind === "wave" && plain && parts.length === 4 && b >= 0 && c >= MIN_LENGTH && d >= MIN_LENGTH) {
+                        parsed.push({ kind, centre: a, amplitude: b, half: c, stroke: d });
+                    } else if (kind === "zigzag" && plain && parts.length === 3 && b >= MIN_LENGTH && c >= MIN_LENGTH) {
+                        parsed.push({ kind, top: a, height: b, line: c });
+                    } else {
+                        fail(run, `${name} piece '${written}', which is not line(<top> <height> [<on> <off>]...), wave(<centre> <amplitude> <half> <w>px) or zigzag(<top> <height> <w>px)`);
+                    }
+                }
+
+                // Every character belongs to a piece or a single space between two.
+                if (!parsed.length || value.replace(/\S+\([^()]*\)/g, "").replace(/ /g, "") !== "" || value.includes("  ") || value.trim() !== value) {
+                    fail(run, `${name}="${value}", which is not a space-separated list of line(), wave() and zigzag() pieces`);
+                }
+
+                return parsed;
+            };
+            const em = (run: HTMLElement, value: string, what: string): number => {
+                const match = value.match(EM);
+
+                return match ? Number(match[1]) : fail(run, `${what} '${value}', which is not a length in em`);
+            };
+
+            // Transforms move no layout: measure the runs and each box's SVG in the boxes' own axes.
+            const flat = document.createElement("style");
+
+            flat.textContent = "* { transform: none !important; }";
+            document.head.append(flat);
+            // One SVG per text box, in first, so its origin is read with the runs.
+            const hosts = new Map<Element, SVGSVGElement>();
+
+            for (const run of drawn) {
+                const host = run.closest(".text-content")?.parentElement;
+
+                if (host && !hosts.has(host)) {
+                    const svg = document.createElementNS(SVG, "svg");
+
+                    svg.setAttribute("style", "position: absolute; left: 0px; top: 0px; width: 1px; height: 1px; overflow: visible; pointer-events: none;");
+                    host.append(svg);
+                    hosts.set(host, svg);
+                }
+            }
+
+            // A probe per font: a text and a zero-size inline-block on its baseline, which gives the baseline's place in the
+            // text's content box (its client rect) as a fraction of that box's height.
+            const probes = new Map<string, { probe: HTMLElement; text: Text; mark: HTMLElement; baseline: number }>();
+            const fontKey = (run: HTMLElement) => `${run.style.fontFamily}|${run.style.fontSize}|${run.style.fontWeight}|${run.style.fontStyle}`;
+
+            for (const run of drawn) {
+                const key = fontKey(run);
+
+                if (!probes.has(key)) {
+                    const probe = document.createElement("div");
+                    const text = document.createTextNode("x");
+                    const mark = document.createElement("span");
+
+                    probe.setAttribute("style", "position: absolute; left: 0px; top: 0px; white-space: pre; line-height: normal;");
+                    probe.style.fontFamily = run.style.fontFamily;
+                    probe.style.fontSize = run.style.fontSize;
+                    probe.style.fontWeight = run.style.fontWeight;
+                    probe.style.fontStyle = run.style.fontStyle;
+                    mark.setAttribute("style", "display: inline-block; width: 0px; height: 0px; vertical-align: baseline;");
+                    probe.append(text, mark);
+                    document.body.append(probe);
+                    probes.set(key, { probe, text, mark, baseline: 0 });
+                }
+            }
+
+            const range = document.createRange();
+
+            for (const probe of probes.values()) {
+                range.selectNodeContents(probe.text);
+                const box = range.getBoundingClientRect();
+
+                probe.baseline = box.height > 0 ? (probe.mark.getBoundingClientRect().top - box.top) / box.height : 0;
+            }
+
+            /**
+             * The segments of `run`'s text in client px, each with `band`: its text's rects merged where they share a line
+             * (they overlap by more than half the smaller one's height).
+             */
+            const segments = (run: HTMLElement, band: Band): Segment[] => {
+                const found: Segment[] = [];
+                const walker = document.createTreeWalker(run, NodeFilter.SHOW_TEXT);
+
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                    range.selectNodeContents(node);
+
+                    for (const rect of Array.from(range.getClientRects())) {
+                        if (!(rect.width > 0)) {
+                            continue;
+                        }
+
+                        const last = found.at(-1);
+
+                        if (last && Math.min(last.top + last.height, rect.bottom) - Math.max(last.top, rect.top) > Math.min(last.height, rect.height) / 2) {
+                            last.left = Math.min(last.left, rect.left);
+                            last.right = Math.max(last.right, rect.right);
+                        } else {
+                            found.push({ left: rect.left, right: rect.right, top: rect.top, height: rect.height, band });
+                        }
+                    }
+                }
+
+                return found;
+            };
+
+            const placed: Placed[] = [];
+            // The underline segments of data-underline-line-band runs, per paragraph.
+            const lineBands = new Map<Element, Segment[]>();
+
+            // All reads first, so the drawing below does not lay the document out again for each run.
+            for (const run of drawn) {
+                const host = run.closest(".text-content")?.parentElement;
+                const svg = host && hosts.get(host);
+                const probe = probes.get(fontKey(run));
+                const size = parseFloat(run.style.fontSize);
+                const lines = run.dataset.printDecoration ?? "";
+
+                if (!svg || !probe || !(size > 0)) {
+                    fail(run, "no font-size in px or no .text-content around it");
+                }
+
+                const style = getComputedStyle(run);
+                const band = (offset: number, thickness: number): Band => ({ offset: offset * size, thickness: Math.max(thickness * size, MIN_BAND) });
+                const decorations: Decoration[] = [];
+
+                if (lines.includes("underline")) {
+                    const offset = em(run, run.style.textUnderlineOffset, "text-underline-offset");
+                    const thickness = em(run, run.style.textDecorationThickness, "text-decoration-thickness");
+                    const found = segments(run, band(offset, thickness));
+                    const paragraph = run.closest(".text-paragraph");
+
+                    if (paragraph && run.hasAttribute("data-underline-line-band")) {
+                        lineBands.set(paragraph, [...(lineBands.get(paragraph) ?? []), ...found]);
+                    }
+
+                    decorations.push({ pieces: pieces(run, "data-underline"), color: style.textDecorationColor, segments: found });
+                }
+
+                if (lines.includes("line-through")) {
+                    const written = run.dataset.strikeBand ?? "";
+                    const [, offset = "", thickness = ""] = written.match(STRIKE_BAND) ?? fail(run, `data-strike-band="${written}", which is not '<offset>em <thickness>em'`);
+
+                    decorations.push({ pieces: pieces(run, "data-strike"), color: style.color, segments: segments(run, band(Number(offset), Number(thickness))) });
+                }
+
+                placed.push({ run, svg, origin: svg.getBoundingClientRect(), baseline: probe.baseline, decorations });
+            }
+
+            flat.remove();
+            for (const { probe } of probes.values()) {
+                probe.remove();
+            }
+
+            // data-underline-line-band: the underlines on one line of a paragraph share one band, their bands averaged by
+            // their segments' widths. A segment is on a line when it overlaps the line's first one by more than half.
+            for (const found of lineBands.values()) {
+                const lines: Segment[][] = [];
+
+                for (const segment of found) {
+                    const line = lines.find(([first]) => first && Math.min(first.top + first.height, segment.top + segment.height) - Math.max(first.top, segment.top) > Math.min(first.height, segment.height) / 2);
+
+                    if (line) {
+                        line.push(segment);
+                    } else {
+                        lines.push([segment]);
+                    }
+                }
+
+                for (const line of lines) {
+                    let width = 0;
+                    let offset = 0;
+                    let thickness = 0;
+
+                    for (const { left, right, band } of line) {
+                        width += right - left;
+                        offset += band.offset * (right - left);
+                        thickness += band.thickness * (right - left);
+                    }
+
+                    for (const segment of line) {
+                        segment.band = { offset: offset / width, thickness: thickness / width };
+                    }
+                }
+            }
+
+            const number = (value: number) => String(Number(value.toFixed(4)));
+
+            for (const { run, svg, origin, baseline, decorations } of placed) {
+                for (const { pieces: drawnPieces, color, segments: found } of decorations) {
+                    let fill = "";
+
+                    for (const segment of found) {
+                        // The segment in the SVG's CSS px, P its band's top and t its thickness.
+                        const start = (segment.left - origin.left) / zoom;
+                        const end = (segment.right - origin.left) / zoom;
+                        const p = (segment.top + segment.height * baseline - origin.top) / zoom + segment.band.offset;
+                        const t = segment.band.thickness;
+
+                        for (const piece of drawnPieces) {
+                            if (piece.kind === "line") {
+                                const top = p + piece.top * t;
+                                const bottom = top + piece.height * t;
+                                const period = piece.dashes.map(length => length * t);
+                                // Without a dash pattern, or one with no length, the stripe is whole.
+                                const dashed = period.some(length => length > 0);
+
+                                for (let x = start, index = 0; x < end; index++) {
+                                    const length = dashed ? (period[index % period.length] ?? 0) : end - start;
+
+                                    if (index % 2 === 0 && length > 0) {
+                                        fill += `M${number(x)} ${number(top)}H${number(Math.min(x + length, end))}V${number(bottom)}H${number(x)}Z`;
+                                    }
+
+                                    x += length;
+                                }
+                            } else if (piece.kind === "zigzag") {
+                                // pdf-core's zigzag: 45-degree slopes, whole half-waves of `reach` from the top down first.
+                                const top = p + piece.top * t;
+                                const reach = Math.max(piece.height * t - piece.line, piece.line);
+                                const halves = Math.max(Math.ceil((end - start) / reach), 1);
+                                const lower: string[] = [];
+                                const upper: string[] = [];
+
+                                for (let index = 0; index <= halves; index++) {
+                                    const edge = index % 2 === 0 ? top : top + reach;
+
+                                    lower.push(`${number(start + reach * index)} ${number(edge + piece.line)}`);
+                                    upper.push(`${number(start + reach * index)} ${number(edge)}`);
+                                }
+
+                                fill += `M${number(start)} ${number(top)}L${lower.join("L")}L${upper.reverse().join("L")}Z`;
+                            } else {
+                                // Cubic half-waves about the centre line, as many as cover the segment: the first control
+                                // point on the half-wave's start, the second at its middle, the amplitude off the line, up first.
+                                const centre = p + piece.centre * t;
+                                const half = piece.half * t;
+                                const path = document.createElementNS(SVG, "path");
+                                let d = `M${number(start)} ${number(centre)}`;
+
+                                for (let x = start, index = 0; x < end; x += half, index++) {
+                                    const peak = index % 2 === 0 ? centre - piece.amplitude * t : centre + piece.amplitude * t;
+
+                                    d += `C${number(x)} ${number(centre)} ${number(x + half / 2)} ${number(peak)} ${number(x + half)} ${number(centre)}`;
+                                }
+
+                                path.setAttribute("d", d);
+                                path.setAttribute("fill", "none");
+                                path.setAttribute("stroke", color);
+                                path.setAttribute("stroke-width", number(piece.stroke));
+                                svg.append(path);
+                            }
+                        }
+                    }
+
+                    if (fill) {
+                        const path = document.createElementNS(SVG, "path");
+
+                        path.setAttribute("d", fill);
+                        path.setAttribute("fill", color);
+                        svg.append(path);
+                    }
+                }
+
+                run.removeAttribute("data-print-decoration");
+            }
+
+            for (const svg of hosts.values()) {
+                if (!svg.childElementCount) {
+                    svg.remove();
+                }
+            }
+        }
+    }
+
     // The names of the images that did not decode.
     const failed: string[] = [];
 

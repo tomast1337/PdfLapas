@@ -809,51 +809,105 @@ describe("text DOM rendering", () => {
         expect(run(2)?.verticalAlign).toBeUndefined();
     });
 
-    test("draws an underline from the face's post table, over descenders, on the PowerPoint target only (#378)", () => {
-        const geometry = (target: "powerpoint" | "libreoffice") => {
+    test("states each underline's band and pieces, drawn over descenders, on both targets (#378, #396, #489)", () => {
+        const decorations = (target: "powerpoint" | "libreoffice") => {
             const presentation = new PuppeteerGen(undefined, { target });
 
             presentation.addSlide().addText(
                 [
-                    { text: "gjpqy ", options: { underline: { style: "sng", color: "FF0000" } } },
-                    { text: "plain", options: { strike: "sngStrike" } },
+                    { text: "gjpqy ", options: { fontFace: "Arial", underline: { style: "sng", color: "FF0000" } } },
+                    { text: "plain ", options: { fontFace: "Arial", strike: "sngStrike" } },
+                    { text: "heavy", options: { fontFace: "Arial", underline: { style: "heavy" } } },
                 ],
                 { x: 1, y: 1, w: 4, h: 1 },
             );
             const runs = [...renderedPage(presentation).querySelectorAll<HTMLElement>(".text-run")];
 
-            return runs.map(run => ["text-decoration-thickness", "text-underline-position", "text-decoration-skip-ink"].map(property => run.style.getPropertyValue(property)));
+            return runs.map(run => ({
+                skipInk: run.style.getPropertyValue("text-decoration-skip-ink"),
+                underline: run.dataset.underline,
+                lineBand: run.dataset.underlineLineBand,
+                strike: run.dataset.strike,
+            }));
         };
 
-        expect(geometry("powerpoint")).toEqual([
-            ["from-font", "from-font", "none"],
-            ["", "", ""],
+        // The PowerPoint target's measured shapes around the post band, one band per line; the LibreOffice target's
+        // around the band from the descent, one per run.
+        expect(decorations("powerpoint")).toEqual([
+            { skipInk: "none", underline: "line(0 1)", lineBand: "", strike: undefined },
+            { skipInk: "", underline: undefined, lineBand: undefined, strike: "line(0 1)" },
+            { skipInk: "none", underline: "line(-1 1.5)", lineBand: "", strike: undefined },
         ]);
-        expect(geometry("libreoffice")).toEqual([
-            ["", "", ""],
-            ["", "", ""],
+        expect(decorations("libreoffice")).toEqual([
+            { skipInk: "none", underline: "line(0 1)", lineBand: undefined, strike: undefined },
+            { skipInk: "", underline: undefined, lineBand: undefined, strike: "line(0 1)" },
+            { skipInk: "none", underline: "line(-0.5 2)", lineBand: undefined, strike: undefined },
         ]);
     });
 
-    test("marks a heavy underline for PowerPoint's heavy band on the PowerPoint target only (#379)", () => {
-        const heavy = (target: "powerpoint" | "libreoffice") => {
+    test("states the LibreOffice target's bands from the face's descent, in em (#489)", () => {
+        const presentation = new PuppeteerGen(undefined, { target: "libreoffice" });
+
+        presentation.addSlide().addText([{ text: "Lorem", options: { fontFace: "Arial", fontSize: 48, underline: { style: "sng" }, strike: "sngStrike" } }], { x: 1, y: 1, w: 6, h: 1 });
+        const run = renderedPage(presentation).querySelector<HTMLElement>(".text-run");
+        // Arial's winDescent is 434 / 2048: the underline d/4 tall centred d/2 below the baseline, the strike d/4 tall
+        // centred (1 - d)/3 above it (LibreOffice 26.2, target/libreoffice.ts).
+        const descent = 434 / 2048;
+        const thickness = Number((descent / 4).toFixed(6));
+
+        expect(run?.style.getPropertyValue("text-decoration-thickness")).toBe(`${thickness}em`);
+        expect(run?.style.getPropertyValue("text-underline-offset")).toBe(`${Number((descent / 2 - descent / 8).toFixed(6))}em`);
+        expect(run?.dataset.strikeBand).toBe(`${Number((-(1 - descent) / 3 - descent / 8).toFixed(6))}em ${thickness}em`);
+    });
+
+    test("writes every OOXML underline type and the double strike as pieces, with the target's geometry (#397, #569)", () => {
+        const pieces = (target: "powerpoint" | "libreoffice") => {
             const presentation = new PuppeteerGen(undefined, { target });
+            // `as`: PptxGenJS 4.0.1's types leave out words, which its runtime writes as u="words".
+            const styles = ["dotted", "dashHeavy", "dashLongHeavy", "dotDotDash", "wavy", "wavyHeavy", "wavyDbl", "words" as "sng"] as const;
 
-            presentation.addSlide().addText(
-                [
-                    { text: "heavy ", options: { underline: { style: "heavy" } } },
-                    { text: "single ", options: { underline: { style: "sng" } } },
-                    { text: "wavy heavy", options: { underline: { style: "wavyHeavy" } } },
-                ],
-                { x: 1, y: 1, w: 4, h: 1 },
-            );
+            presentation
+                .addSlide()
+                .addText([...styles.map(style => ({ text: `${style} `, options: { fontFace: "Arial", underline: { style } } })), { text: "dblStrike", options: { fontFace: "Arial", strike: "dblStrike" as const } }], { x: 1, y: 1, w: 8, h: 1 });
 
-            return [...renderedPage(presentation).querySelectorAll<HTMLElement>(".text-run")].map(run => run.dataset.underlineHeavy);
+            return [...renderedPage(presentation).querySelectorAll<HTMLElement>(".text-run")].map(run => run.dataset.underline ?? run.dataset.strike);
         };
 
-        // Only the measured `heavy`: wavyHeavy keeps the wave's thickness (#397).
-        expect(heavy("powerpoint")).toEqual(["", undefined, undefined]);
-        expect(heavy("libreoffice")).toEqual([undefined, undefined, undefined]);
+        expect(pieces("libreoffice")).toEqual([
+            "line(0 1 1 1)",
+            "line(-0.5 2 8 4)",
+            // LibreOffice 26.2 draws dashLongHeavy light.
+            "line(0 1 8 2)",
+            "line(0 1 4 2 1 2 1 2)",
+            "wave(0.5 2 4 0.037795px)",
+            "wave(0.5 2 4 0.113386px)",
+            "wave(0.833333 1.333333 2.666667 0.037795px) wave(1.5 1.333333 2.666667 0.037795px)",
+            // LibreOffice draws no underline for `words`.
+            undefined,
+            "line(-0.46 0.64) line(1.46 0.64)",
+        ]);
+        // As PowerPoint's PDF export draws them (target/powerpoint.ts): one dash pattern in T for the light and the heavy
+        // line, `words` unbroken under the spaces, the double strike two lines of the strike's thickness around its band.
+        expect(pieces("powerpoint")).toEqual([
+            "line(0 1 1 1)",
+            "line(-1 1.5 3 2)",
+            "line(-1 1.5 7 4)",
+            "line(0 1 3 2 1 2 1 2)",
+            "zigzag(-0.5 2 0.16px)",
+            "zigzag(-0.5 2 0.96px)",
+            "zigzag(-1 1 0.16px) zigzag(0 1 0.16px)",
+            "line(0 1)",
+            "line(-1 1) line(1 1)",
+        ]);
+    });
+
+    test("rejects an underline style that is not an OOXML one", () => {
+        const presentation = new PuppeteerGen();
+
+        expect(() => {
+            presentation.addSlide().addText("Lorem", { x: 1, y: 1, w: 4, h: 1, underline: { style: "squiggly" as "sng" } });
+            renderedPage(presentation);
+        }).toThrow(/squiggly/);
     });
 
     test("keeps text transparency off the box and exposes direction and fit", () => {

@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "545014c918f949c963955990d9f627367e3c2386d9084e2b30e2c61258e45627",
+    fixture: "63da5a3a891d883abc5204d2109652b0810264fb6ae6349adbaa7f1a7cff8d4e",
     "cross-runtime": "1fbdb5018396ef36aa6268de665724032062110f3caada7638054e59477cf044",
     "wasm-text": "7e970ac08af8b3aa1479e11ba48f16aeebb10d6d79127943e3f488da6b946bd7",
     "wasm-emoji": "041e711c8a1912d6a0c73bd32aa2403839987c3929d4cbdfcb0a5115e27e8df1",
@@ -31,7 +31,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-chartBarColors": "7acddbb4b6c12193d96bceb072eadc55146cd9f7c511ce0dc14b911d31b5efc1",
     "wasm-chartPie": "92038d235ef86bc31b2868d3bcc3a4c966983fc4cde6ebf132c2cbc198109f73",
     "wasm-chartBarOrder": "6ca62f59e8fe7577e79c47e1d7302e30b590924743ee09661546f70b88752f21",
-    "wasm-chartLegendOrder": "5e4a6a5af5b40aad1e17c2af504ffdb348fb34da8f05c49ec9e06147f7a22e4b",
+    "wasm-chartLegendOrder": "cd0b00ceb5b4aa0b8b63cac44c262d3558d42a4f95a62c71fa4a2303fd1e25bf",
     "wasm-chartStacked": "a8910d37c17786bad85aeda13de03b51ea5c991e2dc3e3f89c5286ae87f9477f",
     "wasm-chartArea": "82c1a65019a936bb757bf3b3659005fc0fcc18badf4af8e5bc9038e7937f80f1",
     "wasm-svg": "0ed2222573f3ffa6ec6b887907d3f26a2343fe30f2c4a44a4608df6e0b5fba31",

@@ -331,7 +331,8 @@ export const PPTX_DEFAULTS = Object.freeze({
         // PptxGenJS pies (96 dpi, within 1.5px): a title band is 2% of the chart height (plotAreaGapRatio), 1.7 title
         // font sizes and 14pt; a top or bottom legend band 1.05 legend font sizes and two insets; a left or right one its
         // widest entry (key, its 5px gap and text) and two insets. PowerPoint's ring on examples/company-report.ts
-        // slide 6 is within 4px of it.
+        // slide 6 is within 4px of it. The left or right legend band is the same beside a bar, line or area plot area
+        // (#517: LibreOffice's plot edge within 2 to 9px of it on synthetic stacked column and line charts).
         pieLayout: Object.freeze({ insetPt: 9.75, titleBandEm: 1.7, titleBandPt: 14, legendBandEm: 1.05 }),
         dataBorderWidthPt: 0.75,
         dataLabelFormatCode: "#,##0",

@@ -634,6 +634,46 @@ describe("chart normalization and rendering", () => {
         }
     });
 
+    test("reserves a side legend's band beside the plot area, as LibreOffice narrows it (#517)", () => {
+        const width = inchesToPixels(4.4);
+        // The gridlines' horizontal extent: the plot area's left and right edges.
+        const plot = (type: "bar" | "line", options: PptxGenJS.IChartOpts) => {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addChart(type, categoricalData, { x: 0, y: 0, w: 4.4, h: 4.1, showLegend: true, ...options });
+            const xs: number[] = [];
+
+            for (const path of renderedPage(presentation).querySelectorAll(".slide-chart path")) {
+                const match = /^M([\d.]+) ([\d.]+)L([\d.]+) \2$/.exec(path.getAttribute("d") ?? "");
+
+                if (match) {
+                    xs.push(Number(match[1]), Number(match[3]));
+                }
+            }
+
+            return { left: Math.min(...xs), right: Math.max(...xs) };
+        };
+        // Two insets (9.75pt), the key, its 5px gap and the widest entry, measured as ECharts lays the legend out.
+        const legendPx = pointsToPixels(PPTX_DEFAULTS.chart.legendFontSizePt);
+        const inset = pointsToPixels(PPTX_DEFAULTS.chart.pieLayout.insetPt);
+        const widest = format.getTextRect("Second", `${legendPx}px ${PPTX_DEFAULTS.theme.bodyFontFace}`).width;
+        const band = 2 * inset + Math.round(legendPx * PPTX_DEFAULTS.chart.legendKeyFontRatio) + 5 + widest;
+        const bottom = plot("bar", { legendPos: "b" });
+
+        expect(bottom.right).toBeCloseTo(width * 0.98, 0);
+        expect(plot("bar", { legendPos: "r" }).right).toBeCloseTo(width - band, 0);
+        expect(plot("bar", { legendPos: "tr" }).right).toBeCloseTo(width - band, 0);
+        // The default legend position is the right.
+        expect(plot("bar", {}).right).toBeCloseTo(width - band, 0);
+        // A line key keeps ECharts' 25px item width.
+        expect(plot("line", { legendPos: "r" }).right).toBeCloseTo(width - (band - Math.round(legendPx * PPTX_DEFAULTS.chart.legendKeyFontRatio) + 25), 0);
+        // A left legend moves the value axis gutter by the band less one inset; the right edge keeps its 2%.
+        const left = plot("bar", { legendPos: "l" });
+
+        expect(left.left).toBeCloseTo(bottom.left + band - inset, 0);
+        expect(left.right).toBeCloseTo(width * 0.98, 0);
+    });
+
     test("draws a point marker as PptxGenJS's c:marker writes it: size in points, its outline, none on area series", () => {
         const markers = (type: "area" | "line" | "radar" | "scatter", options: PptxGenJS.IChartOpts = {}, target: "libreoffice" | "powerpoint" = "libreoffice") => {
             const presentation = new PuppeteerGen(undefined, { target });

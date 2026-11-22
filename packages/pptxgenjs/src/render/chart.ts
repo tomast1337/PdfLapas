@@ -100,6 +100,9 @@ function dataLabelOption(labels: NormalizedChart["dataLabels"], position: string
 /** ECharts' px between a legend key and its text (LegendView: `textX = itemWidth + 5`). */
 const LEGEND_TEXT_GAP = 5;
 
+/** ECharts' legend itemWidth, which a line key keeps. */
+const LEGEND_LINE_KEY_WIDTH = 25;
+
 /** A filled square; the legend's symbolKeepAspect keeps it square when a line key makes the items wider. */
 const LEGEND_SQUARE_ICON = "path://M0 0H1V1H0Z";
 
@@ -338,18 +341,43 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const bottomLabelPx = horizontal ? valueLabelPx : categoryLabelPx;
     const sideLabelPx = horizontal ? categoryLabelPx : valueLabelPx;
     const lineEm = PPTX_DEFAULTS.text.singleLineEm;
+    const pieLayout = PPTX_DEFAULTS.chart.pieLayout;
+    const inset = pointsToPixels(pieLayout.insetPt);
+    // A left or right legend's band beside the plot area, as LibreOffice reserves it on every chart type (#468, #517):
+    // its widest entry (key, gap and text) and an inset on each side.
+    // shortcut: zrender measures the entries with its Arial-like width table, so a narrower legend face (LibreOffice
+    // draws the theme's Calibri as Carlito) leaves the plot a few px smaller; measure the face's advances when charts
+    // get them.
+    let sideLegendBand = 0;
+
+    if (chart.showLegend && verticalLegend) {
+        // A legend without data of its own lists the series names (a scatter chart's y series).
+        const entries = legendData ?? (chart.type === "scatter" || chart.type === "bubble" ? chart.series.slice(1) : chart.series);
+        let widest = 0;
+
+        for (const entry of entries) {
+            widest = Math.max(widest, format.getTextRect(entry.name, `${pointsToPixels(chart.legendFontSize)}px ${chart.legendFontFace}`).width);
+        }
+
+        sideLegendBand = 2 * inset + (hasLineKey ? LEGEND_LINE_KEY_WIDTH : keySize) + LEGEND_TEXT_GAP + widest;
+    }
+
+    // A left legend moves the value axis gutter and the label bound by its band less one inset: LibreOffice keeps the
+    // axis labels an inset clear of the legend.
+    const leftLegendShift = chart.legendPosition === "l" ? Math.max(0, sideLegendBand - inset) : 0;
+    const rightLegendBand = chart.legendPosition === "r" || chart.legendPosition === "tr" ? sideLegendBand : 0;
     const legendBand = chart.showLegend && chart.legendPosition === "b" ? pointsToPixels(chart.legendFontSize) * lineEm + gap : 0;
     // A bottom category-axis title gets its band below the labels, as LibreOffice lays it out; a left one (a horizontal
     // bar chart's) is moved clear of the labels by ECharts (nameMoveOverlap) and kept in the frame by the outer bounds.
     const categoryTitleBand = categoryAxisModel.showTitle && !horizontal ? 2 * gap + pointsToPixels(categoryAxisModel.titleFontSize) * PPTX_DEFAULTS.chart.categoryAxis.titleBandEm : 0;
     // The value axis gutter: room for its labels and title.
     const firstAxis = chart.valueAxes[0];
-    let gutter: number | string;
+    let gutter: number;
 
     if (chart.valueAxes.length > 1) {
-        gutter = "12%";
+        gutter = width * 0.12;
     } else if (!firstAxis?.showTitle) {
-        gutter = "6%";
+        gutter = width * 0.06;
     } else {
         const labels = [firstAxis.minimum, firstAxis.maximum].map(value => formatChartNumber(value, firstAxis.labelFormatCode));
         const labelWidth = Math.max(...labels.map(label => label.length), 1) * pointsToPixels(firstAxis.labelFontSize) * 0.6;
@@ -378,12 +406,15 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const grid = layout
         ? { left: layout.x * width, top: layout.y * height, width: layout.w * width, height: layout.h * height, outerBoundsMode: "none", ...plotAreaStyle }
         : {
-              left: gutter,
-              right: chart.valueAxes.length > 1 ? "14%" : "2%",
+              left: gutter + leftLegendShift,
+              // A right legend's band replaces the 2% margin; a secondary axis keeps its gutter beside the band.
+              // shortcut: the secondary axis beside a right legend is not measured against LibreOffice; measure it when a
+              // deck needs both.
+              right: chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : Math.max(width * 0.02, rightLegendBand),
               top: chart.showTitle ? "14%" : gap + sideLabelPx / 2,
               bottom: gap + legendBand + categoryTitleBand + TICK_LENGTH + AXIS_LABEL_MARGIN + bottomLabelPx * lineEm,
               outerBoundsMode: "auto",
-              outerBounds: { left: labelBound, right: labelBound, top: 0, bottom: 0 },
+              outerBounds: { left: labelBound + leftLegendShift, right: Math.max(labelBound, rightLegendBand), top: 0, bottom: 0 },
               ...plotAreaStyle,
           };
     let option: EChartsCoreOption;
@@ -423,8 +454,6 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         };
 
         // The ring's box: the plot area the title and legend leave, less the inset (PPTX_DEFAULTS.chart.pieLayout).
-        const pieLayout = PPTX_DEFAULTS.chart.pieLayout;
-        const inset = pointsToPixels(pieLayout.insetPt);
         let top: number = chart.showTitle ? gap + pointsToPixels(chart.titleFontSize) * pieLayout.titleBandEm + pointsToPixels(pieLayout.titleBandPt) : inset;
         let bottom: number = inset;
         let left: number = inset;
@@ -437,23 +466,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 bottom = 2 * inset + legendPx * pieLayout.legendBandEm;
             } else if (chart.legendPosition === "t") {
                 top += inset + legendPx * pieLayout.legendBandEm;
+            } else if (chart.legendPosition === "l") {
+                left = sideLegendBand;
             } else {
-                // shortcut: zrender measures the entries with its Arial-like width table, so a narrower legend face
-                // (LibreOffice draws the theme's Calibri as Carlito) leaves the ring a few px smaller; measure the face's
-                // advances when charts get them.
-                let widest = 0;
-
-                for (const entry of legendData ?? []) {
-                    widest = Math.max(widest, format.getTextRect(entry.name, `${legendPx}px ${chart.legendFontFace}`).width);
-                }
-
-                const band = 2 * inset + keySize + LEGEND_TEXT_GAP + widest;
-
-                if (chart.legendPosition === "l") {
-                    left = band;
-                } else {
-                    right = band;
-                }
+                right = sideLegendBand;
             }
         }
 

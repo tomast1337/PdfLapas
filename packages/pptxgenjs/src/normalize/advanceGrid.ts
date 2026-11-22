@@ -141,16 +141,16 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * on it. Lay lines out finer than a LayoutUnit if a deck shows one (#395).
  * Kerned, PowerPoint kerns each pair on its left glyph's advance, so a pair whose left glyph is the space before a
  * break leaves the line's width with that space, and one whose left glyph ends the line stays in it (target/
- * powerpoint.ts). The renderers kern each pair inside a word span themselves, so a word's inner pairs count in its
- * natural width as in PowerPoint's; a pair across a span's edge, such as Arial's "A " and " T", they leave out (the
- * span ends a shaping run, and Blink shapes each space on its own), so it goes to the piece of its left character: the
- * word's letter-spacing takes "A ", and the spaces before " T" take it in a span of their own (`spaces`).
- * Kerning is the `kern` table's (GlyphAdvances.kerning), the only one PowerPoint reads; a face without `kern` pairs is
- * drawn unkerned (`font-kerning: none`, normalize/text.ts `kerned`), so GPOS adds nothing to it.
- * shortcut: in a face with both tables the renderers kern a word's inner pairs from GPOS, so a pair GPOS kerns otherwise
- * than the `kern` table, or that only GPOS kerns, moves the word's end by the difference (none does in Latin text in
- * Liberation Sans or Serif); turn the renderer's kerning off and spread the `kern` pairs as letter-spacing when a deck
- * shows one.
+ * powerpoint.ts). Kerning is the `kern` table's (GlyphAdvances.kerning), the only one PowerPoint reads, and the
+ * renderers draw every run on the grid unkerned (`font-kerning: none`, normalize/text.ts): they would kern from GPOS,
+ * which differs from the `kern` table in Calibri Light, Constantia and Cambria and leaves Segoe UI and Palatino
+ * Linotype unkerned (#399). So a word's letter-spacing carries each pair whose left character is in it, spread over its
+ * characters, and a pair whose left glyph is a space goes to the spaces' own span (`spaces`): the word ends where
+ * PowerPoint's does, and the spaces before Arial's " T" take that pair.
+ * shortcut: inside a word each pair is spread over the word's characters, so a glyph between its start and end sits up
+ * to the word's kerning off PowerPoint's (word starts match); split the word at its pairs if a deck shows it.
+ * shortcut: PowerPoint left two `kern` table pairs out, Segoe UI's "(j" and Palatino Linotype's "Y-", by a rule the
+ * measurements do not determine; both are kerned here (#539).
  * The sums run on across the runs of a paragraph through `cursor`: started again at each run, they added up to a
  * LayoutUnit per run boundary on a line, enough for pdf-core to break a line of SimSun and Arial runs that fills its
  * box to 0.01pt one character early (#370). A run without a grid or font (normalize/text.ts) or a space in its font
@@ -158,9 +158,9 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * `after` is the text of the next runs that PowerPoint kerns with this one (same face, size, weight and style, kerned),
  * up to `wordAfter`. A pair across the run edge is kerned like one inside the run, on its left character's piece (#398).
  * A word that goes on into `after` is laid out as one word: each of its characters, in this run and the next, takes one
- * letter-spacing (`cursor.word`), so Chromium, whose font includes the letter-spacing, shapes it across the spans and
- * kerns the pair at their edge. With the sums floored at each run's end instead, the spans' letter-spacings differed
- * by a LayoutUnit, and the pair, counted in neither sum, went unkerned. A word does not go on from Han or full-width
+ * letter-spacing (`cursor.word`), which carries the pair at the run edge with the others, and Chromium, whose font
+ * includes the letter-spacing, shapes it across the spans. With the sums floored at each run's end instead, the spans'
+ * letter-spacings differed by a LayoutUnit, and the pair, counted in neither sum, went unkerned. A word does not go on from Han or full-width
  * marks into other characters or back (`fullWidthStretches`), nor into a mark that hangs (normalize/text.ts).
  * shortcut: a break inside a word (after a hyphen, or between Han characters, also at a run boundary) sees the word's
  * spacing spread evenly, its start up to a LayoutUnit before PowerPoint's; spread it by character when a deck shows
@@ -293,18 +293,16 @@ export function advanceGridWordSpacing(text: string, sizePt: number, font: Glyph
 
             laidOut += stretch;
         } else {
-            // The renderers kern the word's inner pairs themselves, and no pair across its span's edge.
-            let naturalSum = 0;
+            // The renderers draw the word unkerned: its letter-spacing carries its pairs.
+            let natural = 0;
             let roundedSum = 0;
 
             for (const character of characters) {
-                const { natural, rounded } = advance(character);
+                const advanced = advance(character);
 
-                naturalSum += natural;
-                roundedSum = roundedSum + rounded + charSpacing;
+                natural += advanced.natural;
+                roundedSum = roundedSum + advanced.rounded + charSpacing;
             }
-
-            const natural = inner + naturalSum;
 
             rounded += inner + edge + roundedSum;
             const step = offStep(rounded);

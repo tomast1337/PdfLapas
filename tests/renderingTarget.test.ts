@@ -43,7 +43,8 @@ describe("rendering targets", () => {
 
     // PptxGenJS inherits kern="1200" (presentation.xml defaultTextStyle) and writes kern="0" with charSpacing.
     test("the PowerPoint target writes font-kerning: none on runs under 12pt or with charSpacing, the LibreOffice target on none", async () => {
-        const unkerned = (await runStyles(deck(new PuppeteerGenPowerPoint()))).map(style => style?.includes("font-kerning: none;"));
+        // Without glyph advances: with them every run on the advance grid is drawn unkerned, its letter-spacing carrying the `kern` pairs.
+        const unkerned = (await runStyles(deck(new PuppeteerGenPowerPoint(undefined, { resolveGlyphAdvances: null })))).map(style => style?.includes("font-kerning: none;"));
 
         // Text box, table cell, 14pt run, 14pt run with charSpacing, slide number (written last).
         expect(unkerned).toEqual([true, true, false, true, true]);

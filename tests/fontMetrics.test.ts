@@ -495,12 +495,13 @@ describe("pair kerning on the PowerPoint target", () => {
         return [...html.matchAll(/class="text-run"[^>]*>AVATAR</g)].map(match => match[0].includes("font-kerning: none;"));
     };
 
+    // Without glyph advances, so no advance grid, whose runs are all drawn unkerned (their letter-spacing carries the pairs).
     test("a resolver reporting no pair kerning leaves the face unkerned in text boxes, table cells and shapes", async () => {
         const resolveFontMetrics = (face: string): FontMetricsResult => (face === "My Brand Sans" ? { kind: "metrics", metrics: UNKERNED } : { kind: "unknown" });
 
-        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics }))).toEqual([true, false, true, true]);
-        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { fontMetrics: { "My Brand Sans": { ...BRAND, pairKerning: true } }, resolveFontMetrics }))).toEqual([false, false, false, false]);
-        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: null }))).toEqual([false, false, false, false]);
+        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics, resolveGlyphAdvances: null }))).toEqual([true, false, true, true]);
+        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { fontMetrics: { "My Brand Sans": { ...BRAND, pairKerning: true } }, resolveFontMetrics, resolveGlyphAdvances: null }))).toEqual([false, false, false, false]);
+        expect(await unkerned(new PuppeteerGenPowerPoint(undefined, { resolveFontMetrics: null, resolveGlyphAdvances: null }))).toEqual([false, false, false, false]);
         expect(await unkerned(new PuppeteerGenLibreOffice(undefined, { resolveFontMetrics }))).toEqual([false, false, false, false]);
     });
 });

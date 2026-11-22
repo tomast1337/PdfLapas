@@ -26,11 +26,13 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
  * pair kerning is an Apple-format `kern` table plus GPOS comes out of its PDF export unkerned at 12 and 18pt, lines
  * 6-7% wider on kerning-heavy text, and so does a font with no `kern` table, measured against PowerPoint's PDF export
  * of decks in GPOS-only faces: at 12pt and above, 0 of 8,861 GPOS pairs applied. Such a run is written with
- * `font-kerning: none`, as one under 12pt is, so neither renderer kerns it from GPOS. A face with both tables is
- * kerned by the renderers inside a word from GPOS (Chromium's HarfBuzz and pdf-core's harfrust read the `kern` table
- * only without a GPOS `kern` feature), and its word ends assume those pairs are the `kern` table's (`advanceGridWordSpacing`): they are
- * in Liberation Sans and Serif, whose every `kern` table pair has the same GPOS value and whose GPOS-only pairs are
- * all Hebrew. It
+ * `font-kerning: none`, as one under 12pt is, so neither renderer kerns it from GPOS. A face with both tables follows
+ * its `kern` table too: measured against PowerPoint's PDF export at 24pt, each pair whose GPOS value differs from the
+ * `kern` table's on its own word, the `kern` table puts every word start of Calibri Light, Constantia, Cambria, Tahoma
+ * and Franklin Gothic Medium within 0.09pt, and GPOS-only pairs (Calibri Light's " -", Cambria's "f)") are not applied
+ * (#399). The renderers (Chromium's HarfBuzz and pdf-core's harfrust read the `kern` table only without a GPOS `kern`
+ * feature) so draw every run on the advance grid unkerned and its letter-spacing carries the `kern` pairs
+ * (`advanceGridWordSpacing`). It
  * adds a paragraph's space after and the next one's space before: measured against its own PDF export of 18pt Arial,
  * `paraSpaceBefore: 6, paraSpaceAfter: 18` gives a 45.6pt pitch (21.6 + 6 + 18), not 39.6. It leaves out the
  * first paragraph's space before: with `paraSpaceBefore: 12` the first baseline is 17.05pt below the top inset,

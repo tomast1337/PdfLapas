@@ -265,8 +265,8 @@ describe("advanceGridWordSpacing", () => {
                 }
 
                 const edge = kern(characters.at(-1), pieces[index + 1]?.[0]);
-                const naturalPx = inner + advancesPx;
-                const width = laidOut(naturalPx, characters.length, isWord(piece) ? (spacing.words[word] ?? Number.NaN) : (spacing.spaces?.[stretch] ?? spacing.space));
+                // The renderers draw the run unkerned: the letter-spacing carries its pairs.
+                const width = laidOut(advancesPx, characters.length, isWord(piece) ? (spacing.words[word] ?? Number.NaN) : (spacing.spaces?.[stretch] ?? spacing.space));
                 const start = { rounded, laid };
 
                 rounded += inner + edge + roundedPx;
@@ -314,9 +314,9 @@ describe("advanceGridWordSpacing", () => {
 
             // " T" starts on the space, which takes it in a span of its own; unkerned, the space keeps the run's.
             expect(spacing.spaces?.length ?? 0).toBe(kerned ? 1 : 0);
-            // Chromium kerns "To" inside its span itself, and neither "A " nor " T" across the span edges.
+            // The renderers draw every pair unkerned (font-kerning: none): the letter-spacing carries "To" too.
             const start = laidOut(em(1366), 1, a ?? 0) + laidOut(em(569), 1, spacing.spaces?.[0] ?? spacing.space);
-            const end = start + laidOut(em(1251) + em(1139) + pair(-227), 2, to ?? 0);
+            const end = start + laidOut(em(1251) + em(1139), 2, to ?? 0);
             const powerPointStart = rounded(1366) + rounded(569) + pair(-113 - 37);
             const powerPointEnd = powerPointStart + rounded(1251) + rounded(1139) + pair(-227);
 
@@ -578,7 +578,8 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
 
             expect(run(fontSize, "powerpoint", GPOS_ONLY)?.wordCharacterSpacing).toEqual(unkerned);
             expect(run(fontSize, "powerpoint", KERNED)?.wordCharacterSpacing).not.toEqual(unkerned);
-            expect(run(fontSize, "powerpoint", KERNED)).not.toHaveProperty("kerning");
+            // A face with `kern` pairs is drawn unkerned too: its letter-spacing carries them, so GPOS adds nothing (#399).
+            expect(run(fontSize, "powerpoint", KERNED)?.kerning).toBe(false);
             for (const advances of [GPOS_ONLY, KERNED, undefined]) {
                 expect(run(fontSize, "libreoffice", advances)).not.toHaveProperty("kerning");
             }
@@ -597,7 +598,11 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
 
     const arial = installedAdvances("Arial", false, false);
 
-    test.skipIf(!arial?.kerning?.size)("keeps the installed Arial's kern pairs at 12pt", () => {
+    test.skipIf(!arial?.kerning?.size)("carries the installed Arial's kern pairs in its letter-spacing at 12pt, not the renderer's kerning", () => {
+        if (!arial) {
+            throw new Error("unreachable: skipped without Arial");
+        }
+
         const kerned = normalizeText(
             "A To",
             { fontFace: "Arial", fontSize: 12 },
@@ -605,7 +610,9 @@ describe("kerning from the kern table only on the PowerPoint target", () => {
             fontMetricsLookup(undefined, null, () => found(arial), NO_WARNINGS),
         ).paragraphs[0]?.runs[0];
 
-        expect(kerned).not.toHaveProperty("kerning");
+        expect(kerned?.kerning).toBe(false);
+        expect(kerned?.wordCharacterSpacing).toEqual(wordSpacing("A To", 12, arial, GRID, 0, true)?.words);
+        expect(kerned?.wordCharacterSpacing).not.toEqual(wordSpacing("A To", 12, arial, GRID, 0, false)?.words);
     });
 
     // Noto Sans kerns from GPOS alone (no kern table).

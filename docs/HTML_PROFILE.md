@@ -314,7 +314,8 @@ text split at spaces and tabs) and is never `data-empty`; a reader rejects any o
 The rendering target (`PuppeteerGenPowerPoint`, `PuppeteerGenLibreOffice`, or the `target` option) is not
 written as a document-level value: each difference is on the element it changes, so a reader of the HTML
 and the WASM renderer follow it without knowing the target. Today that is `font-kerning: none` on a run
-the PowerPoint target draws unkerned (under 12pt, or with `charSpacing`), a paragraph's
+the PowerPoint target draws unkerned (under 12pt, with `charSpacing`, or kerned from the face's `kern` table
+through its `letter-spacing` instead of the renderer's GPOS), a paragraph's
 `data-line-baseline`, which the PowerPoint target sets from its fonts' ascent and descent, and a run's
 `letter-spacing`, which on the PowerPoint target also carries the rounding of its glyph advances to
 PowerPoint's 0.125pt grid, so its lines break where PowerPoint's do, and

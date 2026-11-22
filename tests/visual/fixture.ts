@@ -2288,6 +2288,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateFallbackFaceFixture(presentation);
     populateChartCategoryOptionFixture(presentation);
     populateChartDataTableFixture(presentation);
+    populateChartPieBestFitFixture(presentation);
 }
 
 /**
@@ -3505,4 +3506,20 @@ export function populateChartDataTableFixture(presentation: Presentation): void 
         serAxisTitle: "Series",
         serAxisLabelColor: "C00000",
     });
+}
+
+/**
+ * A bestFit pie's ring (#572): narrow 70/15/8/4/3 slices whose percentages all fit inside but not in LibreOffice's small
+ * first ring, which shrinks the final one, and the same pie with category names, whose last label goes outside. A parity
+ * slide after the others (no page number moves) and the WASM chartPieBestFit deck, which crops each chart.
+ */
+export function populateChartPieBestFitFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Pie bestFit rings", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const data = [{ name: "Lorem", labels: ["Lorem", "Ipsum", "Dolor", "Sit", "Amet"], values: [70, 15, 8, 4, 3] }];
+    const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, dataLabelPosition: "bestFit", dataLabelFontFace: "Arial", showPercent: true, showValue: false };
+
+    slide.addChart("pie", data, { ...shared, x: 0.4 });
+    slide.addChart("pie", data, { ...shared, x: 5.2, showLabel: true });
 }

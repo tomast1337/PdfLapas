@@ -767,6 +767,54 @@ image sources, options or component props come from users, set these at the serv
 - **Errors.** Error messages name the input that failed (a path, a URL, an object name). Log them, and
   return a generic message to users who should not see your inputs.
 
+### Load testing
+
+`bun run bench:load` (in a checkout) keeps N renders in flight for a fixed time, each building a deck and calling
+`toPdf()`, as a service does. The decks rotate through text, tables with automatic pagination, images, emoji and East
+Asian text, and preset shapes, plus one request in six whose PNG is cut after its header, which must fail inside the
+renderer without stalling the others. Puppeteer uses the default renderer (one shared Chromium through the Node
+entry); WASM and PDFKit use one long-lived renderer for every request. Every sample interval it prints per-render
+latency (p50, p95, p99), throughput, the process's RSS and heap, and the number and total RSS of its child processes
+(Chromium, read from `/proc`, so Linux only); after each level it waits for the idle browser to close and prints the
+same after a full collection.
+
+| Variable                    | Default          | Meaning                                                  |
+| --------------------------- | ---------------- | -------------------------------------------------------- |
+| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm` and `pdfkit` |
+| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another             |
+| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                        |
+| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                  |
+
+```bash
+BENCH_LOAD_ENGINES=puppeteer BENCH_LOAD_CONCURRENCY=16 BENCH_LOAD_SECONDS=600 BENCH_LOAD_SAMPLE_SECONDS=60 bun run bench:load
+```
+
+It is not part of CI: run it on the machine, fonts and decks your service uses.
+
+Measured on one machine (Linux x64, 32 cores, Bun 1.4.4), 120 s per level, the mixed decks above:
+
+| Renderer  | Concurrency | Renders/s | p50     | p95     | Memory under load                            |
+| --------- | ----------- | --------- | ------- | ------- | -------------------------------------------- |
+| Puppeteer | 1           | 9.4       | 97 ms   | 153 ms  | process 200-260 MB, Chromium 7 procs 0.5 GB  |
+| Puppeteer | 4           | 27.7      | 124 ms  | 201 ms  | process 250-280 MB, Chromium 10 procs 0.8 GB |
+| Puppeteer | 16          | 40.4      | 353 ms  | 432 ms  | process 300-370 MB, Chromium 20 procs 2 GB   |
+| Puppeteer | 64          | 41.7      | 1358 ms | 1566 ms |                                              |
+| WASM      | 1           | 47.6      | 15 ms   | 25 ms   | process 0.7-1.5 GB (system fonts loaded)     |
+| WASM      | 16          | 47.2      | 20 ms   | 1690 ms |                                              |
+| PDFKit    | 1           | 18.9      | 44 ms   | 69 ms   | process about 0.7 GB                         |
+
+What that means for a service:
+
+- **Puppeteer** scales with cores until about 16 renders in flight on 32 cores; past that requests only queue.
+  Cap concurrency near half the core count and budget about 120 MB of Chromium per render in flight. The shared
+  browser closes one second after the last render and relaunches on the next; after every level the process was
+  back at 170-185 MB with no Chromium left, and 10 minutes at 16 (22,272 renders) showed no growth.
+- **WASM and PDFKit** render on the calling thread, so concurrency adds latency, not throughput, and a render
+  blocks the event loop for its duration (#578). Run them in a few worker threads, each with its own renderer,
+  when one core is not enough. Memory does not grow with renders: 10 minutes at 16 (27,851 WASM renders) ended at
+  the same 475 MB RSS as two minutes.
+- A failing render (the broken image) fails alone: no other request failed or slowed in any run.
+
 ### Fonts for the PowerPoint target
 
 The PowerPoint target matches PowerPoint only with the faces PowerPoint draws with installed: the faces the

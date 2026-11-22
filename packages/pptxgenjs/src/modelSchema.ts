@@ -302,6 +302,7 @@ const chart = z.strictObject({
     lineSymbolLineColor: cssColor.optional(),
     firstSeriesInFront: z.boolean().optional(),
     legendListsPoints: z.boolean().optional(),
+    namesSingleDepthSlot: z.boolean().optional(),
     lineSymbolLineSize: nonNegative,
     lineSize: nonNegative,
     dataLabels: z.strictObject({

@@ -420,7 +420,10 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             escapeText(label),
         );
     });
-    const seriesLabels = chart.series.map((series, index) => {
+    // LibreOffice 26.2.6 names the depth slots only when there are several: a single series or a stacked chart, whose
+    // series share one slot, gets no depth-axis label. A target may name a single unstacked series (namesSingleDepthSlot).
+    const namesSlots = !stacked && (chart.series.length > 1 || chart.namesSingleDepthSlot === true);
+    const seriesLabels = (namesSlots ? chart.series : []).map((series, index) => {
         const point = project(otherX, slotDepth(index), minimum);
 
         return element(

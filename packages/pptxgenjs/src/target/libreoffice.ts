@@ -47,7 +47,8 @@ import type { RenderingTargetProfile } from "./index";
  * chart's top edge whatever the height, the title or the entry count, and the plot area's top does not move (#536).
  * A bar3D value axis takes about as many steps as its labels' height fits along its drawn length
  * (`bar3DLabelHeightsPerStep` 1): in LibreOffice 26.2.6's PDF export of 3, 5, 4, 8 in 14pt Arial, 0..8 by 1 on a
- * 136.5pt axis, by 2 on a 95pt one and 0..10 by 5 on a 54pt one (#541).
+ * 136.5pt axis, by 2 on a 95pt one and 0..10 by 5 on a 54pt one. A single series or a stacked chart gets no depth-axis
+ * label (`bar3DNamesSingleSeries` off): its PDF export of the chartBar3DAxis fixture slide prints none (#541).
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
@@ -84,4 +85,5 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     chartLegendListsUnfilledPoints: false,
     topRightLegend: { kind: "beside" as const },
     bar3DLabelHeightsPerStep: 1,
+    bar3DNamesSingleSeries: false,
 });

@@ -663,6 +663,24 @@ describe("chart normalization and rendering", () => {
         expect([label?.getAttribute("font-size"), label?.getAttribute("fill"), label?.textContent]).toEqual(["12", "#FF0000", "0.0"]);
     });
 
+    test("names the bar3D depth slots only when there are several, or a single series where the target does (#541)", () => {
+        const depthLabels = (data: PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts = {}, target: "libreoffice" | "powerpoint" = "libreoffice"): (string | null)[] => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart("bar3D", data, { x: 0, y: 0, w: 6, h: 4, ...options });
+
+            return Array.from(renderedPage(presentation).querySelectorAll(".bar3d-series-label"), label => label.textContent);
+        };
+
+        expect(depthLabels(categoricalData)).toEqual(["First", "Second"]);
+        expect(depthLabels([categoricalData[0]!])).toEqual([]);
+        expect(depthLabels(categoricalData, { barGrouping: "stacked" })).toEqual([]);
+        // PowerPoint's PDF export of a synthetic deck names a single series there (bar3DNamesSingleSeries); a stacked
+        // chart keeps LibreOffice's none, unmeasured on PowerPoint.
+        expect(depthLabels([categoricalData[0]!], {}, "powerpoint")).toEqual(["First"]);
+        expect(depthLabels(categoricalData, { barGrouping: "stacked" }, "powerpoint")).toEqual([]);
+    });
+
     test("renders all six bar3D shapes as deterministic inline SVG", () => {
         const shapes = ["box", "cylinder", "cone", "coneToMax", "pyramid", "pyramidToMax"] as const;
 
@@ -689,11 +707,18 @@ describe("chart normalization and rendering", () => {
         const tricky = `a<b & "c" 'd'`;
         const presentation = new PuppeteerGen();
 
-        presentation.addSlide().addChart("bar3D", [{ ...categoricalData[0], name: tricky }], { x: 0, y: 0, w: 5, h: 3, showTitle: true, title: tricky, showLegend: true });
+        presentation.addSlide().addChart(
+            "bar3D",
+            [
+                { ...categoricalData[0], name: tricky },
+                { ...categoricalData[1], name: tricky },
+            ],
+            { x: 0, y: 0, w: 5, h: 3, showTitle: true, title: tricky, showLegend: true },
+        );
         const svg = renderedPage(presentation).querySelector(".slide-chart svg");
 
         expect(svg?.querySelector(".bar3d-title")?.textContent).toBe(tricky);
-        expect(Array.from(svg?.querySelectorAll(".bar3d-series-label, .bar3d-legend") ?? [], label => label.textContent)).toEqual([tricky, tricky]);
+        expect(Array.from(svg?.querySelectorAll(".bar3d-series-label, .bar3d-legend") ?? [], label => label.textContent)).toEqual([tricky, tricky, tricky, tricky]);
         expect(svg?.querySelectorAll("b")).toHaveLength(0);
 
         // A model from another producer is not normalized, so its colors and shape name reach the SVG as given.

@@ -183,6 +183,11 @@ export type RenderingTargetProfile = {
      * (`NormalizedChartValueAxis.automaticScale.labelHeightsPerStep`).
      */
     readonly bar3DLabelHeightsPerStep: number;
+    /**
+     * Whether a bar3D chart with one unstacked series prints its name at the depth axis, or no depth label
+     * (`NormalizedChart.namesSingleDepthSlot`).
+     */
+    readonly bar3DNamesSingleSeries: boolean;
 };
 
 /** Every rendering target by the name the `target` option takes. A new target is one file here and one entry below. */

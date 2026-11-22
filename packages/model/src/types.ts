@@ -461,6 +461,8 @@ export type NormalizedChart = {
      * in place of the series; absent: the series.
      */
     legendListsPoints?: boolean;
+    /** Whether a bar3D chart with one unstacked series names it at the depth axis; absent: no depth label for it. */
+    namesSingleDepthSlot?: boolean;
     altText: string;
 };
 

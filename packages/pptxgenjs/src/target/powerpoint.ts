@@ -268,6 +268,9 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // label heights), and the same scale on our 153px axis needs 2.14 to 4.29; 2.25 sits in both.
     // shortcut: fitted to that one automatic chart; measure more lengths and sizes when a deck steps differently (#541).
     bar3DLabelHeightsPerStep: 2.25,
+    // The same export prints "Lorem" at the depth axis of both single-series charts, where LibreOffice prints none.
+    // shortcut: a stacked bar3D's depth label is not measured on PowerPoint and keeps LibreOffice's none (#541).
+    bar3DNamesSingleSeries: true,
 });
 
 /** What a face is to the PowerPoint target (`POWERPOINT_FACES`). */

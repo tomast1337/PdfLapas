@@ -574,5 +574,9 @@
   "chartFixedBound": {
     "p1-Chart0": 0.0944,
     "p1-Chart1": 0.0922
+  },
+  "chartLabelPositions": {
+    "p1-Chart0": 0.0256,
+    "p1-Chart1": 0.1003
   }
 }

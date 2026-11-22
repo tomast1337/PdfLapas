@@ -441,6 +441,43 @@ const TEXT_OPTION_SLIDES: readonly { title: string; cases: readonly TextOptionCa
             options: { x: 0.5 + index * 5, y: 1.25, w: 4, h: 0.75, fontSize: 32, margin: 0, valign: "top", color: "0000FF", strike, underline: { style: "sng", color: "FF0000" } },
         })),
     },
+    {
+        // The heavy dash types, `words`, a struck run alone, and underlines that cross runs of another colour or size
+        // (#396, #397, #489): LibreOffice 26.2 keeps each run's band and restarts a dash pattern with each run.
+        title: "Underline types across runs",
+        cases: [
+            // `as`: PptxGenJS 4.0.1's types spell dotDashHeavy "dotDashHeave" and leave out words; its runtime writes u="<style>" as given.
+            ...(["dashHeavy", "dashLongHeavy", "dotDashHeavy", "dotDotDashHeavy", "words"] as const).map((style, index): TextOptionCase => ({
+                name: `text-underline-${style}`,
+                label: `underline style ${style}`,
+                text: "Lorem ipsum gjy",
+                options: { x: 0.5 + (index % 3) * 3.125, y: 1.25 + Math.floor(index / 3) * 1.05, w: 2.75, h: 0.5, fontSize: 20, margin: 0, valign: "top", underline: { style: style as "dashHeavy", color: "2F5597" } },
+            })),
+            {
+                name: "text-underline-dblStrike-alone",
+                label: "dblStrike, 24pt",
+                text: "Lorem ipsum",
+                options: { x: 6.75, y: 2.3, w: 2.75, h: 0.5, fontSize: 24, margin: 0, valign: "top", strike: "dblStrike" },
+            },
+            {
+                name: "text-underline-across-runs",
+                label: "dash and wavy across a colour change and a 32pt run",
+                text: [
+                    { text: "Lorem ", options: { underline: { style: "dash" } } },
+                    { text: "ipsum ", options: { color: "C00000", underline: { style: "dash" } } },
+                    { text: "dolor ", options: { underline: { style: "wavy" } } },
+                    { text: "sit", options: { fontSize: 32, underline: { style: "wavy" } } },
+                ],
+                options: { x: 0.5, y: 3.5, w: 6, h: 0.75, fontSize: 20, margin: 0, valign: "top" },
+            },
+            {
+                name: "text-underline-strike-48",
+                label: "48pt dbl underline and sngStrike",
+                text: "Lorem",
+                options: { x: 6.75, y: 3.35, w: 3, h: 1, fontSize: 48, margin: 0, valign: "top", strike: "sngStrike", underline: { style: "dbl" } },
+            },
+        ],
+    },
 ];
 const TEXT_OPTION_CASES = TEXT_OPTION_SLIDES.flatMap(({ cases }, index) => cases.map(({ name, options: { x, y, w, h = 0 }, pad = 0.15 }) => ({ page: 63 + index, name, x: x - pad, y: y - pad, w: w + 2 * pad, h: h + 2 * pad })));
 

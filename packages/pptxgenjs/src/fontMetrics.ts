@@ -6,21 +6,22 @@ import { FONT_WIN_METRICS, type FontMetricsLookup, type FontMetricsResult, type 
 
 const integer = (min: 0 | 1, what: string) => z.int({ error: `must be ${what}` }).min(min, { error: `must be ${what}` });
 
+/** A decoration band in font units: its top above the baseline (negative below) and its height. */
+const FONT_BAND_SCHEMA = z.strictObject(
+    {
+        position: z.number({ error: "must be a finite number (font units, the band's top above the baseline, negative below)" }),
+        thickness: z.number({ error: "must be a positive number (font units)" }).positive({ error: "must be a positive number (font units)" }),
+    },
+    { error: "must be { position, thickness } in font units" },
+);
+
 const FONT_WIN_METRICS_SCHEMA = z
     .strictObject({
         unitsPerEm: integer(1, "a positive integer (head.unitsPerEm)"),
         winAscent: integer(0, "a non-negative integer (OS/2 usWinAscent)"),
         winDescent: integer(0, "a non-negative integer (OS/2 usWinDescent)"),
         pairKerning: z.boolean({ error: "must be a boolean (whether PowerPoint pair-kerns the font)" }).optional(),
-        underline: z
-            .strictObject(
-                {
-                    position: z.number({ error: "must be a finite number (font units, the band's top above the baseline, negative below)" }),
-                    thickness: z.number({ error: "must be a positive number (font units)" }).positive({ error: "must be a positive number (font units)" }),
-                },
-                { error: "must be { position, thickness } in font units" },
-            )
-            .optional(),
+        underline: FONT_BAND_SCHEMA.optional(),
     })
     .refine(metrics => metrics.winAscent + metrics.winDescent > 0, { error: "winAscent + winDescent must be greater than 0" });
 
@@ -218,6 +219,13 @@ const UNICODE_CODE_POINTS = 0x110000;
 const UNICODE_CMAPS: readonly number[] = [(3 << 16) | 10, (0 << 16) | 6, (0 << 16) | 4, (3 << 16) | 1, (0 << 16) | 3, (0 << 16) | 2, (0 << 16) | 1, (0 << 16) | 0];
 const OS2_WIN_ASCENT = 74;
 const OS2_WIN_DESCENT = 76;
+// OS/2 int16 yStrikeoutSize and yStrikeoutPosition; post int16 underlinePosition and underlineThickness (FWORDs).
+const OS2_STRIKEOUT_SIZE = 26;
+const OS2_STRIKEOUT_POSITION = 28;
+const POST_UNDERLINE_POSITION = 8;
+const POST_UNDERLINE_THICKNESS = 10;
+/** An sfnt uint16 read as the int16 (FWORD) it holds. */
+const int16 = (value: number): number => (value << 16) >> 16;
 // kern table (OpenType spec): Microsoft format uint16 version 0 then uint16 nTables; each subtable has uint16 version,
 // length and coverage (format in the high byte, horizontal in bit 0), then format 0's uint16 nPairs. Apple's format starts
 // with a 32-bit version 0x00010000, so its first uint16 is 1.
@@ -360,6 +368,8 @@ const GLYPH_ADVANCES_SCHEMA = z.strictObject({
     unitsPerEm: integer(1, "a positive integer (head.unitsPerEm)"),
     advances: z.map(CODE_POINT, z.number().min(0).max(Number.MAX_SAFE_INTEGER), { error: "must be a Map from code point to advance width in font units" }),
     kerning: z.map(CODE_POINT, z.map(CODE_POINT, z.number().finite(), { error: KERNING_ERROR }), { error: KERNING_ERROR }).optional(),
+    underline: FONT_BAND_SCHEMA.optional(),
+    strikeout: FONT_BAND_SCHEMA.optional(),
 });
 const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("advances"), advances: GLYPH_ADVANCES_SCHEMA }), z.strictObject({ kind: z.literal("unknown") }), UNREADABLE_SCHEMA], {
     error: RESULT_ERROR("advances"),
@@ -370,7 +380,9 @@ const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObjec
  * (format 12, else format 4), and head.unitsPerEm: what the PowerPoint target lays text out on its advance grid with
  * (RENDERING_TARGETS.advanceGridPt). A character the font does not map is left out, and so is every one of a font
  * without a Unicode cmap (a symbol font). `kerning` holds the pair kerning of a version 0 `kern` table, what
- * PowerPoint kerns a run from 12pt with; it is left out without one. A TrueType collection (.ttc) gives the face at
+ * PowerPoint kerns a run from 12pt with; it is left out without one. `underline` (post underlinePosition and
+ * underlineThickness) and `strikeout` (OS/2 yStrikeoutPosition and yStrikeoutSize) are the face's decoration bands,
+ * left out without the table or a positive thickness. A TrueType collection (.ttc) gives the face at
  * `faceIndex`; WOFF and WOFF2 are not read. Browser-safe: bytes in.
  */
 export function readGlyphAdvances(bytes: Uint8Array, faceIndex = 0): GlyphAdvances {
@@ -522,5 +534,15 @@ export function readGlyphAdvances(bytes: Uint8Array, faceIndex = 0): GlyphAdvanc
         }
     }
 
-    return Object.freeze({ unitsPerEm, advances, ...(kerning.size ? { kerning } : {}) });
+    // The face's own underline and strikeout bands, each kept only with a positive thickness.
+    const underline = tables.has("post") ? { position: int16(field("post", POST_UNDERLINE_POSITION, "underlinePosition")), thickness: int16(field("post", POST_UNDERLINE_THICKNESS, "underlineThickness")) } : undefined;
+    const strikeout = tables.has("OS/2") ? { position: int16(field("OS/2", OS2_STRIKEOUT_POSITION, "yStrikeoutPosition")), thickness: int16(field("OS/2", OS2_STRIKEOUT_SIZE, "yStrikeoutSize")) } : undefined;
+
+    return Object.freeze({
+        unitsPerEm,
+        advances,
+        ...(kerning.size ? { kerning } : {}),
+        ...(underline && underline.thickness > 0 ? { underline } : {}),
+        ...(strikeout && strikeout.thickness > 0 ? { strikeout } : {}),
+    });
 }

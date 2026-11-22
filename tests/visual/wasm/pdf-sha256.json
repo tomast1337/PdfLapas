@@ -36,5 +36,7 @@
   "bulletType": "cf2758440dd2eac6d3eeaecf45ed310562f619d9625d9b3268bf531a13b7b38c",
   "chartFixedBound": "2289ddcf0330d9fcad8930f1e36f7f397d254c40ea6f4f489ec95220cb2ada37",
   "chartLabelPositions": "af6f6bd45f87ee34898d4da4c97f225ea56a16fb6235482b11b30be962fbbbd0",
-  "chartBar3DAxis": "0eefb83675c1d9f338e07737d9c98a43b751f5c210eb99aff56dab696249d6eb"
+  "chartBar3DAxis": "0eefb83675c1d9f338e07737d9c98a43b751f5c210eb99aff56dab696249d6eb",
+  "chartOptionLabels": "1d2f8537b1f693b5db64362040c40dd260470854ea4a7665321d5f3f5b5e8e4d",
+  "chartOptionAxes": "92980969cb6e640cb7b739fb7ac1a4b733f33169a2ed7dd997504f142667778f"
 }

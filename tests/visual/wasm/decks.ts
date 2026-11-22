@@ -17,6 +17,8 @@ import {
     populateChartLabelPositionFixture,
     populateChartLegendOrderFixture,
     populateChartMarkerFixture,
+    populateChartOptionAxisFixture,
+    populateChartOptionLabelFixture,
     populateChartPieFixture,
     populateChartPlotAreaFixture,
     populateChartPlotBandFixture,
@@ -300,6 +302,27 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartBar3DAxis: {
         populate: presentation => {
             populateChartBar3DAxisFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartOptionLabels: the shared fixture's data labels on every chart type slide (#477); every chart gets a crop.
+    chartOptionLabels: {
+        populate: presentation => {
+            populateChartOptionLabelFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartOptionAxes: the shared fixture's axis options on radar, bar3D and line charts slide (#561, #479); every
+    // chart gets a crop.
+    chartOptionAxes: {
+        populate: presentation => {
+            populateChartOptionAxisFixture(presentation);
 
             return presentation;
         },

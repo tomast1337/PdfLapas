@@ -481,7 +481,10 @@ export type NormalizedChart = {
     plotArea: NormalizedChartPlotArea;
     /** The inner plot rectangle as fractions of the chart frame; absent for the automatic layout. */
     plotLayout?: NormalizedChartLayout;
-    /** Whether the series are drawn from the last to the first, so the first is in front; absent: in series order. */
+    /**
+     * Whether the series are drawn from the last to the first, so the first is in front (on a combo chart, its area
+     * series among themselves); absent: in series order.
+     */
     firstSeriesInFront?: boolean;
     /**
      * Whether the legend lists the only series' points, each by its category label and keyed in its point's color,
@@ -490,6 +493,17 @@ export type NormalizedChart = {
     legendListsPoints?: boolean;
     /** Whether a bar3D chart with one unstacked series names it at the depth axis; absent: no depth label for it. */
     namesSingleDepthSlot?: boolean;
+    /** Whether the categories sit on the tick marks, the first at the axis's start; absent: between them. */
+    categoriesOnTicks?: boolean;
+    /** Whether the legend lists a combo chart's area series before the others; absent: in series order. */
+    legendListsAreasFirst?: boolean;
+    /**
+     * The widest a pie's outside label may be, as a fraction of the room beside its slice's rim point (on the right the
+     * plot area's width less the point's x, on the left its x, both from the chart's left edge) and of the plot area's
+     * width, whichever is narrower; a longer line wraps, between words or else between characters. Absent: one line
+     * per field.
+     */
+    outsidePieLabelWidth?: { room: number; plotWidth: number };
     altText: string;
 };
 

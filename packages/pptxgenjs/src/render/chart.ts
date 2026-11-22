@@ -367,7 +367,16 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             legendData.push({ name: only?.labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON, itemStyle: { color: only?.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4" } });
         }
     } else if (chart.type !== "radar" && chart.type !== "scatter" && chart.type !== "bubble") {
-        legendData = chart.series.map(series => (series.type === "line" ? { name: series.name } : { name: series.name, icon: LEGEND_SQUARE_ICON }));
+        legendData = [];
+
+        // A combo chart's area series first where the target lists them so (legendListsAreasFirst, #538).
+        for (const areas of chart.legendListsAreasFirst ? [true, false] : [undefined]) {
+            for (const series of chart.series) {
+                if (areas === undefined || areas === (series.type === "area")) {
+                    legendData.push(series.type === "line" ? { name: series.name } : { name: series.name, icon: LEGEND_SQUARE_ICON });
+                }
+            }
+        }
 
         if (reversedLegend) {
             legendData.reverse();
@@ -604,33 +613,60 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         let centerX = left + boxWidth / 2;
         let centerY = top + boxHeight / 2;
         const showLabels = labels.showCategory || labels.showValue || labels.showPercent;
-        // inEnd and outEnd labels sit at the rim of each slice (PPTX_DEFAULTS.chart.pieLabel); ECharts' pie label
-        // positions have neither, so they are drawn as text at their anchors.
+        // inEnd and outEnd labels sit at the rim of each slice, and bestFit ones inside it near the rim
+        // (PPTX_DEFAULTS.chart.pieLabel); ECharts' pie label positions have none of them, so they are drawn as text.
         const rimLabels = showLabels && (labels.position === "inEnd" || labels.position === "outEnd");
+        const bestFit = showLabels && labels.position === "bestFit";
         const rimTexts: Record<string, unknown>[] = [];
 
-        if (rimLabels) {
+        if (rimLabels || bestFit) {
             const pieLabel = PPTX_DEFAULTS.chart.pieLabel;
-            const outside = labels.position === "outEnd";
+            // A bestFit label that does not fit in its slice goes outside it, as an outEnd one.
+            const outside = labels.position !== "inEnd";
             const offset = pointsToPixels(pieLabel.offsetPt) * (outside ? 1 : -1);
             const labelPx = pointsToPixels(labels.fontSize);
             const lineHeight = labelPx * pieLabel.lineEm;
             const font = `${labels.italic ? "italic " : ""}${labels.bold ? "bold " : ""}${labelPx}px ${labels.fontFace}`;
             const band = pieLabel.axisBandDeg;
-            // Each slice's label text, size, bisector (degrees counterclockwise from 3 o'clock; ECharts lays the slices
-            // out clockwise from startAngle) and its side of the anchor.
-            const slices: { text: string; width: number; height: number; cos: number; sin: number; align: "left" | "center" | "right"; verticalAlign: "top" | "middle" | "bottom" }[] = [];
+            const wrapWidth = chart.outsidePieLabelWidth;
+            // A label's fields, each on its own lines: an outside label wraps where the target wraps it
+            // (outsidePieLabelWidth) beside its slice's rim point at rimX, between words, or between characters in a word
+            // too long for its line; rimX undefined keeps one line per field. PieChart::createTextLabelShape takes the room
+            // on the right as the plot area's width less rimX, both from the chart's left edge, and on the left as rimX.
+            const layoutLabel = (fields: readonly string[], cos: number, rimX: number | undefined) => {
+                const maxWidth = wrapWidth && rimX !== undefined ? Math.min(wrapWidth.room * (cos > 0 ? boxWidth - rimX : rimX), wrapWidth.plotWidth * boxWidth) : Infinity;
+                const lines: string[] = [];
+                let width = 0;
+
+                for (const field of fields) {
+                    let line = "";
+
+                    for (const char of field) {
+                        if (line && format.getTextRect(`${line}${char}`, font).width > maxWidth) {
+                            const space = line.lastIndexOf(" ");
+
+                            lines.push(space > 0 ? line.slice(0, space) : line);
+                            line = space > 0 ? `${line.slice(space + 1)}${char}` : char;
+                        } else {
+                            line += char;
+                        }
+                    }
+
+                    lines.push(line);
+                }
+
+                for (const line of lines) {
+                    width = Math.max(width, format.getTextRect(line, font).width);
+                }
+
+                return { text: lines.join("\n"), width, height: lines.length * lineHeight };
+            };
+            // Each slice's label fields, bisector (degrees counterclockwise from 3 o'clock; ECharts lays the slices out
+            // clockwise from startAngle), angular width and its side of the anchor.
+            const slices: { fields: string[]; degrees: number; spanDegrees: number; cos: number; sin: number; align: "left" | "center" | "right"; verticalAlign: "top" | "middle" | "bottom" }[] = [];
             let before = 0;
 
             for (const [index, value] of series.values.entries()) {
-                const text = sliceLabel(index);
-                const lines = text.split(PPTX_DEFAULTS.chart.dataLabelSeparator);
-                let textWidth = 0;
-
-                for (const line of lines) {
-                    textWidth = Math.max(textWidth, format.getTextRect(line, font).width);
-                }
-
                 const share = total === 0 ? 1 / series.values.length : value / total;
                 const degrees = (((90 - chart.firstSliceAngle - (before + share / 2) * 360) % 360) + 360) % 360;
                 // LibreOffice puts an outEnd label right of its anchor on the right half and above it on the upper
@@ -643,9 +679,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
                 before += share;
                 slices.push({
-                    text,
-                    width: textWidth,
-                    height: lines.length * lineHeight,
+                    fields: sliceLabel(index).split(PPTX_DEFAULTS.chart.dataLabelSeparator),
+                    degrees,
+                    spanDegrees: share * 360,
                     cos: Math.cos(radians),
                     sin: Math.sin(radians),
                     align: (outside ? rightHalf : leftHalf) ? "left" : (outside ? leftHalf : rightHalf) ? "right" : "center",
@@ -655,7 +691,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
             // LibreOffice's first layout: a ring 1 / firstPassDivisor of the plot area, centered in a box that size
             // placed at the plot area's far corner (VDiagram::reduceToMinimumSize), and the rect its labels and ring
-            // cover there.
+            // cover there. Only inEnd and outEnd labels resize the ring.
+            // shortcut: a bestFit label that goes outside its slice leaves the ring as it is, where LibreOffice shrinks it
+            // to make room; measure it when a deck has one.
             const firstWidth = boxWidth / pieLabel.firstPassDivisor;
             const firstHeight = boxHeight / pieLabel.firstPassDivisor;
             const firstSide = Math.min(firstWidth, firstHeight);
@@ -666,16 +704,17 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             let minY = firstY;
             let maxY = firstY + firstSide;
 
-            for (const slice of slices) {
+            for (const slice of rimLabels ? slices : []) {
                 const anchorX = firstX + firstSide / 2 + (firstSide / 2 + offset) * slice.cos;
                 const anchorY = firstY + firstSide / 2 - (firstSide / 2 + offset) * slice.sin;
-                const labelLeft = slice.align === "left" ? anchorX : slice.align === "right" ? anchorX - slice.width : anchorX - slice.width / 2;
-                const labelTop = slice.verticalAlign === "top" ? anchorY : slice.verticalAlign === "bottom" ? anchorY - slice.height : anchorY - slice.height / 2;
+                const label = layoutLabel(slice.fields, slice.cos, outside ? firstX + (firstSide / 2) * (1 + slice.cos) : undefined);
+                const labelLeft = slice.align === "left" ? anchorX : slice.align === "right" ? anchorX - label.width : anchorX - label.width / 2;
+                const labelTop = slice.verticalAlign === "top" ? anchorY : slice.verticalAlign === "bottom" ? anchorY - label.height : anchorY - label.height / 2;
 
                 minX = Math.min(minX, labelLeft);
-                maxX = Math.max(maxX, labelLeft + slice.width);
+                maxX = Math.max(maxX, labelLeft + label.width);
                 minY = Math.min(minY, labelTop);
-                maxY = Math.max(maxY, labelTop + slice.height);
+                maxY = Math.max(maxY, labelTop + label.height);
             }
 
             // VDiagram::adjustInnerSize: the ring's box grows by the room left beside that rect, to at least a third of
@@ -716,28 +755,70 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const innerWidth = Math.max(0, Math.min(left + boxWidth, innerX + firstSide + deltaWidth) - innerLeft);
             const innerHeight = Math.max(0, Math.min(top + boxHeight, innerY + firstSide + deltaHeight) - innerTop);
 
-            radius = Math.min(innerWidth, innerHeight) / 2;
-            centerX = innerLeft + innerWidth / 2;
-            centerY = innerTop + innerHeight / 2;
+            if (rimLabels) {
+                radius = Math.min(innerWidth, innerHeight) / 2;
+                centerX = innerLeft + innerWidth / 2;
+                centerY = innerTop + innerHeight / 2;
+            }
 
             for (const slice of slices) {
+                let x = centerX + (radius + offset) * slice.cos;
+                let y = centerY - (radius + offset) * slice.sin;
+                let label = layoutLabel(slice.fields, slice.cos, outside ? centerX + radius * slice.cos : undefined);
+                let align = slice.align;
+                let verticalAlign = slice.verticalAlign;
+
+                // PieChart::performLabelBestFitInnerPlacement: centered on the bisector with its outer corner on the ring
+                // shrunk by bestFitRimRatio, if every corner then lies in the slice; else outside, as above.
+                if (bestFit) {
+                    const inner = layoutLabel(slice.fields, slice.cos, undefined);
+                    const halfWidth = inner.width / 2;
+                    const halfHeight = inner.height / 2;
+                    const reach = radius * pieLabel.bestFitRimRatio;
+                    // The outer corner's offset from the label's center, along the bisector.
+                    const along = Math.abs(slice.cos) * halfWidth + Math.abs(slice.sin) * halfHeight;
+                    const discriminant = along * along - halfWidth * halfWidth - halfHeight * halfHeight + reach * reach;
+                    const distance = discriminant < 0 ? -1 : Math.sqrt(discriminant) - along;
+                    let fits = distance >= 0;
+
+                    for (const [dx, dy] of [
+                        [-halfWidth, -halfHeight],
+                        [-halfWidth, halfHeight],
+                        [halfWidth, -halfHeight],
+                        [halfWidth, halfHeight],
+                    ] as const) {
+                        const cornerDegrees = (Math.atan2(distance * slice.sin + dy, distance * slice.cos + dx) * 180) / Math.PI;
+                        const fromStart = (((cornerDegrees - slice.degrees + slice.spanDegrees / 2) % 360) + 360) % 360;
+
+                        fits &&= fromStart <= slice.spanDegrees;
+                    }
+
+                    if (fits) {
+                        x = centerX + distance * slice.cos;
+                        y = centerY - distance * slice.sin;
+                        label = inner;
+                        align = "center";
+                        verticalAlign = "middle";
+                    }
+                }
+
                 rimTexts.push({
                     type: "text",
-                    x: centerX + (radius + offset) * slice.cos,
-                    y: centerY - (radius + offset) * slice.sin,
+                    x,
+                    y,
                     silent: true,
                     // Over the slices, which ECharts draws at z 2.
                     z: 3,
                     style: {
-                        text: slice.text,
+                        text: label.text,
                         fill: labels.color,
                         fontFamily: labels.fontFace,
                         fontSize: labelPx,
                         fontWeight: labels.bold ? "bold" : "normal",
                         fontStyle: labels.italic ? "italic" : "normal",
                         lineHeight,
-                        align: slice.align,
-                        verticalAlign: slice.verticalAlign,
+                        align,
+                        verticalAlign,
                     },
                 });
             }
@@ -757,10 +838,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     itemStyle: { opacity: chart.colorOpacity },
                     // PptxGenJS 4.0.1 writes a `c:dLbl` for every point with showCatName, showVal and showPercent
                     // off unless showLabel, showValue or showPercent is set, so PowerPoint and LibreOffice draw no
-                    // slice labels by default; ECharts would draw category names on leaders. bestFit and ctr labels
-                    // sit inside the slice (LibreOffice places a bestFit label inside).
-                    // shortcut: LibreOffice puts a bestFit label nearer the rim than ctr's mid-radius (#558).
-                    label: showLabels && !rimLabels ? dataLabelOption(labels, "inside", sliceLabel) : { show: false },
+                    // slice labels by default; ECharts would draw category names on leaders. A ctr label sits at
+                    // mid-radius, ECharts' inside position.
+                    label: showLabels && !rimLabels && !bestFit ? dataLabelOption(labels, "inside", sliceLabel) : { show: false },
                     labelLine: { show: false },
                     data: series.values.map((value, index) => ({
                         value,
@@ -924,6 +1004,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(chart.valueAxes[0]?.reversed ? { position: horizontal ? ("right" as const) : ("top" as const) } : {}),
             // Category gridlines run through the ticks, between the categories, as Office draws them.
             splitLine: gridLineOption(categoryAxisModel),
+            // On the ticks (`<c:crossBetween val="midCat"/>`) a bar is centered on its tick and cut at the plot area's edges.
+            // ECharts 6 would widen the axis to hold the bars (containShape), which puts them back between the ticks.
+            boundaryGap: !chart.categoriesOnTicks,
+            containShape: false,
         } as const;
         const valueAxes = [];
 
@@ -1025,12 +1109,34 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 areaStyle: series.type === "area" ? { color, opacity: chart.colorOpacity } : undefined,
                 itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : {}) },
                 yAxisIndex: series.valueAxisIndex,
+                // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
+                // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.
+                ...(chart.type === "mixed" && series.type === "area" ? { z: 1 } : {}),
             });
         }
 
         // ECharts places a band's bars from the top down in series order, and draws each series over the ones before it.
-        if (reversedSeries || chart.firstSeriesInFront) {
+        if (reversedSeries || (chart.firstSeriesInFront && chart.type !== "mixed")) {
             cartesian.reverse();
+        }
+
+        // A combo chart's area series, drawn behind the others (z 1), swap among themselves only.
+        if (chart.firstSeriesInFront && chart.type === "mixed") {
+            const slots: number[] = [];
+            const areas: Record<string, unknown>[] = [];
+
+            for (const [index, series] of chart.series.entries()) {
+                const drawn = cartesian[index];
+
+                if (series.type === "area" && drawn) {
+                    slots.push(index);
+                    areas.unshift(drawn);
+                }
+            }
+
+            for (const [order, index] of slots.entries()) {
+                cartesian[index] = areas[order] ?? {};
+            }
         }
 
         // A line series without data draws nothing and takes no bar slot; it only names a point's legend entry.

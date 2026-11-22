@@ -3,7 +3,7 @@ import { automaticAxisScale, bar3DAxisScale, type FixedAxisBound } from "#src/ch
 import { UnsupportedChartError } from "#src/chart/errors";
 import { isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
-import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget } from "#src/target/index";
+import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget, type RenderingTargetProfile } from "#src/target/index";
 import type { NormalizedChart, NormalizedChartDataLabels, NormalizedChartSeries, NormalizedChartType } from "@pdflapas/model";
 import { checkedSize } from "./size";
 import { normalizeColor, normalizeFill } from "./style";
@@ -456,7 +456,7 @@ function normalizeValueAxis(
  * per point for showLabel on scatter, so on other charts showLabel and showPercent draw nothing, as in PowerPoint; and
  * showSerName on every chart but pie and doughnut.
  */
-function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChartOpts, grouping: NormalizedChart["grouping"], chartTypes: PptxGenJS.CHART_NAME[], fieldSeparator: string): NormalizedChartDataLabels {
+function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChartOpts, grouping: NormalizedChart["grouping"], chartTypes: PptxGenJS.CHART_NAME[], profile: RenderingTargetProfile): NormalizedChartDataLabels {
     const pieLike = type === "pie" || type === "doughnut";
     const stackedBars = grouping === "stacked" || grouping === "percentStacked";
     const defaultPositions = PPTX_DEFAULTS.chart.dataLabelPosition;
@@ -474,7 +474,7 @@ function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChar
             keptPositions = LINE_LABEL_POSITIONS;
             break;
         case "pie":
-            position = defaultPositions.pie;
+            position = profile.pieUnsetLabelPosition;
             keptPositions = PIE_LABEL_POSITIONS;
             break;
         case "doughnut":
@@ -515,7 +515,7 @@ function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChar
     return {
         showValue: options.showValue ?? PPTX_DEFAULTS.chart.showValue,
         showCategory: (pieLike || type === "scatter") && (options.showLabel ?? PPTX_DEFAULTS.chart.showLabel),
-        ...(showSeriesName ? { showSeriesName, fieldSeparator } : {}),
+        ...(showSeriesName ? { showSeriesName, fieldSeparator: profile.dataLabelFieldSeparator } : {}),
         showPercent: pieLike && (options.showPercent ?? PPTX_DEFAULTS.chart.showPercent),
         position,
         valueFormat: pieLike && options.showPercent ? PPTX_DEFAULTS.chart.pieDataLabelFormatCode : formatCode,
@@ -783,11 +783,11 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     // The data labels: a combo chart's chart types each take their own (`{ ...options, ...type.options }`).
-    const dataLabels = normalizeDataLabels(normalizedType, options, normalizedGrouping, chartTypes, profile.dataLabelFieldSeparator);
+    const dataLabels = normalizeDataLabels(normalizedType, options, normalizedGrouping, chartTypes, profile);
 
     if (mixed) {
         for (const [index, item] of series.entries()) {
-            series[index] = { ...item, dataLabels: normalizeDataLabels(item.type, { ...options, ...seriesOptions[index] }, normalizedGrouping, chartTypes, profile.dataLabelFieldSeparator) };
+            series[index] = { ...item, dataLabels: normalizeDataLabels(item.type, { ...options, ...seriesOptions[index] }, normalizedGrouping, chartTypes, profile) };
         }
     }
 
@@ -907,6 +907,9 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         dataLabels,
         plotArea,
         ...(plotLayout ? { plotLayout } : {}),
+        // PptxGenJS writes `<c:crossBetween val="midCat"/>` on a combo chart with an area type (on an area chart alone,
+        // "between"), so the categories sit on the ticks; the rendering target may keep a bar combo's between them.
+        ...(mixed && type.some(chart => chart.type === "area") ? { categoriesOnTicks: true } : {}),
         altText: options.altText ?? "",
         grouping: normalizedGrouping,
         gridLineColor: normalizeColor(PPTX_DEFAULTS.chart.gridLine.color),

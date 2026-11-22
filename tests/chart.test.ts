@@ -259,7 +259,7 @@ describe("chart normalization and rendering", () => {
         });
         expect(normalizeChart("bar", categoricalData, { barGrouping: "stacked" }).dataLabels.position).toBe("ctr");
         expect(normalizeChart("line", categoricalData).dataLabels.position).toBe("r");
-        expect(normalizeChart("pie", [categoricalData[0]!]).dataLabels.position).toBe("bestFit");
+        expect(normalizeChart("pie", [categoricalData[0]!], {}, "powerpoint").dataLabels.position).toBe("bestFit");
         // PptxGenJS deletes outEnd on a clustered bar, any position on a doughnut, and a bar position on a line chart.
         expect(normalizeChart("bar", categoricalData, { showValue: true, dataLabelPosition: "outEnd" }).dataLabels.position).toBe("outEnd");
         expect(normalizeChart("bar", categoricalData, { showValue: true, dataLabelPosition: "inEnd" }).dataLabels.position).toBe("inEnd");
@@ -408,6 +408,134 @@ describe("chart normalization and rendering", () => {
         expect(inside.anchor).toBe("start");
         expect(Math.abs(inside.x - (211.2 - 183.5 + offset))).toBeLessThan(1);
         expect(Math.abs(inside.y - 196.8)).toBeLessThan(1);
+    });
+
+    test("places a pie's bestFit labels near the rim, or outside a slice too narrow for them (#558)", () => {
+        // A 4.4 x 4.1in pie without title or legend: a 183.8px ring at (211.2, 196.8). LibreOffice centers explicit
+        // bestFit labels 167 to 170px from its center, PowerPoint (with no dataLabelPosition) 162 to 168px.
+        const data = [{ name: "S", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }];
+        const labels = (presentation: PuppeteerGen, content: string) => {
+            const found: { anchor: string | null; distance: number }[] = [];
+
+            for (const text of renderedPage(presentation).querySelectorAll(".slide-chart svg text")) {
+                const [x = Number.NaN, y = Number.NaN] = (/translate\(([-\d.]+) ([-\d.]+)\)/.exec(text.getAttribute("transform") ?? "") ?? []).slice(1).map(Number);
+
+                if (text.textContent === content) {
+                    found.push({ anchor: text.getAttribute("text-anchor"), distance: Math.hypot(x - 211.2, y - 196.8) });
+                }
+            }
+
+            return found;
+        };
+        const libreOffice = new PuppeteerGen();
+        const powerPoint = new PuppeteerGenPowerPoint();
+
+        libreOffice.addSlide().addChart("pie", data, { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "bestFit" });
+        powerPoint.addSlide().addChart("pie", data, { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true });
+
+        for (const presentation of [libreOffice, powerPoint]) {
+            for (const value of ["40", "25", "20", "15"]) {
+                const [label] = labels(presentation, value);
+
+                expect(label?.anchor).toBe("middle");
+                expect(label?.distance).toBeGreaterThan(163);
+                expect(label?.distance).toBeLessThan(171);
+            }
+        }
+
+        // With no dataLabelPosition LibreOffice draws them at ctr's mid-radius (pieUnsetLabelPosition).
+        const unset = new PuppeteerGen();
+
+        unset.addSlide().addChart("pie", data, { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true });
+        expect(unset.getModel().slides[0]?.objects[0]).toMatchObject({ chart: { dataLabels: { position: "ctr" } } });
+        expect(powerPoint.getModel().slides[0]?.objects[0]).toMatchObject({ chart: { dataLabels: { position: "bestFit" } } });
+        expect(normalizeChart("pie", data, { showValue: true }, "libreoffice").dataLabels.position).toBe("ctr");
+        expect(normalizeChart("pie", data, { showValue: true, dataLabelPosition: "bestFit" }, "libreoffice").dataLabels.position).toBe("bestFit");
+
+        // A 0.72 degree slice is too narrow for its label, which goes outside the ring.
+        const narrow = new PuppeteerGen();
+
+        narrow.addSlide().addChart("pie", [{ name: "S", labels: ["Lorem", "Ipsum"], values: [499, 1] }], { x: 0, y: 0, w: 4.4, h: 4.1, showValue: true, dataLabelPosition: "bestFit" });
+        expect(labels(narrow, "499")[0]?.distance).toBeLessThan(183.8);
+        expect(labels(narrow, "1")[0]?.distance).toBeGreaterThan(183.8);
+    });
+
+    test("wraps a long outEnd pie label where LibreOffice does, and keeps one line per field for PowerPoint (#558)", () => {
+        const data = [{ name: "S", labels: ["Lorem", "Ipsum", "Dolor", "Sit"], values: [40, 25, 20, 15] }];
+        const texts = (presentation: PuppeteerGen) => {
+            presentation.addSlide().addChart("pie", data, { x: 0, y: 0, w: 4.4, h: 4.1, showLabel: true, showPercent: true, showValue: false, dataLabelPosition: "outEnd", dataLabelFontFace: "Arial" });
+
+            return Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg text"), text => text.textContent);
+        };
+
+        // LibreOffice 26.2.6 wraps the label on the right to 80% of the room beside its rim point; the left ones fit.
+        expect(texts(new PuppeteerGen())).toEqual(expect.arrayContaining(["Lor", "em", "40", "%", "Dolor", "20%"]));
+        expect(texts(new PuppeteerGenPowerPoint())).toEqual(expect.arrayContaining(["Lorem", "40%", "Dolor", "20%"]));
+    });
+
+    test("draws a combo chart's areas behind its bars, on the ticks, and lists them where the target does (#538)", () => {
+        const labels = ["Q1", "Q2", "Q3", "Q4"];
+        const bars: PptxGenJS.IChartMulti = { type: "bar", data: [{ name: "A", labels, values: [3, 5, 4, 7] }], options: {} };
+        const areas: PptxGenJS.IChartMulti = { type: "area", data: [{ name: "R", labels, values: [2, 3, 2, 3] }], options: {} };
+        const drawn = (target: "libreoffice" | "powerpoint", types: PptxGenJS.IChartMulti[]) => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            // `as Function`: PptxGenJS types the second argument as data; a combo call passes the options there.
+            (presentation.addSlide().addChart as Function)(types, { x: 0, y: 0, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], showLegend: true, legendPos: "b" });
+            const object = presentation.getModel().slides[0]?.objects[0];
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            // Each type in paint order: a bar is a four-sided path, an area one with a side per point and its base.
+            const painted: string[] = [];
+
+            for (const path of svg?.querySelectorAll("path") ?? []) {
+                const kind = (path.getAttribute("d")?.match(/L/g) ?? []).length > 4 ? "area" : "bar";
+                const fill = path.getAttribute("fill");
+
+                if ((fill === "#4472C4" || fill === "#ED7D31") && !painted.includes(kind)) {
+                    painted.push(kind);
+                }
+            }
+
+            const legend: string[] = [];
+
+            for (const text of svg?.querySelectorAll("text") ?? []) {
+                if (text.textContent === "A" || text.textContent === "R") {
+                    legend.push(text.textContent);
+                }
+            }
+
+            return { painted, legend, chart: object?.kind === "chart" ? { categoriesOnTicks: object.chart.categoriesOnTicks, legendListsAreasFirst: object.chart.legendListsAreasFirst } : undefined };
+        };
+
+        expect(drawn("powerpoint", [bars, areas])).toEqual({ painted: ["area", "bar"], legend: ["A", "R"], chart: { categoriesOnTicks: true, legendListsAreasFirst: undefined } });
+        // LibreOffice lists the areas first and keeps a bar-first combo's categories between the ticks.
+        expect(drawn("libreoffice", [bars, areas])).toEqual({ painted: ["area", "bar"], legend: ["R", "A"], chart: { categoriesOnTicks: undefined, legendListsAreasFirst: true } });
+        expect(drawn("libreoffice", [areas, bars]).chart).toEqual({ categoriesOnTicks: true, legendListsAreasFirst: true });
+        // An unstacked area group's series overlap: LibreOffice draws the first in front (firstAreaSeriesInFront).
+        const overlapping = (target: "libreoffice" | "powerpoint") => {
+            const presentation = new PuppeteerGen(undefined, { target });
+            const twoAreas = { ...areas, data: [...areas.data, { name: "S", labels, values: [1, 2, 1, 2] }] };
+
+            (presentation.addSlide().addChart as Function)([{ type: "line", data: [{ name: "L", labels, values: [4, 6, 5, 7] }], options: {} }, twoAreas], { x: 0, y: 0, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"] });
+            const fills: string[] = [];
+
+            for (const path of renderedPage(presentation).querySelectorAll(".slide-chart path")) {
+                const fill = path.getAttribute("fill");
+
+                if ((fill === "#4472C4" || fill === "#ED7D31") && (path.getAttribute("d")?.match(/L/g) ?? []).length > 4) {
+                    fills.push(fill);
+                }
+            }
+
+            return fills;
+        };
+
+        expect(overlapping("libreoffice")).toEqual(["#ED7D31", "#4472C4"]);
+        expect(overlapping("powerpoint")).toEqual(["#4472C4", "#ED7D31"]);
+        // PptxGenJS writes midCat only on a combo with an area type.
+        expect(normalizeChart([bars, areas], []).categoriesOnTicks).toBe(true);
+        expect(normalizeChart([bars, { ...areas, type: "line" }], []).categoriesOnTicks).toBeUndefined();
+        expect(normalizeChart("area", categoricalData).categoriesOnTicks).toBeUndefined();
     });
 
     test("puts a negative bar's label past its own end, as LibreOffice 26.2 does (#478)", () => {

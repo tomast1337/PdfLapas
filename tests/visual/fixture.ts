@@ -3405,7 +3405,8 @@ export function populateChartComboAreaPieLabelFixture(presentation: Presentation
  * of the run's family, and U+2011, which it draws with the face's U+2010. A parity slide after the others (no page
  * number moves) and the WASM fallbackFaces deck, which crops each box: a face of each generic family under en-US, then
  * Han, kana and Hangul alone under three regions (LibreOffice widens a space between Latin and Han under one; HK takes
- * its kana and Hangul from the JP and KR faces, a shortcut in target/libreoffice.ts).
+ * its kana and Hangul from the JP and KR faces, a shortcut in target/libreoffice.ts); a second slide holds the #403
+ * cases (normalize/fallback.ts).
  */
 export function populateFallbackFaceFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -3427,4 +3428,15 @@ export function populateFallbackFaceFixture(presentation: Presentation): void {
 
         slide.addText(text, { ...box, fontFace, lang, fontSize: 20, color: "363636", fill: { color: "F2F2F2" }, margin: 6, valign: "middle" });
     }
+
+    // The #403 decks, in Arial: Han split into runs of identical options, another colour and weight (PowerPoint carries
+    // the held East Asian face into the first only), a wrapped Han line, Emoji characters Arial has and keycaps.
+    const runs = presentation.addSlide();
+    const box = { fontFace: "Arial", fontSize: 20, color: "363636", fill: { color: "F2F2F2" }, margin: 6, valign: "middle" } as const;
+
+    runs.addText("Fallback faces across runs, emoji and keycaps", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    runs.addText([{ text: "这" }, { text: "是" }, { text: " 这" }, { text: "是", options: { color: "C00000" } }, { text: " 这" }, { text: "是", options: { bold: true } }], { ...box, x: 0.4, y: 0.9, w: 4.4, h: 1.3 });
+    runs.addText("这是这是这是这是这是这是", { ...box, x: 5.1, y: 0.9, w: 2.2, h: 1.3 });
+    runs.addText("x☺x ©®™ ↔ ♥ ♠ ‼ ☼ ▲", { ...box, x: 0.4, y: 2.4, w: 4.4, h: 1.3 });
+    runs.addText("x1️⃣x x#️⃣x x*️⃣x x2⃣x", { ...box, x: 5.1, y: 2.4, w: 4.4, h: 1.3 });
 }

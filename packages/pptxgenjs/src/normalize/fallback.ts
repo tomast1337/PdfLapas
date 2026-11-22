@@ -7,11 +7,16 @@ export type FallbackSegment = {
     readonly fallbackFaces: readonly string[];
 };
 
+/** The East Asian face the last character of a run was drawn in, which the next run of identical options keeps. */
+export type FallbackHold = { face: string | undefined };
+
 // Han, kana, bopomofo and Hangul, the CJK symbols, punctuation and compatibility blocks, and the full- and half-width
 // forms: what PowerPoint draws from the East Asian faces it links to the run's face (eastAsianFallback).
 const EAST_ASIAN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}\p{Script=Hangul}　-㏿︰-﹏＀-￯]/u;
 // An emoji: a pictograph, or a flag of two regional indicators.
 const PICTOGRAPHIC = /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u;
+// An emoji whose default presentation is emoji (😀 ⭐ ✅, a flag): the only ones PowerPoint takes from emojiFace.
+const EMOJI_PRESENTATION = /^[\p{Emoji_Presentation}\p{Regional_Indicator}]/u;
 // A variation selector or keycap mark stays with its emoji, as a renderer draws them.
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -59,20 +64,34 @@ export function fallbackChain(fontFace: string, language: string, target: Render
  * it, each stretch with its chain reordered so a renderer that takes the first face with the character does the same.
  * Measured against PowerPoint's PDF export of a synthetic deck (RENDERING_TARGETS.powerpoint.eastAsianFallback): an
  * East Asian character keeps the face the one before it was drawn in while that face has it; a space, a character of
- * the run's face or any other character ends that. An emoji takes `emojiFace` when it has it.
+ * the run's face or any other character ends that. `hold` carries that face in from the run before and out to the
+ * next: the caller clears it between runs whose options differ, as PowerPoint starts over at a change of colour or
+ * weight but carries the face into a run of identical options ("这"|"是" both Microsoft JhengHei). An emoji the run's
+ * face lacks takes `emojiFace` when it has it and its default presentation is emoji (😀 ⭐ ✅, a flag); one whose
+ * default is text (☺ ♥ ♠) follows the chain, and one the face has stays in the face: in the same export they are laid
+ * out at the face's advances (☺ 1.021em in Arial and Times New Roman, 0.6em in Courier New) or, in Calibri, which lacks
+ * ☺ ♥ ♠, at Segoe UI Symbol's (1, 0.685 and 0.685em), never at Segoe UI Emoji's 1.373em, and drawn black.
  * One stretch with the plain chain when every character takes the chain's first, or a face's characters are unknown.
- * shortcut: the stretch ends at each run, where PowerPoint carries it into a run of identical options, and goes on
- * across a line break, where PowerPoint starts over (a wrapped "这是这是这是" starts its second line's 是 in MS
- * Gothic); join such runs, and cut at the line, when a deck shows it. An emoji the run's face has (☺ in Arial) stays
- * in that face, where PowerPoint draws it from `emojiFace`; that needs a run face override in the model, worth it
- * when a deck shows one.
+ * shortcut: the held face goes on across a line break, where PowerPoint starts over (a wrapped "这是这是这是" starts
+ * its second line's 是 in MS Gothic); the lines are the renderer's, so cut there when the profile states its breaks.
+ * shortcut: "2⃣" (U+20E3 without U+FE0F) stays whole in the run's face, where PowerPoint draws U+20E3 in Segoe UI
+ * Symbol; cut a combining mark the face lacks when a deck shows one.
+ * shortcut: ☺ ♥ ♠ in Calibri take Arial, the chain's first with them, where PowerPoint takes Segoe UI Symbol; put it
+ * first for text-default emoji when a deck needs the 0.02 to 0.24em.
+ * shortcut: a keycap with U+FE0F ("1️⃣") stays whole in the run's face, so a renderer draws it from a colour emoji
+ * font, where PowerPoint draws Segoe UI Emoji's black outline; state text presentation in the profile when a deck
+ * needs it (#588).
  * With `genericFallback` (LibreOffice), no face's characters are looked up: `text` is cut around each emoji, whose
  * stretch lists `genericFallback.emojiFace` first.
  */
-export function fallbackSegments(text: string, fontFace: string, bold: boolean, italic: boolean, language: string, target: RenderingTarget, fontMetrics: FontMetricsLookup): FallbackSegment[] {
+export function fallbackSegments(text: string, fontFace: string, bold: boolean, italic: boolean, language: string, target: RenderingTarget, fontMetrics: FontMetricsLookup, hold: FallbackHold = { face: undefined }): FallbackSegment[] {
     const chain = fallbackChain(fontFace, language, target);
     const { emojiFace, genericFallback } = RENDERING_TARGETS[target];
     const lookup = fontMetrics.glyphAdvances;
+    const heldBefore = hold.face;
+
+    // Nothing is held after a run whose faces are not looked up.
+    hold.face = undefined;
 
     if (genericFallback !== undefined) {
         const emojiChain = [genericFallback.emojiFace, ...chain.filter(face => face !== genericFallback.emojiFace)];
@@ -118,13 +137,13 @@ export function fallbackSegments(text: string, fontFace: string, bold: boolean, 
     };
     const eastAsian = eastAsianFaces(fontFace, target).filter(face => chain.includes(face));
     const segments: { text: string; first: string | undefined }[] = [];
-    let held: string | undefined;
+    let held = heldBefore;
 
     for (const { segment } of GRAPHEMES.segment(text)) {
         const codePoint = segment.codePointAt(0) ?? 0;
         const missing = !own.advances.has(codePoint);
         const natural = missing ? chain.find(face => has(face, codePoint)) : undefined;
-        const emoji = missing && emojiFace !== undefined && PICTOGRAPHIC.test(segment) && has(emojiFace, codePoint);
+        const emoji = missing && emojiFace !== undefined && EMOJI_PRESENTATION.test(segment) && has(emojiFace, codePoint);
         const sticky = missing && !emoji && isEastAsian(segment);
         const first = emoji ? emojiFace : sticky ? ((held && has(held, codePoint) ? held : eastAsian.find(face => has(face, codePoint))) ?? natural) : natural;
 
@@ -139,6 +158,8 @@ export function fallbackSegments(text: string, fontFace: string, bold: boolean, 
             segments.push({ text: segment, first: key });
         }
     }
+
+    hold.face = held;
 
     if (segments.every(({ first }) => first === undefined)) {
         return [{ text, fallbackFaces: chain }];

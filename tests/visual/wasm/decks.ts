@@ -290,14 +290,14 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
         pages: 1,
         crop: isText,
     },
-    // fallbackFaces: the shared fixture's fallback faces slide (#289); every text box gets a crop.
+    // fallbackFaces: the shared fixture's fallback faces slides (#289, #403); every text box gets a crop.
     fallbackFaces: {
         populate: presentation => {
             populateFallbackFaceFixture(presentation);
 
             return presentation;
         },
-        pages: 1,
+        pages: 2,
         crop: isText,
     },
     // chartFixedBound: the shared fixture's fixed value-axis bound slide (#556); every chart gets a crop.

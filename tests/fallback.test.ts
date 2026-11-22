@@ -6,11 +6,11 @@ import { normalizeText } from "../packages/pptxgenjs/src/normalize/text";
 
 // Which of the measured characters each face maps, as their cmaps do (PMingLiU as SimSun, ⅐ in the Arial PowerPoint drew).
 const COVERAGE: Readonly<Record<string, string>> = {
-    Arial: " ax⅐",
+    Arial: " ax⅐©™☺1",
     "Times New Roman": " ax⅐↉",
     "Cambria Math": "⇒①",
     "Segoe UI Symbol": "☆✓⭐😀①⇒🇯🇵",
-    "Segoe UI Emoji": "✓⭐😀❤⇒🇯🇵",
+    "Segoe UI Emoji": "✓⭐😀❤⇒🇯🇵☺1\uFE0F\u20E3",
     "MS Gothic": "是あア働込ｱ〜，☆①⇒❤",
     "Yu Gothic": "够是あア働込ｱ〜，↉☆①⇒",
     "Microsoft JhengHei": "够这是ㄅ，あ☆①",
@@ -51,6 +51,23 @@ describe("the PowerPoint target's fallback faces", () => {
         expect(fallbackChain("CALIBRI", "en-US", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", ...linked]);
         expect(fallbackChain("Times New Roman", "en-US", "powerpoint")).toEqual(["Arial", "Cambria Math", "Segoe UI Symbol", "Yu Gothic", "PMingLiU", "SimSun", "Malgun Gothic"]);
         expect(fallbackChain("constructor", "en-US", "powerpoint")).toEqual(fallbackChain("Times New Roman", "en-US", "powerpoint"));
+    });
+
+    // Measured against PowerPoint's PDF export of a synthetic deck (#403): "x这是x x够x xあアx x한글x" in ten faces.
+    test("links Arial's East Asian faces to the other sans-serif faces, Yu Gothic first to the monospace ones", () => {
+        const linked = ["MS Gothic", "Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"];
+        const symbols = ["Arial", "Cambria Math", "Segoe UI Symbol"];
+
+        for (const face of ["Aptos", "Segoe UI", "Verdana", "Tahoma"]) {
+            expect(fallbackChain(face, "en-US", "powerpoint")).toEqual([...symbols, ...linked]);
+        }
+
+        for (const face of ["Courier New", "Consolas"]) {
+            expect(fallbackChain(face, "en-US", "powerpoint")).toEqual([...symbols, "Yu Gothic", "Microsoft JhengHei", "Microsoft YaHei", "Malgun Gothic"]);
+        }
+
+        expect(fallbackChain("Georgia", "en-US", "powerpoint")).toEqual(fallbackChain("Times New Roman", "en-US", "powerpoint"));
+        expect(fallbackChain("Cambria", "en-US", "powerpoint")).toEqual(fallbackChain("Times New Roman", "en-US", "powerpoint"));
     });
 
     // Measured against PowerPoint's PDF export of a synthetic deck: each line's faces in Arial (Calibri and Arial bold
@@ -96,20 +113,37 @@ describe("the PowerPoint target's fallback faces", () => {
     });
 
     // Measured in the same export: "x<c>x yo" in Arial at 18pt and lines of emoji, drawn from Segoe UI Emoji at its
-    // 1.373em advance; ☆ and ✓ (not Extended_Pictographic) stay in Segoe UI Symbol, ⇒ and ① in Cambria Math.
-    test("draws an emoji the run's face lacks from Segoe UI Emoji, other symbols from the chain", () => {
+    // 1.373em advance; ☆ and ✓ (not Extended_Pictographic) stay in Segoe UI Symbol, ⇒ and ① in Cambria Math. ❤,
+    // whose default presentation is text, follows the chain (#403).
+    test("draws an emoji the run's face lacks from Segoe UI Emoji when its default presentation is emoji, other symbols from the chain", () => {
         expect(drawn("x😀x")).toEqual([
             ["x", "Arial"],
             ["😀", "Segoe UI Emoji"],
             ["x", "Arial"],
         ]);
-        expect(drawn("⭐❤🇯🇵")).toEqual([["⭐❤🇯🇵", "Segoe UI Emoji"]]);
+        expect(drawn("⭐❤🇯🇵")).toEqual([
+            ["⭐", "Segoe UI Emoji"],
+            ["❤", "MS Gothic"],
+            ["🇯🇵", "Segoe UI Emoji"],
+        ]);
         expect(drawn("x☆✓⇒①x")).toEqual([
             ["x", "Arial"],
             ["☆✓", "Segoe UI Symbol"],
             ["⇒①", "Cambria Math"],
             ["x", "Arial"],
         ]);
+    });
+
+    // Measured in a second export (#403): ☺ ™ ↔ ♥ ♠ ‼ are laid out at the face's advances where it has them, and at
+    // Segoe UI Symbol's where it lacks them, never at Segoe UI Emoji's, and drawn black; so is 1️⃣.
+    test("keeps an emoji whose default presentation is text, and a keycap, out of Segoe UI Emoji", () => {
+        expect(drawn("x☺©™x")).toEqual([["x☺©™x", "Arial"]]);
+        expect(drawn("x☺x", "Times New Roman")).toEqual([
+            ["x", "Times New Roman"],
+            ["☺", "Arial"],
+            ["x", "Times New Roman"],
+        ]);
+        expect(fallbackSegments("x1\uFE0F\u20E3x", "Arial", false, false, "en-US", "powerpoint", FONTS)).toEqual([{ text: "x1\uFE0F\u20E3x", fallbackFaces: fallbackChain("Arial", "en-US", "powerpoint") }]);
     });
 
     test("leaves the text whole when a face's characters are unknown, and on the LibreOffice target", () => {
@@ -126,6 +160,30 @@ describe("the PowerPoint target's fallback faces", () => {
             ["a", "Cambria Math", false],
             ["够", "Cambria Math", true],
             ["是", "Yu Gothic", false],
+        ]);
+    });
+
+    // Measured in PowerPoint's PDF export of a synthetic deck (#403): "这"|"是" in two runs of identical options is all
+    // Microsoft JhengHei; a run in another colour or weight, or after a soft break, starts 是 over in MS Gothic.
+    test("carries the held East Asian face into the next run when their options are identical", () => {
+        const firstFaces = (input: PptxGenJS.TextProps[]) => normalizeText(input, { fontFace: "Arial", fontSize: 14 }, "powerpoint", FONTS).paragraphs.flatMap(paragraph => paragraph.runs.map(run => [run.text, run.fallbackFaces?.[0]]));
+
+        expect(firstFaces([{ text: "这" }, { text: "是" }, { text: "是" }])).toEqual([
+            ["这", "Cambria Math"],
+            ["是", "Microsoft JhengHei"],
+            ["是", "Microsoft JhengHei"],
+        ]);
+        expect(firstFaces([{ text: "这" }, { text: "是", options: { color: "C00000" } }])).toEqual([
+            ["这", "Cambria Math"],
+            ["是", "Cambria Math"],
+        ]);
+        expect(firstFaces([{ text: "这" }, { text: "是", options: { bold: true } }])).toEqual([
+            ["这", "Cambria Math"],
+            ["是", "Cambria Math"],
+        ]);
+        expect(firstFaces([{ text: "这" }, { text: "是", options: { softBreakBefore: true } }])).toEqual([
+            ["这", "Cambria Math"],
+            ["是", "Cambria Math"],
         ]);
     });
 });

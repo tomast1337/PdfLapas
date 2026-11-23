@@ -298,9 +298,9 @@ describe("chart normalization and rendering", () => {
         expect(normalizeChart("scatter", scatterData, { showValue: true }).dataLabels).toMatchObject({ position: "r", valueFormat: "General" });
         expect(normalizeChart("scatter", scatterData, { showLabel: true, dataLabelPosition: "t" }).dataLabels).toMatchObject({ showCategory: true, position: "t" });
         expect(normalizeChart("bubble", bubbleData, { showLabel: true }).dataLabels.showCategory).toBe(false);
-        // showSerName on every chart but pie and doughnut, where PptxGenJS writes 0.
+        // showSerName on every chart, a pie's too: PptxGenJS writes it on each point's c:dLbl (#565).
         expect(normalizeChart("bar", categoricalData, { showSerName: true }).dataLabels.showSeriesName).toBe(true);
-        expect(normalizeChart("pie", [categoricalData[0]!], { showSerName: true }).dataLabels.showSeriesName).toBeUndefined();
+        expect(normalizeChart("pie", [categoricalData[0]!], { showSerName: true }).dataLabels.showSeriesName).toBe(true);
         // showLeaderLines and showLegendKey are accepted: Office draws no leader line to an unmoved label, and
         // PptxGenJS always writes showLegendKey 0.
         expect(() => normalizeChart("pie", [categoricalData[0]!], { showValue: true, showLeaderLines: true, showLegendKey: true } as PptxGenJS.IChartOpts)).not.toThrow();
@@ -1679,7 +1679,7 @@ describe("chart normalization and rendering", () => {
         expect(Array.from(bar?.querySelectorAll('path[ecmeta_ssr_type="chart"]') ?? [], path => path.getAttribute("fill"))).toEqual(["#4472C4", "#4472C4", "#4472C4"]);
     });
 
-    test("lists each point of a single-series chart without c:dPt fills in the legend where the target does (chartLegendListsUnfilledPoints, #546)", () => {
+    test("lists each point of a single-series chart with c:dPt in the legend where the target does (chartLegendListsPoints, #546, #552)", () => {
         const one = [categoricalData[0]!];
         const colors = ["FF0000", "00AA00"];
         // Each chart's legendListsPoints, and its legend entries as [text, key fill, key outline].
@@ -1725,8 +1725,29 @@ describe("chart normalization and rendering", () => {
         // LibreOffice keeps the series entry on the same charts (#545).
         expect(drawn("libreoffice", "bar3D", one, {})).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
         expect(drawn("libreoffice", "bar", one, { lineSize: 0 })).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
-        // Filled c:dPt (unmeasured, #552), one chartColors entry (no c:dPt) or two series keep the series entries.
-        expect(drawn("powerpoint", "bar", one, {})).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        // PowerPoint lists filled c:dPt points too, each keyed in its fill; LibreOffice keeps the series (#552).
+        expect(drawn("powerpoint", "bar", one, {})).toEqual({
+            listsPoints: true,
+            entries: [
+                ["A", "#FF0000", null],
+                ["B", "#00AA00", null],
+                ["C", "#FF0000", null],
+            ],
+        });
+        expect(drawn("libreoffice", "bar", one, {})).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
+        // A combo chart's single-series bar type, one chartColors entry (no c:dPt) or two series keep the series entries.
+        const combo = new PuppeteerGen(undefined, { target: "powerpoint" });
+
+        (combo.addSlide().addChart as Function)(
+            [
+                { type: "bar", data: one, options: { chartColors: colors } },
+                { type: "line", data: [categoricalData[1]!], options: {} },
+            ],
+            { x: 0, y: 0, w: 5, h: 3, showLegend: true },
+        );
+        const comboObject = combo.getModel().slides[0]?.objects[0];
+
+        expect(comboObject?.kind === "chart" ? comboObject.chart.legendListsPoints : "not a chart").toBeUndefined();
         expect(drawn("powerpoint", "bar3D", one, { chartColors: ["FF0000"] })).toEqual({ listsPoints: undefined, entries: [["First", "#FF0000", null]] });
         expect(drawn("powerpoint", "bar", categoricalData, { lineSize: 0 }).listsPoints).toBeUndefined();
     });
@@ -2124,11 +2145,17 @@ describe("chart axis and plot-area options on every chart type (#561, #479)", ()
         expect(scale([3, 5, 4, 7, 2], { valAxisMaxVal: 8, valAxisMajorUnit: 2 })).toEqual([0, 8, 2]);
     });
 
-    test("scales a radar value axis to at most four steps on the PowerPoint target", () => {
-        const axis = normalizeChart("radar", [{ name: "North", labels: ["A", "B", "C", "D", "E"], values: [3, 5, 4, 7, 2] }], {}, "powerpoint").valueAxes[0];
+    test("scales a radar value axis as a 2D axis in at most seven steps on the PowerPoint target (radarScale, #565)", () => {
+        const scale = (values: number[]) => {
+            const axis = normalizeChart("radar", [{ name: "North", labels: ["A", "B", "C", "D", "E"], values }], {}, "powerpoint").valueAxes[0];
 
-        // PowerPoint's PDF export of the chartOptionAxes fixture slide: 0..8 by 2 for data up to 7 (#568).
-        expect([axis?.minimum, axis?.maximum, axis?.majorUnit]).toEqual([0, 8, 2]);
+            return [axis?.minimum, axis?.maximum, axis?.majorUnit];
+        };
+
+        // PowerPoint's PDF export: 0..8 by 2 for data up to 7 (#568), 0..25 by 5 up to 23 and 0..140 by 20 up to 130.
+        expect(scale([3, 5, 4, 7, 2])).toEqual([0, 8, 2]);
+        expect(scale([12, 23, 8, 17, 20])).toEqual([0, 25, 5]);
+        expect(scale([40, 130, 75, 110, 90])).toEqual([0, 140, 20]);
     });
 
     test("draws a radar chart's value labels, rings, spokes, category labels and series styles", () => {
@@ -2190,8 +2217,8 @@ describe("chart axis and plot-area options on every chart type (#561, #479)", ()
         const zero = Array.from(high?.querySelectorAll("text") ?? []).find(text => text.textContent === "0");
 
         expect(Number(zero?.getAttribute("x"))).toBeGreaterThan(inchesToPixels(4) / 2);
-        // LibreOffice draws no axis line or tick marks on a 3D wall: accepted, as they draw nothing.
-        expect(() => normalizeChart("bar3D", quarters, { valAxisLineColor: "FF0000", valAxisLineSize: 3, valAxisMinorTickMark: "outside" })).not.toThrow();
+        // LibreOffice draws no axis line or tick marks on a 3D wall (drawsBar3DValueAxisLine off): accepted, drawn as none.
+        expect(normalizeChart("bar3D", quarters, { valAxisLineColor: "FF0000", valAxisLineSize: 3, valAxisMinorTickMark: "outside" }).valueAxes[0]).toMatchObject({ lineVisible: false, majorTickMark: "none", minorTickMark: "none" });
         expect(() => normalizeChart("bar3D", quarters, { valAxisLogScaleBase: 10 })).toThrow("valAxisLogScaleBase[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisOrientation[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { barDir: "bar" })).toThrow("barDir[bar3D]");
@@ -2368,12 +2395,17 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(normalizeChart("bar", pair, options, "libreoffice").dataTable).toMatchObject({ horizontalBorder: false, verticalBorder: false, outline: false, keys: false });
         expect(normalizeChart("bar", pair).dataTable).toBeUndefined();
         // LibreOffice 26.2.6 draws no table on a pie, doughnut or radar chart, and a horizontal bar chart's under its
-        // value labels (#583); a scatter, bubble or bar3D chart's is not drawn yet.
+        // value labels (#583); a scatter, bubble or bar3D chart's is not drawn yet. PowerPoint draws none on a scatter or
+        // bubble chart (drawsScatterDataTable off, #592) and one under a bar3D chart.
         expect(normalizeChart("pie", [pair[0]!], { showDataTable: true }).dataTable).toBeUndefined();
         expect(normalizeChart("radar", pair, { showDataTable: true }).dataTable).toBeUndefined();
         expect(normalizeChart("bar", pair, { showDataTable: true, barDir: "bar" }).dataTable).toBeDefined();
         expect(() => normalizeChart("scatter", pair, { showDataTable: true })).toThrow("showDataTable[scatter]");
+        expect(() => normalizeChart("bubble", bubbleData, { showDataTable: true })).toThrow("showDataTable[bubble]");
+        expect(normalizeChart("scatter", pair, { showDataTable: true }, "powerpoint").dataTable).toBeUndefined();
+        expect(normalizeChart("bubble", bubbleData, { showDataTable: true }, "powerpoint").dataTable).toBeUndefined();
         expect(() => normalizeChart("bar3D", pair, { showDataTable: true })).toThrow("showDataTable[bar3D]");
+        expect(() => normalizeChart("bar3D", pair, { showDataTable: true }, "powerpoint")).toThrow("showDataTable[bar3D]");
         // dataTableFormatCode formats the values where the target reads it (readsDataTableFormatCode), no target yet.
         expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "libreoffice").dataTable?.valueFormatCode).toBeUndefined();
         expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "powerpoint").dataTable?.valueFormatCode).toBeUndefined();
@@ -2548,5 +2580,67 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         // LibreOffice 26.2 numbers x values 1..4 from 0.5 to 4.5 by 0.5, whatever the sizes.
         expect(texts).toContain("0.5");
         expect(texts).toContain("4.5");
+    });
+
+    test("draws what PowerPoint draws for the charts measured in #565 and #604", () => {
+        const pieData = [{ name: "Share", labels: ["Lorem", "Ipsum"], values: [40, 60] }];
+        const plotArea = { fill: { color: "FFF2CC" }, border: { color: "0000FF", pt: 3 } };
+        const page = (target: "libreoffice" | "powerpoint", add: (slide: PptxGenJS.Slide) => void) => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            add(presentation.addSlide() as unknown as PptxGenJS.Slide);
+
+            return { model: presentation.getModel(), svgs: Array.from(renderedPage(presentation).querySelectorAll(".slide-chart svg")) };
+        };
+
+        // A pie's series name on its own line above the value, on both targets.
+        for (const target of ["libreoffice", "powerpoint"] as const) {
+            const { svgs } = page(target, slide => slide.addChart("pie", pieData, { x: 0, y: 0, w: 4, h: 3, showSerName: true, showValue: true }));
+
+            expect(svgs[0]?.textContent).toContain("Share");
+        }
+
+        // The plot area's fill and border on a pie, doughnut, radar and bar3D chart: drawn on PowerPoint, rejected on
+        // LibreOffice.
+        const drawn = page("powerpoint", slide => {
+            slide.addChart("pie", pieData, { x: 0, y: 0, w: 3, h: 3, plotArea });
+            slide.addChart("doughnut", pieData, { x: 3, y: 0, w: 3, h: 3, fill: "FFF2CC", border: { color: "0000FF", pt: 3 } });
+            slide.addChart("radar", categoricalData, { x: 6, y: 0, w: 3, h: 3, plotArea });
+            slide.addChart("bar3D", categoricalData, { x: 0, y: 3, w: 3, h: 3, plotArea });
+        });
+
+        for (const svg of drawn.svgs) {
+            expect(svg.querySelector('[fill="#FFF2CC"][stroke="#0000FF"]')).not.toBeNull();
+        }
+
+        expect(() => normalizeChart("doughnut", pieData, { plotArea }, "libreoffice")).toThrow("plotArea[doughnut]");
+
+        // A bar3D value axis line and its tick marks: each step's major tick and each fifth's minor one on PowerPoint.
+        const axis = page("powerpoint", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4, valAxisLineColor: "C00000", valAxisMajorTickMark: "cross", valAxisMinorTickMark: "outside", valAxisMaxVal: 6, valAxisMajorUnit: 2 }));
+        const bar3D = axis.svgs[0];
+
+        expect(bar3D?.querySelector(".bar3d-value-axis")?.getAttribute("stroke")).toBe("#C00000");
+        expect(bar3D?.querySelectorAll(".bar3d-value-tick")).toHaveLength(4 + 16);
+        expect(page("powerpoint", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4, valAxisLineShow: false, valAxisMajorTickMark: "none" })).svgs[0]?.querySelector(".bar3d-value-axis, .bar3d-value-tick")).toBeNull();
+
+        // A combo line type's markers take PptxGenJS's written fill, chartColors[index of the series in the chart], on
+        // PowerPoint only; a line chart alone writes its line's color.
+        const combo = (target: "libreoffice" | "powerpoint") => {
+            const chart = normalizeChart(
+                [
+                    { type: "bar", data: categoricalData, options: {} },
+                    { type: "line", data: [{ name: "Dolor", labels: ["A", "B", "C"], values: [6, 9, 7] }], options: {} },
+                ],
+                [],
+                { chartColors: ["C0504D", "4F81BD", "9BBB59"] },
+                target,
+            );
+
+            return chart.series.map(series => series.markerFill);
+        };
+
+        expect<(string | undefined)[]>(combo("powerpoint")).toEqual([undefined, undefined, "#9BBB59"]);
+        expect(combo("libreoffice")).toEqual([undefined, undefined, undefined]);
+        expect(normalizeChart("line", categoricalData, {}, "powerpoint").series.map(series => series.markerFill)).toEqual([undefined, undefined]);
     });
 });

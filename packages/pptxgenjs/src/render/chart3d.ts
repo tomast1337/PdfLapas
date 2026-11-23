@@ -6,6 +6,7 @@ import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import type { NormalizedChart } from "@pdflapas/model";
 import { pointsToPixels } from "@pdflapas/model";
+import { TICK_LENGTH } from "./chart";
 import { type Attribute, element, escapeText, type Html } from "./markup";
 
 type Point = {
@@ -261,6 +262,38 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
 
             labelEdge = labelX0 === 0 ? Math.min(labelEdge, x - labelWidth) : Math.max(labelEdge, x + labelWidth);
             grid.push(element("text", [["x", n(x)], ...(labelX0 === 0 ? [["text-anchor", "end"] as Attribute] : []), ["y", n(y)], ...rotate, ...labelStyle], escapeText(tickLabel)));
+        }
+    }
+
+    // The value axis line along the labelled wall edge, and its tick marks at each step (major) and fifth of a step
+    // (minor): outside toward the labels, inside away from them, or across (normalizeChart keeps them only where the
+    // target draws them, drawsBar3DValueAxisLine, #565).
+    if (axis && !axis.hidden) {
+        const axisStroke: Attribute[] = [
+            ["stroke", axis.lineColor],
+            ["stroke-width", n(pointsToPixels(axis.lineWidth))],
+            ["stroke-dasharray", axis.lineStyle === "dash" ? n(pointsToPixels(axis.lineWidth) * 4) : axis.lineStyle === "dot" ? n(pointsToPixels(axis.lineWidth)) : undefined],
+        ];
+        const outward = labelX0 === 0 ? -1 : 1;
+
+        if (axis.lineVisible) {
+            const start = project(labelX0, labelDepth, minimum);
+            const end = project(labelX0, labelDepth, maximum);
+
+            grid.push(element("line", [["class", "bar3d-value-axis"], ["x1", n(start.x)], ["y1", n(start.y)], ["x2", n(end.x)], ["y2", n(end.y)], ...axisStroke]));
+        }
+
+        for (const [mark, steps] of [
+            [axis.majorTickMark, tickCount],
+            [axis.minorTickMark, tickCount * 5],
+        ] as const) {
+            for (let index = 0; mark !== "none" && index <= steps; index++) {
+                const point = project(labelX0, labelDepth, minimum + (index * tickCount * scale.interval) / steps);
+                const from = mark === "inside" ? 0 : TICK_LENGTH;
+                const to = mark === "outside" ? 0 : -TICK_LENGTH;
+
+                grid.push(element("line", [["class", "bar3d-value-tick"], ["x1", n(point.x + outward * from)], ["y1", n(point.y)], ["x2", n(point.x + outward * to)], ["y2", n(point.y)], ...axisStroke]));
+            }
         }
     }
 
@@ -714,6 +747,25 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         }
     }
 
+    // The plot area's fill and border behind the box, its labels and the walls (normalizeChart keeps them only where the
+    // target draws them, drawsPlotAreaOnEveryType, #565).
+    const plotArea = chart.plotArea;
+    const plotAreaBox =
+        plotArea.fill.visible || plotArea.borderVisible
+            ? [
+                  element("rect", [
+                      ["class", "bar3d-plot-area"],
+                      ["x", n(area.x)],
+                      ["y", n(area.y)],
+                      ["width", n(area.width)],
+                      ["height", n(area.height)],
+                      ["fill", plotArea.fill.visible ? plotArea.fill.color : "none"],
+                      ["stroke", plotArea.borderVisible ? plotArea.borderColor : undefined],
+                      ["stroke-width", plotArea.borderVisible ? n(pointsToPixels(plotArea.borderWidth)) : undefined],
+                  ]),
+              ]
+            : [];
+
     // titlePos places the title's top left corner; titleRotate turns it clockwise about its middle.
     const titleX = chart.titlePosition ? chart.titlePosition.x * width : width / 2;
     const titleY = chart.titlePosition ? chart.titlePosition.y * height + pointsToPixels(chart.titleFontSize) : pointsToPixels(chart.titleFontSize) + 4;
@@ -752,7 +804,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
                 ["font-size", n(pointsToPixels(chart.fontSize))],
                 ["fill", "#000000"],
             ],
-            [gradients, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...dataLabelSvg, ...categoryLabels, ...seriesLabels, ...legend],
+            [gradients, ...plotAreaBox, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...dataLabelSvg, ...categoryLabels, ...seriesLabels, ...legend],
         ),
     );
 }

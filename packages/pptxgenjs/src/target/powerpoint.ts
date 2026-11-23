@@ -376,8 +376,11 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     chartPointKeepsSeriesFill: false,
     // PowerPoint's PDF export of a synthetic deck (#546: a single-series bar3D chart, each `<c:dPt>` an outline in its
     // chartColors entry, and a bar chart with `lineSize: 0`, each `<a:ln><a:noFill/>`, both `<c:varyColors val="0"/>`)
-    // lists Q1 to Q4 in the legend, each keyed in its point's color, where LibreOffice lists the series.
-    chartLegendListsUnfilledPoints: true,
+    // lists Q1 to Q4 in the legend, each keyed in its point's color, where LibreOffice lists the series. Its export of
+    // single-series column and horizontal bar charts with four chartColors (each `<c:dPt>` filled in its entry) lists
+    // Q1 to Q4 in those fills too; a combo chart's single-series bar type, the same `<c:dPt>`s, keeps the series entry
+    // (#552).
+    chartLegendListsPoints: true,
     topRightLegend: { kind: "above" as const, firstKeyCenterEm: 1.55, pitchEm: 1.725, bandBelowEm: 0.98 },
     // PowerPoint's PDF export of a synthetic deck (the chartBar3DAxis fixture slide, 12pt Arial value labels, 17.9px
     // tall) steps 3, 5, 4, 7 0..10 by 5 on a value axis about 83px long, and 12, 30, 48, 25 with valAxisMajorUnit 20
@@ -398,17 +401,32 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // The same export prints "Lorem" at the depth axis of both single-series charts, where LibreOffice prints none.
     // shortcut: a stacked bar3D's depth label is not measured on PowerPoint and keeps LibreOffice's none (#541).
     bar3DNamesSingleSeries: true,
-    // ECMA-376 21.2.2.189 `showVal` shows the point's value, its y value, and `showBubbleSize` (which PptxGenJS writes 0)
-    // its size.
-    // shortcut: not measured on PowerPoint's PDF export; measure it when a deck labels bubbles (#477).
+    // Its PDF export of a bubble chart with showValue (y 3, 6, 4, 8, sizes 4, 9, 6, 12) prints 3, 6, 4 and 8, and with
+    // showSerName "Lorem, 3": the y value, as ECMA-376 21.2.2.189 `showVal` says (`showBubbleSize` is written 0, #565).
     bubbleValueLabelShowsSize: false,
     // Its PDF export of the chartOptionLabels fixture slide (PptxGenJS 4.0.1, area chart with showSerName and
     // showValue) prints "Lorem, 5" (#568).
     dataLabelFieldSeparator: ", ",
-    // Its PDF export of the chartOptionAxes fixture slide numbers a radar with data up to 7 0..8 by 2
-    // with four rings (#568); at most 4, 5 or 6 steps all give that scale.
-    // shortcut: one measurement; measure other ranges and sizes when a deck steps differently (#565).
-    radarMaxIncrements: 4,
+    // Its PDF export numbers a radar with data up to 7 0..8 by 2 (the chartOptionAxes fixture slide, #568), up to 23
+    // 0..25 by 5 and up to 130 0..140 by 20 (4.4 x 4.1in, #565): a 2D axis's scale, with room above the data, in at
+    // most 7 steps (0..8 by 1 is refused, 0..140 by 20 kept); LibreOffice's 3D rounding would give 0..7 by 1.
+    // shortcut: every measured radar is about 4in; measure a larger one when a deck steps differently.
+    radarScale: { kind: "linear" as const, maxIncrements: 7 },
+    // Its PDF export of bar and line combos fills a line type's markers in the color PptxGenJS writes in
+    // `<c:marker><c:spPr>`, `chartColors[index of the series in the chart]` (9BBB59 for the third series, Dolor), and
+    // outlines them in the line's own C0504D; a line chart alone writes both in the line's color (#604).
+    readsComboMarkerFill: true,
+    // Its PDF export of pie, doughnut, radar and bar3D charts with `plotArea: { fill, border }` (and a pie with the
+    // deprecated `fill` and `border`) fills and frames the plot area: the pie's and doughnut's square, a box about the
+    // radar and its spoke names, a box about the bar3D walls and axis labels (#565).
+    drawsPlotAreaOnEveryType: true,
+    // Its PDF export of bar3D charts draws the value axis line along the side wall's front edge with its tick marks: a
+    // red 3pt line with cross major and outside minor ticks for `valAxisLineColor`, `valAxisLineSize: 3`,
+    // `valAxisMajorTickMark: "cross"`, `valAxisMinorTickMark: "out"`, none for `valAxisLineShow: false` and
+    // `valAxisMajorTickMark: "none"` (#565).
+    drawsBar3DValueAxisLine: true,
+    // Its PDF export of a scatter and a bubble chart with `showDataTable` draws no table, as on a pie (#592).
+    drawsScatterDataTable: false,
     // PowerPoint's PDF export of a synthetic deck (#558: a 4.4 x 4.1in pie, 40/25/20/15, 12pt Arial values, no
     // dataLabelPosition) puts each label 162 to 168px from the center of a 182px ring, as LibreOffice's bestFit rule
     // gives (PPTX_DEFAULTS.chart.pieLabel.bestFitRimRatio: 166, 167, 165 and 168px), and keeps "Lorem" / "40%" of an

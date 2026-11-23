@@ -225,11 +225,11 @@ export type RenderingTargetProfile = {
      */
     readonly chartPointKeepsSeriesFill: boolean;
     /**
-     * Whether the legend of a single-series bar or bar3D chart whose `<c:dPt>`s have no fill (PptxGenJS's per-point
-     * outline, or `lineSize: 0`, with several chartColors) lists each point in its chartColors entry, or the series
-     * (`NormalizedChart.legendListsPoints`).
+     * Whether the legend of a single-series bar or bar3D chart (not a combo chart's bar type) with a `<c:dPt>` per point
+     * (PptxGenJS's per-point fill or outline, or `lineSize: 0`, with several chartColors) lists each point keyed as it
+     * is drawn, or the series (`NormalizedChart.legendListsPoints`).
      */
-    readonly chartLegendListsUnfilledPoints: boolean;
+    readonly chartLegendListsPoints: boolean;
     /**
      * Where it draws a top-right legend (`legendPos: "tr"`): in a band beside the plot area at the chart's top corner,
      * as a right legend's, or in a band above the plot area at the right edge (`NormalizedChart.topRightLegend`).
@@ -267,10 +267,30 @@ export type RenderingTargetProfile = {
      */
     readonly dataLabelFieldSeparator: string;
     /**
-     * How many steps a radar chart's automatic value axis takes at most, with 0 included (`normalizeChart`'s radar
-     * scale, the bar3D rounding over the data).
+     * How a radar chart's automatic value axis is scaled, with 0 included: in at most `maxIncrements` steps, its bounds
+     * rounded out over the data as a bar3D axis's (`bar3D`) or with a 2D axis's room above the data (`linear`).
      */
-    readonly radarMaxIncrements: number;
+    readonly radarScale: { readonly kind: "bar3D" | "linear"; readonly maxIncrements: number };
+    /**
+     * Whether a combo chart's line markers take the fill PptxGenJS writes (`chartColors[index of the series in the
+     * chart]`, not the line's color), or the line's color (`NormalizedChartSeries.markerFill`).
+     */
+    readonly readsComboMarkerFill: boolean;
+    /**
+     * Whether a pie, doughnut, radar or bar3D chart draws its `plotArea` fill and border (and the deprecated `fill` and
+     * `border`), or none, so they are rejected (`NormalizedChart.plotArea`).
+     */
+    readonly drawsPlotAreaOnEveryType: boolean;
+    /**
+     * Whether a bar3D chart draws its value axis line and tick marks (`valAxisLine*`, `valAxis*TickMark`), or neither
+     * (`NormalizedChartValueAxis.lineVisible`, `majorTickMark`, `minorTickMark`).
+     */
+    readonly drawsBar3DValueAxisLine: boolean;
+    /**
+     * Whether a scatter or bubble chart draws its data table (`showDataTable`), which the renderers do not draw, so it
+     * is rejected, or none (`NormalizedChart.dataTable`).
+     */
+    readonly drawsScatterDataTable: boolean;
     /**
      * Where a pie's labels go when PptxGenJS writes no `<c:dLblPos>` (dataLabelPosition unset, or one it drops):
      * "bestFit" near the rim, or "ctr" at mid-radius.

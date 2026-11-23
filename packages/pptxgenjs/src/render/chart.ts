@@ -53,13 +53,15 @@ function lineType(style: "solid" | "dash" | "dot"): "solid" | "dashed" | "dotted
  * Tick length in px. shortcut: a cross tick (LibreOffice 26.2.6 draws it across the axis line) is drawn outside at
  * twice the length, as ECharts draws ticks on one side only; overlay an inside-tick axis if a fixture needs it.
  */
-const TICK_LENGTH = 5;
+export const TICK_LENGTH = 5;
 /** ECharts' default axisLabel.margin, the px between a tick and its label. */
 const AXIS_LABEL_MARGIN = 8;
 /** ECharts' default axisLabel.textMargin[1], the px it adds on each side of a label's measured width when fitting it. */
 const AXIS_LABEL_TEXT_MARGIN = 3;
 /** ECharts' default title.padding, the px between the chart's top edge and its title. */
 const TITLE_PADDING = 5;
+/** ECharts' default radar.radius ("50%"), the share of half the frame's shorter side the radar's circle takes. */
+const RADAR_RADIUS_RATIO = 0.5;
 
 function tickOption(mark: NormalizedChart["valueAxes"][number]["majorTickMark"], color: string, width: number) {
     return {
@@ -370,15 +372,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         legendData = (chart.series[0]?.values ?? []).map((_, index) => ({ name: labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON }));
     } else if (chart.legendListsPoints) {
-        // Each point of the only series, keyed in its drawn fill, as PowerPoint's PDF export draws it (#546); ECharts keys
-        // a bar series' legend by series name, so each entry gets an empty series of its name below.
-        // shortcut: a filled <c:dPt> (varyColors) would key its own color; it keeps the series entry until measured (#552).
+        // Each point of the only series, keyed in its drawn fill, as PowerPoint's PDF export draws it (#546, #552);
+        // ECharts keys a bar series' legend by series name, so each entry gets an empty series of its name below.
         const only = chart.series[0];
 
         legendData = [];
 
         for (const [index] of (only?.values ?? []).entries()) {
-            legendData.push({ name: only?.labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON, itemStyle: { color: only?.automaticPointFill ?? chart.colors[index % chart.colors.length] ?? "#4472C4" } });
+            legendData.push({ name: only?.labels[index] ?? String(index + 1), icon: LEGEND_SQUARE_ICON, itemStyle: { color: only?.automaticPointFill ?? only?.pointFills?.[index] ?? chart.colors[index % chart.colors.length] ?? "#4472C4" } });
         }
     } else if (chart.type !== "radar" && chart.type !== "scatter" && chart.type !== "bubble") {
         legendData = [];
@@ -552,6 +553,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         borderColor: plotArea.borderColor,
         borderWidth: plotArea.borderVisible ? pointsToPixels(plotArea.borderWidth) : 0,
     };
+    // A pie, doughnut or radar chart has no grid to carry the plot area's fill and border, so they are a square behind the
+    // ring or the spokes (normalizeChart keeps them only where the target draws them, drawsPlotAreaOnEveryType, #565).
+    const plotAreaSquare = (x: number, y: number, side: number) => ({
+        type: "rect",
+        silent: true,
+        shape: { x, y, width: side, height: side },
+        style: { fill: plotAreaStyle.backgroundColor, stroke: plotArea.borderVisible ? plotAreaStyle.borderColor : "transparent", lineWidth: plotAreaStyle.borderWidth },
+    });
     const layout = chart.plotLayout;
     // A data table (#567) takes the category labels' band: a row of category names, then one per series, each
     // rowEm table font sizes tall, its series names in a column left of the plot area. Its columns are the categories',
@@ -704,7 +713,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             throw new TypeError(`A ${chart.type} chart model needs one data series; got none`);
         }
 
-        // Each slice's label: its category, value and share of the total, each shown field on its own line.
+        // Each slice's label: its series name, category, value and share of the total, each shown field on its own line.
         const labels = chart.dataLabels;
         let total = 0;
 
@@ -715,6 +724,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const sliceLabel = (index: number) => {
             const value = series.values[index] ?? 0;
             const fields: string[] = [];
+
+            if (labels.showSeriesName) {
+                fields.push(series.name);
+            }
 
             if (labels.showCategory) {
                 fields.push(series.labels[index] ?? String(index + 1));
@@ -762,7 +775,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         let radius = Math.max(0, Math.min(boxWidth, boxHeight) / 2);
         let centerX = left + boxWidth / 2;
         let centerY = top + boxHeight / 2;
-        const showLabels = labels.showCategory || labels.showValue || labels.showPercent;
+        const showLabels = labels.showSeriesName === true || labels.showCategory || labels.showValue || labels.showPercent;
         // inEnd and outEnd labels sit at the rim of each slice, and bestFit ones inside it near the rim
         // (PPTX_DEFAULTS.chart.pieLabel); ECharts' pie label positions have none of them, so they are drawn as text.
         const rimLabels = showLabels && (labels.position === "inEnd" || labels.position === "outEnd");
@@ -1000,6 +1013,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             }
         }
 
+        if (plotAreaStyle.show) {
+            graphics.unshift(plotAreaSquare(centerX - radius, centerY - radius, 2 * radius));
+        }
+
         option = {
             ...common,
             ...(graphics.length || rimTexts.length ? { graphic: [...graphics, ...rimTexts] } : {}),
@@ -1067,6 +1084,13 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             : undefined;
         // ECharts draws a radar label on its point's symbol, so a series without markers keeps an invisible one.
         const hiddenSymbol = chart.radarStyle === "standard" && label !== undefined;
+        // The radar's circle: the manual layout's, or ECharts' default (centered, half the half frame).
+        const radarCenter: [number, number] = layout ? [(layout.x + layout.w / 2) * width, (layout.y + layout.h / 2) * height] : [width / 2, height / 2];
+        const radarRadius = layout ? Math.min(layout.w * width, layout.h * height) / 2 : (Math.min(width, height) / 2) * RADAR_RADIUS_RATIO;
+
+        if (plotAreaStyle.show) {
+            graphics.unshift(plotAreaSquare(radarCenter[0] - radarRadius, radarCenter[1] - radarRadius, 2 * radarRadius));
+        }
 
         option = {
             ...common,
@@ -1076,7 +1100,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // Office draws the categories clockwise from the top, counterclockwise for catAxisOrientation maxMin.
                 clockwise: categoryAxisModel.reversed !== true,
                 splitNumber: Math.max(1, Math.round((axis.maximum - axis.minimum) / interval)),
-                ...(layout ? { center: [(layout.x + layout.w / 2) * width, (layout.y + layout.h / 2) * height], radius: Math.min(layout.w * width, layout.h * height) / 2 } : {}),
+                center: radarCenter,
+                radius: radarRadius,
                 axisName: {
                     // A deleted category axis and catAxisLabelPos none name no spoke; low and high name them as nextTo.
                     show: !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none",
@@ -1480,7 +1505,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 lineStyle:
                     series.type === "line" ? { width: pointsToPixels(style.lineSize), color } : series.type === "area" ? (style.dataBorder ? { width: pointsToPixels(style.dataBorder.width), color: style.dataBorder.color } : { width: 0 }) : undefined,
                 areaStyle: series.type === "area" ? { color, opacity: style.colorOpacity, ...(crossing !== undefined ? { origin: crossValue } : {}) } : undefined,
-                itemStyle: { opacity: style.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...seriesSymbolBorder } : series.type === "bar" ? border : {}) },
+                // A line's markers are filled in markerFill where the target reads PptxGenJS's marker fill (#604).
+                itemStyle: { opacity: style.colorOpacity, color: (series.type === "line" ? series.markerFill : undefined) ?? color, ...(series.type === "line" ? { borderColor: color, ...seriesSymbolBorder } : series.type === "bar" ? border : {}) },
                 yAxisIndex: series.valueAxisIndex,
                 // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
                 // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.

@@ -196,9 +196,8 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "border",
 ] as const);
 
-// LibreOffice 26.2.6 draws no plot-area fill or border on a pie, radar or bar3D chart (its PDF export of synthetic
-// PptxGenJS 4.0.1 charts with `plotArea: { fill: { color: "FF0000" }, border: { color: "0000FF", pt: 3 } }`, #479),
-// and PowerPoint is not measured, so they stay rejected there; `layout` places each of them.
+// The chart types on which a target may draw no plot-area fill or border (drawsPlotAreaOnEveryType, #479, #565);
+// `layout` places each of them.
 const PLOT_AREA_UNDRAWN_TYPES = new Set<NormalizedChartType>(["bar3D", "doughnut", "pie", "radar"]);
 const SUPPORTED_PLOT_AREA_OPTIONS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
     // genXmlColorSelection reads type, color, transparency and the deprecated alpha.
@@ -295,15 +294,15 @@ const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType
     bar3D: new Set<string>([...AXIS_CROSSING_OPTIONS, ...DATE_AXIS_OPTIONS]),
 });
 // PptxGenJS 4.0.1 writes `<c:dTable>` on every chart type with showDataTable. LibreOffice 26.2.6 draws none on a pie,
-// doughnut or radar chart (#583); it draws a scatter or bubble chart's as one malformed row and a bar3D chart's under
-// the floor's front edge, which are not drawn yet (#592).
+// doughnut or radar chart (#583); it draws a scatter or bubble chart's as one malformed row (drawsScatterDataTable),
+// and LibreOffice and PowerPoint draw a bar3D chart's under the box, which is not drawn yet (#592).
 const DATA_TABLE_UNDRAWN_TYPES = new Set<NormalizedChartType>(["doughnut", "pie", "radar"]);
 const DATA_TABLE_REJECTED_TYPES = new Set<NormalizedChartType>(["bar3D", "bubble", "scatter"]);
 const XY_TYPES = new Set<NormalizedChartType>(["scatter", "bubble"]);
 const DATA_BORDER_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "bubble", "doughnut", "mixed", "pie"]);
 const TICK_MARKS = new Set(["none", "inside", "outside", "cross"]);
-// bar3D draws its value axis on a wall, where LibreOffice 26.2.6 draws neither an axis line nor tick marks whatever
-// valAxisLine* and valAxis*TickMark say (#561); it draws no logarithmic or reversed 3D axis or horizontal 3D bars yet.
+// bar3D draws its value axis on a wall, its line and tick marks where the target draws them (drawsBar3DValueAxisLine);
+// it draws no logarithmic or reversed 3D axis or horizontal 3D bars yet.
 // A radar chart's value axis is its first spoke: LibreOffice draws its labels and rings, the line style on every spoke,
 // and no title (#561).
 const VALUE_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
@@ -460,8 +459,11 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
     return normalized;
 }
 
-/** How a value axis is scaled: LibreOffice's automatic 2D scale, its bar3D scale, or its radar scale in at most `maxIncrements` steps. */
-type ValueAxisScaleKind = { kind: "linear" } | { kind: "bar3D" } | { kind: "radar"; maxIncrements: number };
+/**
+ * How a value axis is scaled: LibreOffice's automatic 2D scale, its bar3D scale, or a radar scale (the target's
+ * `radarScale`: the bar3D or the 2D rounding, in at most `maxIncrements` steps).
+ */
+type ValueAxisScaleKind = { kind: "linear" } | { kind: "bar3D" } | { kind: "radar"; rounding: "bar3D" | "linear"; maxIncrements: number };
 
 function normalizeValueAxis(
     axisOptions: PptxGenJS.IChartPropsAxisVal | undefined,
@@ -483,8 +485,8 @@ function normalizeValueAxis(
     const fixedMinimum = axisOptions?.valAxisMinVal;
     const fixedMaximum = axisOptions?.valAxisMaxVal;
     const fixed: FixedAxisBound = fixedMinimum !== undefined ? { kind: "minimum", value: fixedMinimum } : fixedMaximum !== undefined ? { kind: "maximum", value: fixedMaximum } : { kind: "none" };
-    // A bar3D or radar axis takes LibreOffice's 3D scale over its data with 0 included; renderBar3DSvg takes a longer
-    // step where the drawn axis is short, and a radar axis takes at most the target's radarMaxIncrements steps.
+    // A bar3D axis takes LibreOffice's 3D scale over its data with 0 included, and renderBar3DSvg takes a longer step
+    // where the drawn axis is short; a radar axis takes the target's radarScale over the same range.
     const bar3D = scaleKind.kind === "bar3D";
     const bar3DLow = Math.min(0, dataRange[0]);
     const bar3DHigh = Math.max(0, dataRange[1]);
@@ -493,7 +495,9 @@ function normalizeValueAxis(
         scaleKind.kind === "bar3D"
             ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, PPTX_DEFAULTS.chart.automaticScale.maxIncrements)
             : scaleKind.kind === "radar"
-              ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, scaleKind.maxIncrements)
+              ? scaleKind.rounding === "bar3D"
+                  ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, scaleKind.maxIncrements)
+                  : automaticAxisScale(bar3DLow, bar3DHigh, fixed, true, majorUnit !== undefined ? { kind: "fixed", interval: majorUnit } : { kind: "automatic", maxIncrements: scaleKind.maxIncrements })
               : majorUnit !== undefined
                 ? automaticAxisScale(dataRange[0], dataRange[1], fixed, true, { kind: "fixed", interval: majorUnit })
                 : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
@@ -671,7 +675,9 @@ function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChar
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["dataLabelFormatCode[format]"] });
     }
 
-    const showSeriesName = !pieLike && (options.showSerName ?? PPTX_DEFAULTS.chart.showSeriesName);
+    // A pie or doughnut prints the series name on its own line above the slice's other fields, as LibreOffice 26.2.6
+    // and PowerPoint print "Share" / "40" (#565).
+    const showSeriesName = options.showSerName ?? PPTX_DEFAULTS.chart.showSeriesName;
 
     return {
         showValue: options.showValue ?? PPTX_DEFAULTS.chart.showValue,
@@ -825,7 +831,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
-    if (options.showDataTable && !mixed && DATA_TABLE_REJECTED_TYPES.has(type as NormalizedChartType)) {
+    // A scatter or bubble chart's table is drawn as none where the target draws none (drawsScatterDataTable).
+    if (options.showDataTable && !mixed && DATA_TABLE_REJECTED_TYPES.has(type as NormalizedChartType) && (type === "bar3D" || profile.drawsScatterDataTable)) {
         unsupportedAxisOptions.push(`showDataTable[${String(type)}]`);
     }
 
@@ -896,7 +903,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
-    if (!mixed && PLOT_AREA_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
+    if (!mixed && !profile.drawsPlotAreaOnEveryType && PLOT_AREA_UNDRAWN_TYPES.has(type as NormalizedChartType)) {
         for (const key of ["plotArea", "fill", "border"] as const) {
             if (options[key] !== undefined) {
                 unsupportedAxisOptions.push(`${key}[${String(type)}]`);
@@ -1018,7 +1025,14 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
                 : undefined;
 
             for (const item of normalizeSeries(chart.type as NormalizedChartType, chart.data)) {
-                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const), ...(ownColors ? { colorIndex: colorOffset + (item.colorIndex % ownColors.length) } : {}), ...(style ? { style } : {}) };
+                const colorIndex = ownColors ? colorOffset + (item.colorIndex % ownColors.length) : item.colorIndex;
+                // PptxGenJS fills a line type's markers with `chartColors[index of the series in the chart]` (a random entry
+                // past the end) and outlines them in the line's color; a target may read that fill (readsComboMarkerFill, #604).
+                // shortcut: past the end of chartColors the fill is random, so the markers keep the line's color.
+                const markerColor = chart.type === "line" && profile.readsComboMarkerFill ? (ownColors ?? palette)[series.length] : undefined;
+                const lineColor = [...palette, ...typePalette][colorIndex % (palette.length + typePalette.length)];
+                const markerFill = markerColor !== undefined && lineColor !== undefined && normalizeColor(markerColor) !== normalizeColor(lineColor) ? normalizeColor(markerColor) : undefined;
+                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const), colorIndex, ...(style ? { style } : {}), ...(markerFill ? { markerFill } : {}) };
 
                 series.push(chart.type === "bar" && chart.data.length === 1 && typePointColors ? withPointStyle(placed, typePointColors, typeInverted) : placed);
                 seriesOptions.push(chart.options ?? {});
@@ -1316,7 +1330,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineStyle: catGridLine ? (catGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style) : catDefaults.gridLineStyle,
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
-    const primaryScale: ValueAxisScaleKind = normalizedType === "bar3D" ? { kind: "bar3D" } : normalizedType === "radar" ? { kind: "radar", maxIncrements: profile.radarMaxIncrements } : { kind: "linear" };
+    const primaryScale: ValueAxisScaleKind = normalizedType === "bar3D" ? { kind: "bar3D" } : normalizedType === "radar" ? { kind: "radar", rounding: profile.radarScale.kind, maxIncrements: profile.radarScale.maxIncrements } : { kind: "linear" };
     // PptxGenJS 4.0.1 writes each value axis from `Object.assign({}, options, valAxes[i])`: a valAxes entry keeps every
     // chart-level valAxis* and valGridLine option it does not set itself (#596).
     const primaryAxis = normalizeValueAxis(
@@ -1328,7 +1342,9 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         normalizedType === "scatter" ? scatterGridLine : {},
         profile.readsValueAxisDisplayUnits,
     );
-    const valueAxes = [categoryAxisCrossing ? { ...primaryAxis, categoryAxisCrossing } : primaryAxis];
+    // A bar3D value axis line and its tick marks are drawn where the target draws them (drawsBar3DValueAxisLine).
+    const bar3DAxisUndrawn = normalizedType === "bar3D" && !profile.drawsBar3DValueAxisLine ? { lineVisible: false, majorTickMark: "none" as const, minorTickMark: "none" as const } : {};
+    const valueAxes = [{ ...primaryAxis, ...bar3DAxisUndrawn, ...(categoryAxisCrossing ? { categoryAxisCrossing } : {}) }];
 
     // bar3D and radar charts have no axis band for the display unit's label (set only where the target reads units).
     if ((normalizedType === "bar3D" || normalizedType === "radar") && primaryAxis.displayUnit?.label) {
@@ -1422,7 +1438,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     const dataTable: NormalizedChart["dataTable"] =
-        options.showDataTable && !DATA_TABLE_UNDRAWN_TYPES.has(normalizedType)
+        options.showDataTable && !DATA_TABLE_UNDRAWN_TYPES.has(normalizedType) && !XY_TYPES.has(normalizedType)
             ? {
                   ...(tableFormatCode !== undefined ? { valueFormatCode: tableFormatCode } : {}),
                   horizontalBorder: profile.drawsDataTableBorders && options.showDataTableHorzBorder === true,

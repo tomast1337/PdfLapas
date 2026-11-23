@@ -175,7 +175,8 @@ const GENERIC_FALLBACK: GenericFallback = Object.freeze({
  * `chartColors: ["FF0000", "00AA00", "0000FF"]`, every bar3D box (each `<c:dPt>` an outline in its color) and every
  * bar of a bar chart with `lineSize: 0` (each `<c:dPt>` `<a:ln><a:noFill/>`) is 4472C4 blue, while the legend key
  * stays FF0000; a bar3D chart with one chartColors entry, which gets no `<c:dPt>`, is red. The legend keeps the series
- * entry on those charts (`chartLegendListsUnfilledPoints` off, #545).
+ * entry on those charts, and on a bar chart whose `<c:dPt>`s are filled in four chartColors (`chartLegendListsPoints`
+ * off, #545, #552).
  * It draws a top-right legend in the chart's top corner beside the plot area, which keeps a right legend's band
  * (`topRightLegend`): in LibreOffice 26.2's PDF export of synthetic PptxGenJS 4.0.1 column charts (1.6 to 5in tall,
  * with and without a title, 1 to 5 entries, 10 to 20pt), the first key's center is 0.83 legend font sizes below the
@@ -234,7 +235,7 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsDoughnutHoleSize: false,
     firstAreaSeriesInFront: true,
     chartPointKeepsSeriesFill: false,
-    chartLegendListsUnfilledPoints: false,
+    chartLegendListsPoints: false,
     topRightLegend: { kind: "beside" as const },
     bar3DLabelHeightsPerStep: 1,
     // ChartView lays a 2D chart out twice and scales its value axes again on the second pass, with at most as many
@@ -255,7 +256,18 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // A radar axis takes at most two steps: 26.2.6 draws 0..10 by 5 for 2..7 in 2.5, 4.5 and 7in high charts at 8, 12
     // and 14pt labels, 0..40 by 20 for 2..23, 0..100 by 50 for 20..70, 0..1 by 0.5 for 0.2..0.8, -10..10 by 10 for
     // -5..7, and 2..7 with valAxisMinVal 2 (its PDF export of synthetic PptxGenJS 4.0.1 radar charts, #561).
-    radarMaxIncrements: 2,
+    radarScale: { kind: "bar3D" as const, maxIncrements: 2 },
+    // Its PDF export of bar and line combos draws a line type's markers in the line's color, though PptxGenJS writes
+    // their fill as `chartColors[index of the series in the chart]` (#604).
+    readsComboMarkerFill: false,
+    // Its PDF export of pie, radar and bar3D charts with a plotArea fill and border draws neither (#479).
+    drawsPlotAreaOnEveryType: false,
+    // bar3D draws its value axis on a wall, where 26.2.6 draws neither an axis line nor tick marks whatever
+    // valAxisLine* and valAxis*TickMark say (#561).
+    drawsBar3DValueAxisLine: false,
+    // Its PDF export of a scatter or bubble chart with `showDataTable` draws a single malformed row ("Series1" over the
+    // first x value), which the renderers do not draw (#592).
+    drawsScatterDataTable: true,
     pieUnsetLabelPosition: "ctr",
     comboLegendListsAreasFirst: true,
     barComboKeepsCategoriesBetweenTicks: true,

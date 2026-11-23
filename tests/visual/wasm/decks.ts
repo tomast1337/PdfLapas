@@ -11,6 +11,7 @@ import {
     populateChartPieBestFitFixture,
     populateChartAutomaticScaleFixture,
     populateChartDateAxisFixture,
+    populateChartOptionSourceFixture,
     populateChartTypeOptionFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
@@ -412,6 +413,17 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartTypeOptions: {
         populate: presentation => {
             populateChartTypeOptionFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartOptionSources: the shared fixture's fixed-step, combo style, scatter crossing and date table slide (#595, #596,
+    // #594, #591, #593); every chart gets a crop.
+    chartOptionSources: {
+        populate: presentation => {
+            populateChartOptionSourceFixture(presentation);
 
             return presentation;
         },

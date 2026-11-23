@@ -149,8 +149,8 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * PowerPoint's does, and the spaces before Arial's " T" take that pair.
  * shortcut: inside a word each pair is spread over the word's characters, so a glyph between its start and end sits up
  * to the word's kerning off PowerPoint's (word starts match); split the word at its pairs if a deck shows it.
- * shortcut: PowerPoint left two `kern` table pairs out, Segoe UI's "(j" and Palatino Linotype's "Y-", by a rule the
- * measurements do not determine; both are kerned here (#539).
+ * A glyph that several code points map is kerned only as the last of them, and as the space, as PowerPoint does
+ * (readGlyphAdvances, #539): Segoe UI's "(j" and Palatino Linotype's "Y-" are not kerned.
  * The sums run on across the runs of a paragraph through `cursor`: started again at each run, they added up to a
  * LayoutUnit per run boundary on a line, enough for pdf-core to break a line of SimSun and Arial runs that fills its
  * box to 0.01pt one character early (#370). A run without a grid or font (normalize/text.ts) or a space in its font

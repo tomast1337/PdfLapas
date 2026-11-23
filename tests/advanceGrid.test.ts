@@ -440,6 +440,29 @@ describe("readGlyphAdvances", () => {
         expect(() => readGlyphAdvances(sfnt({ cmap: CMAP_FORMAT_4, advances: [500], glyphs: 4, kern: words(0, 1, 0, 20, 0x0001, 3, 0, 0, 0, 1, 2, 3) }))).toThrow(FontFileError);
     });
 
+    test("kerns a glyph several code points map only as the last of them, and as the space, as PowerPoint does (#539)", () => {
+        // cmap (3,1) format 4, six segments (endCode, startCode, idDelta): U+0020 and U+00A0 to glyph 2, U+002D and
+        // U+2010 to glyph 1 (Segoe UI's hyphen), "C" to glyph 3.
+        const cmap = words(0, 1, 3, 1, 0, 12, 4, 64, 0, 12, 8, 2, 4, 0x20, 0x2d, 0x43, 0xa0, 0x2010, 0xffff, 0, 0x20, 0x2d, 0x43, 0xa0, 0x2010, 0xffff, 2 - 0x20, 1 - 0x2d, 3 - 0x43, 2 - 0xa0, 1 - 0x2010, 1, 0, 0, 0, 0, 0, 0);
+        const kern = words(
+            0,
+            1,
+            ...kernSubtable(0x0001, [
+                [1, 3, -50],
+                [2, 3, 20],
+            ]),
+        );
+        const { kerning } = readGlyphAdvances(sfnt({ cmap, advances: [500, 600, 700], glyphs: 4, kern }));
+
+        expect(kerning).toEqual(
+            new Map([
+                [0x2010, new Map([[0x43, -50]])],
+                [0x20, new Map([[0x43, 20]])],
+                [0xa0, new Map([[0x43, 20]])],
+            ]),
+        );
+    });
+
     test("reads the face's post underline and OS/2 strikeout bands, signed, and leaves out a band without thickness", () => {
         // post: version, italicAngle, then underlinePosition and underlineThickness; OS/2: yStrikeoutSize at 26, yStrikeoutPosition at 28.
         const post = (position: number, thickness: number) => ({ tag: "post", bytes: words(3, 0, 0, 0, position, thickness, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) });

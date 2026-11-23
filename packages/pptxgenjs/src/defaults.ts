@@ -564,9 +564,13 @@ export const PPTX_DEFAULTS = Object.freeze({
         objectName: "Slide Number",
     }),
     // Text that fills a master placeholder (`addText(text, { placeholder })`): PptxGenJS 4.0.1 writes no anchor and,
-    // for a string, no color, so the text inherits from slideMaster1.xml: top-anchored (LibreOffice 26.2 checked),
-    // theme tx1 (dk1, black), and the master's txStyles by placeholder type: `title` the titleStyle (44pt, centered,
-    // +mj-lt, i.e. theme.headFontFace), any other type the bodyStyle's first level (32pt, left, spcBef 20% of the size).
+    // for a string, no color, so the text inherits from slideMaster1.xml: top-anchored, theme tx1 (dk1, black), and the
+    // master's txStyles by placeholder type: `title` the titleStyle (44pt, centered, +mj-lt, i.e. theme.headFontFace),
+    // any other type the bodyStyle's first level (32pt, left, spcBef 20%; of what, RenderingTargetProfile
+    // percentSpacingEm says). PptxGenJS writes `type` "pic" and "tbl" as an untyped placeholder, which takes the
+    // bodyStyle too. LibreOffice 26.2 and PowerPoint's PDF export of synthetic decks (#495) both draw these values: title,
+    // body, chart, media and untyped placeholders, with and without a size on the text, and a picture at the
+    // placeholder's x and y at its own size.
     placeholder: Object.freeze({
         valign: "top" as const,
         color: "000000",

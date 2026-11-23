@@ -98,6 +98,12 @@ export type RenderingTargetProfile = {
      */
     readonly spacingWholePoints: boolean;
     /**
+     * What a percentage space before (`<a:spcPct>`, the master bodyStyle's 20% a filled placeholder inherits) is a
+     * percentage of, in sizes of the paragraph's largest run: 1, the font size, or `text.singleLineEm`, its single line.
+     * It is never rounded to whole points.
+     */
+    readonly percentSpacingEm: number;
+    /**
      * The fraction of its font size a superscript or subscript run is drawn at; its baseline still moves by
      * `text.superscriptBaseline` or `text.subscriptBaseline` of the full size.
      */

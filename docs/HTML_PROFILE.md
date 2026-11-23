@@ -489,7 +489,8 @@ writes well-formed, as `<a:innerShdw>`) is `box-shadow: inset <x>px <y>px <blur>
 picture, inside the box and its `border-radius`: the outside of the box, moved by `<x>`, `<y>`, blurred by a
 Gaussian of standard deviation `<blur> / 2` (CSS), in `<color>`. So `<x>`, `<y>` point away from the
 DrawingML `dir`, as PowerPoint darkens the inside edges `dir` points to, and `<blur>` is 2/3 of `blurRad`, as
-PowerPoint's edge is a Gaussian of `blurRad / 3` (`normalizeShadow`). That is not CSS's order, which paints an
+PowerPoint's edge is a Gaussian of `blurRad / 3` (`normalizeShadow`). `<x>`, `<y>` are in the picture's own
+space, as CSS's are: the shadow turns and flips with the picture's `transform`, as PowerPoint's does. That is not CSS's order, which paints an
 inset shadow under the content; the print step moves it over the picture (Renderer workarounds). An inset
 `box-shadow` on any other object, and `data-shadow-inset` on `svg.shape-svg` or a `.text-run`, is an inner
 shadow no renderer draws: `addShape` and `addText` reject one (PptxGenJS writes it as malformed XML,

@@ -778,12 +778,12 @@ latency (p50, p95, p99), throughput, the process's RSS and heap, and the number 
 (Chromium, read from `/proc`, so Linux only); after each level it waits for the idle browser to close and prints the
 same after a full collection.
 
-| Variable                    | Default          | Meaning                                                                                                                                     |
-| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool`, `wasm-pool-html` (the pool with `buildHtmlInWorkers`), `pdfkit` and `pdfkit-pool` |
-| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                                                                                                |
-| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                                                                                           |
-| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                                                                                                     |
+| Variable                    | Default          | Meaning                                                                                                                                                                                                                        |
+| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool`, `wasm-pool-html` (the pool with `buildHtmlInWorkers`), `pdfkit`, `pdfkit-pool`, and the `native` prototype and its `native-pool` (Bun, `bun run build:native` first) |
+| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                                                                                                                                                                                   |
+| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                                                                                                                                                                              |
+| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                                                                                                                                                                                        |
 
 ```bash
 BENCH_LOAD_ENGINES=puppeteer BENCH_LOAD_CONCURRENCY=16 BENCH_LOAD_SECONDS=600 BENCH_LOAD_SAMPLE_SECONDS=60 bun run bench:load

@@ -21,7 +21,7 @@ export function benchRuns(bench: keyof typeof BENCH_RUNS_DEFAULT): number {
 }
 
 /** The renderers `bun run bench:load` can drive. */
-export const LOAD_ENGINES = ["puppeteer", "wasm", "wasm-pool", "wasm-pool-html", "pdfkit", "pdfkit-pool"] as const;
+export const LOAD_ENGINES = ["puppeteer", "wasm", "wasm-pool", "wasm-pool-html", "pdfkit", "pdfkit-pool", "native", "native-pool"] as const;
 
 export type LoadEngine = (typeof LOAD_ENGINES)[number];
 

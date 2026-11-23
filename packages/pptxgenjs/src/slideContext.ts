@@ -24,7 +24,17 @@ export type MasterPlaceholder = {
     readonly title: boolean;
     /** Its `options` without `name` and `type`, as PptxGenJS's createSlideMaster and addTextDefinition clean them. */
     readonly options: PptxGenJS.TextPropsOptions;
+    /**
+     * PptxGenJS 4.0.1's `_bodyProp` of the placeholder, which addTextDefinition (A.3) shares by reference with every
+     * text that fills it, on any slide: each addText() writes `anchor`, `vert`, `wrap` and `autoFit` onto it (`inset`
+     * only when given), so the last fill's are what every fill's <a:bodyPr> says when the file is written. Mutable,
+     * as that object is; the presentation owns it with the master, and each fill replaces it.
+     */
+    body: PlaceholderBody;
 };
+
+/** What a filled placeholder's shared `_bodyProp` holds when the file is written, as the filling text's options. */
+export type PlaceholderBody = Pick<PptxGenJS.TextPropsOptions, "valign" | "vert" | "wrap" | "autoFit" | "inset">;
 
 /** What a slide reads from the presentation that owns it. PuppeteerGen.addSlide() creates one per slide; every field is required. */
 export type SlideContext = {

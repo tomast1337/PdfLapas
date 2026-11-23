@@ -573,6 +573,9 @@ const MASTER_CASES = [
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-own-size", x: 0.45, y: 1.45, w: 4.4, h: 3.6 },
     { page: MASTER_PAGE + 2, name: "master-placeholder-body-style", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
     { page: MASTER_PAGE + 3, name: "master-placeholder-body-mixed-sizes", x: 5.15, y: 1.45, w: 4.4, h: 3.6 },
+    // One placeholder filled on both slides: the last fill's `valign` anchors both (#623).
+    { page: MASTER_PAGE + 2, name: "master-placeholder-shared-anchor", x: 0.45, y: 5, w: 9.1, h: 0.6 },
+    { page: MASTER_PAGE + 3, name: "master-placeholder-shared-anchor-last", x: 0.45, y: 5, w: 9.1, h: 0.6 },
     // The built-in "DEFAULT" master (#475): the slide starts with the slideNumber a slide's setter wrote last.
     { page: MASTER_PAGE + 4, name: "master-default-slide-number", x: 7.4, y: 4.5, w: 2.2, h: 1 },
 ] as const;
@@ -2312,6 +2315,7 @@ export function populatePlaceholderFixture(presentation: Presentation): void {
             { placeholder: { options: named({ name: "title", type: "title", x: 0.5, y: 0.3, w: 9, h: 1, fontFace: "Arial" }, "Title Placeholder"), text: "Title prompt" } },
             { placeholder: { options: named({ name: "body", type: "body", x: 0.5, y: 1.5, w: 4.3, h: 3.5, fontFace: "Arial", fontSize: 20 }, "Body Placeholder"), text: "Body prompt" } },
             { placeholder: { options: named({ name: "side", type: "body", x: 5.2, y: 1.5, w: 4.3, h: 3.5 }, "Side Placeholder") } },
+            { placeholder: { options: named({ name: "note", type: "body", x: 0.5, y: 5.05, w: 9, h: 0.5, fontFace: "Arial", fontSize: 12 }, "Note Placeholder") } },
         ],
     });
     const filled = presentation.addSlide({ masterName: "PARITY_PLACEHOLDERS" });
@@ -2319,9 +2323,14 @@ export function populatePlaceholderFixture(presentation: Presentation): void {
     filled.addText("Placeholder title", { placeholder: "title" });
     filled.addText("Body placeholder text at its own 20pt, lorem ipsum dolor sit amet, consectetur adipiscing elit", { placeholder: "body", fontSize: 30 });
     filled.addText("Body style 32pt\nSecond paragraph", { placeholder: "side", fontFace: "Arial" });
+    // PptxGenJS shares the placeholder's body properties between its fills, so the next slide's `valign` anchors this one
+    // at the bottom too (#623).
+    filled.addText("Note anchored by the next slide's fill", { placeholder: "note" });
 
     // Each paragraph's 20% space before is of its own largest run (#493): 8pt over the mixed one, 2.4pt over the 12pt ones.
-    presentation.addSlide({ masterName: "PARITY_PLACEHOLDERS" }).addText(
+    const mixedSizes = presentation.addSlide({ masterName: "PARITY_PLACEHOLDERS" });
+
+    mixedSizes.addText(
         [
             { text: "Body style 32pt", options: { breakLine: true } },
             { text: "12pt then ", options: { fontSize: 12 } },
@@ -2331,6 +2340,7 @@ export function populatePlaceholderFixture(presentation: Presentation): void {
         ],
         { placeholder: "side", fontFace: "Arial" },
     );
+    mixedSizes.addText("Note at the bottom", { placeholder: "note", valign: "bottom" });
 }
 
 /** The parity fixture's image slides (SVG pictures), also the WASM backend's SVG image deck (tests/visual/wasm/decks.ts). */

@@ -341,6 +341,8 @@ export type NormalizedChartSeries = {
     colorIndex: number;
     varyColors: boolean;
     valueAxisIndex: 0 | 1;
+    /** Whether the series runs along the secondary category axis (its orientation, `secondaryCatAxis`); absent: the primary. */
+    onSecondaryCategoryAxis?: boolean;
     /**
      * How the series stacks with the other series of its type on its value axis (its chart element's `<c:grouping>`);
      * `shareStacked`: each value as its share of the category's total, a fraction of 1 on the axis's own scale.
@@ -457,6 +459,30 @@ export type NormalizedChartDataLabels = {
 };
 
 /** The category axis of a bar, line or area chart: its labels, title and gridlines. */
+/**
+ * A secondary category axis's labels and title, in its own row beside the primary labels (`row`) or over them
+ * (`overlay`), as the target draws them.
+ */
+export type NormalizedChartSecondaryCatAxis = {
+    showTitle: boolean;
+    title: string;
+    titleColor: CssColor;
+    titleFontFace: string;
+    titleFontSize: number;
+    titleRotate?: number;
+    labelColor: CssColor;
+    labelFontFace: string;
+    labelFontSize: number;
+    labelBold: boolean;
+    labelItalic: boolean;
+    /** Whether the axis is deleted (`<c:delete>`): no labels or title. */
+    hidden: boolean;
+    labelPosition: "none" | "low" | "high" | "nextTo";
+    /** `catAxisOrientation: "maxMin"`: the labels right to left. */
+    reversed?: boolean;
+    placement: "row" | "overlay";
+};
+
 export type NormalizedChartCatAxis = {
     showTitle: boolean;
     title: string;
@@ -484,8 +510,12 @@ export type NormalizedChartCatAxis = {
      * major units, and each category's slot, null outside `catAxisMinVal`..`catAxisMaxVal`; absent: a slot per category.
      */
     dateSlots?: { labels: string[]; categorySlots: (number | null)[] };
-    /** A scatter or bubble chart's x-axis bounds and step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`). */
-    xScale?: { minimum?: number; maximum?: number; majorUnit?: number };
+    /**
+     * A scatter or bubble chart's x-axis bounds and step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`).
+     * `stepRoom`: the axis scales as a value axis, 0 included, in the steps that fit along it (as
+     * `NormalizedChartValueAxis.automaticScale.stepRoom`); absent: to its x values, not toward 0.
+     */
+    xScale?: { minimum?: number; maximum?: number; majorUnit?: number; stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number } };
     /** Whether the categories run from the last (`<c:orientation val="maxMin"/>`); absent: from the first. */
     reversed?: boolean;
     lineColor: CssColor;
@@ -597,6 +627,8 @@ export type NormalizedChart = {
     valueAxisMaximum: number;
     valueAxes: NormalizedChartValueAxis[];
     categoryAxis: NormalizedChartCatAxis;
+    /** A combo chart's secondary category axis (`catAxes[1]`, written for a type with `secondaryCatAxis`); absent: none. */
+    secondaryCategoryAxis?: NormalizedChartSecondaryCatAxis;
     /** A bar3D chart's depth axis; absent on every other chart. */
     seriesAxis?: NormalizedChartSeriesAxis;
     /** Absent: no data table. */

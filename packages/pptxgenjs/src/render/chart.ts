@@ -169,7 +169,7 @@ function dataLabelOption(labels: NormalizedChart["dataLabels"], position: string
 }
 
 /** ECharts' px between a legend key and its text (LegendView: `textX = itemWidth + 5`). */
-const LEGEND_TEXT_GAP = 5;
+export const LEGEND_TEXT_GAP = 5;
 
 /** ECharts' legend itemWidth, which a line key keeps. */
 const LEGEND_LINE_KEY_WIDTH = 25;
@@ -522,6 +522,18 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // A bottom category-axis title gets its band below the labels, as LibreOffice lays it out; a left one (a horizontal
     // bar chart's) is moved clear of the labels by ECharts (nameMoveOverlap) and kept in the frame by the outer bounds.
     const categoryTitleBand = categoryAxisModel.showTitle && !horizontal ? 2 * gap + pointsToPixels(categoryAxisModel.titleFontSize) * PPTX_DEFAULTS.chart.categoryAxis.titleBandEm : 0;
+    // A secondary category axis (#603): its labels in a row of their own under the primary ones, or over them (overlay);
+    // `high` puts them above the plot. Its title takes a band beside its row, or above the plot when it overlays.
+    const secondaryCategory = chart.secondaryCategoryAxis;
+    const secondaryLabelPx = secondaryCategory ? pointsToPixels(secondaryCategory.labelFontSize) : 0;
+    const secondaryLabels = secondaryCategory !== undefined && !secondaryCategory.hidden && secondaryCategory.labelPosition !== "none";
+    const secondaryHigh = secondaryCategory?.labelPosition === "high";
+    const secondaryRow = secondaryCategory?.placement === "row";
+    const secondaryLabelBand = secondaryLabels && (secondaryRow || secondaryHigh) ? bottomLabelMargin + secondaryLabelPx * lineEm : 0;
+    const secondaryTitleBand = secondaryCategory?.showTitle && !secondaryCategory.hidden ? 2 * gap + pointsToPixels(secondaryCategory.titleFontSize) * PPTX_DEFAULTS.chart.categoryAxis.titleBandEm : 0;
+    const secondaryTitleTop = !secondaryRow || secondaryHigh;
+    const secondaryBottomBand = (secondaryHigh ? 0 : secondaryLabelBand) + (secondaryTitleTop ? 0 : secondaryTitleBand);
+    const secondaryTopBand = (secondaryHigh ? secondaryLabelBand : 0) + (secondaryTitleTop ? secondaryTitleBand : 0);
     // The value axis gutter: room for its labels and title.
     const firstAxis = chart.valueAxes[0];
     let gutter: number;
@@ -604,8 +616,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // shortcut: the secondary axis beside a right legend is not measured against LibreOffice; measure it when a deck
     // needs both.
     const gridRight = chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : valueAxisRight ? gutter + rightLegendBand : Math.max(width * 0.02, rightLegendBand);
-    const gridBottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + categoryBand;
-    const gridTop = gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2) + topLegendBand;
+    const gridBottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + categoryBand + secondaryBottomBand;
+    const gridTop = gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2) + topLegendBand + secondaryTopBand;
     // A manual layout (layoutTarget inner) places the plot rectangle itself, so the labels go where they fall.
     const grid = layout
         ? { left: layout.x * width, top: layout.y * height, width: layout.w * width, height: layout.h * height, outerBoundsMode: "none", ...plotAreaStyle }
@@ -623,8 +635,35 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // shortcut: ECharts may still narrow the plot for its labels (outerBounds), so a horizontal axis's length can be
     // long: 18pt labels on 0.3..0.9 step by 0.2 on an axis LibreOffice draws 110 to 120pt long, where it steps by 0.5.
     // Take the laid-out length (a second layout pass, as LibreOffice's) when a deck needs it (#585).
-    const valueAxisLength = horizontal ? (layout ? layout.w * width : width - gridLeft - gridRight) : layout ? layout.h * height : height - gridTop - gridBottom;
+    const plotWidth = layout ? layout.w * width : width - gridLeft - gridRight;
+    const valueAxisLength = horizontal ? plotWidth : layout ? layout.h * height : height - gridTop - gridBottom;
     const scaledValueAxes: NormalizedChartValueAxis[] = [];
+    // The most steps a room fits along an axis of that length: the labels' height, or the widest label of the first
+    // scale (minimum to maximum by its automatic interval) in the axis's format, per step.
+    const stepRoomIncrements = (
+        room: NonNullable<NonNullable<NormalizedChartValueAxis["automaticScale"]>["stepRoom"]>,
+        length: number,
+        axis: { minimum: number; maximum: number; labelFontSize: number; labelFontFace: string; labelFormatCode: string; divisor: number },
+    ) => {
+        const labelPx = pointsToPixels(axis.labelFontSize);
+        let labelSize = 0;
+
+        if (room.label === "height") {
+            const font = builtInFontMetrics(axis.labelFontFace);
+
+            labelSize = labelPx * (font.kind === "metrics" ? (font.metrics.winAscent + font.metrics.winDescent) / font.metrics.unitsPerEm : PPTX_DEFAULTS.text.singleLineEm);
+        } else {
+            const interval = automaticAxisInterval(axis.minimum, axis.maximum);
+
+            for (let step = 0; axis.minimum + step * interval <= axis.maximum + interval / 2; step++) {
+                const value = Number((axis.minimum + step * interval).toPrecision(12));
+
+                labelSize = Math.max(labelSize, format.getTextRect(formatChartNumber(value / axis.divisor, axis.labelFormatCode), `${labelPx}px ${axis.labelFontFace}`).width);
+            }
+        }
+
+        return Math.max(2, Math.min(room.maxIncrements, Math.floor(length / (room.perStep * Math.max(1, labelSize)) + room.rounding)));
+    };
 
     for (const [index, axis] of chart.valueAxes.entries()) {
         const automatic = axis.automaticScale;
@@ -637,25 +676,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             continue;
         }
 
-        const labelPx = pointsToPixels(axis.labelFontSize);
-        let labelSize = 0;
-
-        if (room.label === "height") {
-            const font = builtInFontMetrics(axis.labelFontFace);
-
-            labelSize = labelPx * (font.kind === "metrics" ? (font.metrics.winAscent + font.metrics.winDescent) / font.metrics.unitsPerEm : PPTX_DEFAULTS.text.singleLineEm);
-        } else {
-            const interval = axis.majorUnit ?? automaticAxisInterval(axis.minimum, axis.maximum);
-
-            for (let step = 0; axis.minimum + step * interval <= axis.maximum + interval / 2; step++) {
-                const value = Number((axis.minimum + step * interval).toPrecision(12));
-                const label = formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode);
-
-                labelSize = Math.max(labelSize, format.getTextRect(label, `${labelPx}px ${axis.labelFontFace}`).width);
-            }
-        }
-
-        const maxIncrements = Math.max(2, Math.min(room.maxIncrements, Math.floor(valueAxisLength / (room.perStep * Math.max(1, labelSize)) + room.rounding)));
+        const maxIncrements = stepRoomIncrements(room, valueAxisLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
         const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
         const scale = automaticAxisScale(automatic.low, automatic.high, fixed, true, { kind: "automatic", maxIncrements });
 
@@ -696,7 +717,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         axisTick: categoryAxisModel.hidden ? { show: false } : tickOption(chart.categoryMajorTickMark !== "none" ? chart.categoryMajorTickMark : categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth),
         name: categoryAxisModel.showTitle && !categoryAxisModel.hidden ? categoryAxisModel.title : undefined,
         nameLocation: "middle",
-        nameGap: horizontal ? AXIS_LABEL_MARGIN : TICK_LENGTH + AXIS_LABEL_MARGIN + categoryLabelPx * lineEm + gap,
+        nameGap: horizontal ? AXIS_LABEL_MARGIN : TICK_LENGTH + AXIS_LABEL_MARGIN + categoryLabelPx * lineEm + gap + (secondaryHigh ? 0 : secondaryLabelBand),
         nameRotate: categoryAxisModel.titleRotate,
         nameTextStyle: {
             color: categoryAxisModel.titleColor,
@@ -1153,7 +1174,23 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const xFixed: FixedAxisBound = fixedX?.minimum !== undefined ? { kind: "minimum", value: fixedX.minimum } : fixedX?.maximum !== undefined ? { kind: "maximum", value: fixedX.maximum } : { kind: "none" };
         // A fixed catAxisMajorUnit is the step the automatic bounds round out to, as on a value axis (#595).
         const xStep = fixedX?.majorUnit !== undefined ? { kind: "fixed" as const, interval: fixedX.majorUnit } : undefined;
-        const automaticX = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), xFixed, false, xStep) : undefined;
+        // A target may scale it as a horizontal value axis instead, 0 included, in the steps that fit along it (#616).
+        const xLow = Math.min(...xValues);
+        const xHigh = Math.max(...xValues);
+        const xRoom = fixedX?.stepRoom;
+        const xRoomStep = xRoom
+            ? {
+                  kind: "automatic" as const,
+                  maxIncrements: stepRoomIncrements(xRoom, plotWidth, {
+                      ...automaticAxisScale(xLow, xHigh, xFixed, true),
+                      labelFontSize: categoryAxisModel.labelFontSize,
+                      labelFontFace: categoryAxisModel.labelFontFace,
+                      labelFormatCode: categoryAxisModel.labelFormatCode ?? "General",
+                      divisor: 1,
+                  }),
+              }
+            : undefined;
+        const automaticX = xValues.length > 0 ? automaticAxisScale(xLow, xHigh, xFixed, xRoom !== undefined, xStep ?? xRoomStep) : undefined;
         const xMinimum = fixedX?.minimum ?? automaticX?.minimum;
         const xMaximum = fixedX?.maximum ?? automaticX?.maximum;
         const xScale =
@@ -1203,6 +1240,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             type: "value",
             ...axisStyle,
             ...categoryAxisText,
+            // PptxGenJS writes the x axis's numbers in General: both applications print 1000, not ECharts' 1,000 (#616).
+            ...(categoryLabelFormat ? {} : { axisLabel: { ...categoryAxisText.axisLabel, formatter: (value: number) => formatChartNumber(value, "General") } }),
             ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
             // catAxisOrientation maxMin runs x right to left; a bubble chart's catAxisLabelPos high puts the x labels at
             // the top (shortcut: ECharts moves the axis line and ticks there too, LibreOffice keeps them at the bottom).
@@ -1374,17 +1413,76 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         };
         // A secondary axis takes the side the primary one leaves: LibreOffice 26.2.6 draws a maxMin category axis's
         // primary value axis on the right and the secondary one on the left (#582). PptxGenJS writes catAxisCrossesAt on
-        // both value axes, and LibreOffice draws both lines at that category (#591).
+        // both value axes, and LibreOffice draws both lines at that category (#591). With a secondary category axis,
+        // catAxisCrossesAt max puts both value axes on the right in PowerPoint and LibreOffice 26.2.6 (#603).
         const secondaryValueAxes =
             valueCrossing?.kind === "category"
                 ? valueAxes.slice(1).map(axis => ({ ...axis, axisLine: { ...axis.axisLine, onZero: true, onZeroAxisIndex: categoryAxes.length - 1 } }))
-                : valueAtEnd && !horizontal
+                : valueAtEnd && !horizontal && !(secondaryCategory && valueCrossing?.kind === "max")
                   ? valueAxes.slice(1).map(axis => ({ ...axis, position: "left" as const }))
                   : valueAxes.slice(1);
         const valueAxisList: Record<string, unknown>[] = [primaryValueAxis, ...secondaryValueAxes];
 
         if (shifted) {
             valueAxisList.push({ type: "value", show: false, min: low - crossValue, max: high - crossValue, inverse: firstAxis.reversed === true, splitLine: { show: false } });
+        }
+
+        // The secondary category axis: its labels in their row (below the primary labels, the row's line above them) or
+        // over the primary labels, its title in its band; the series on it take its order (onSecondaryCategoryAxis).
+        const secondaryAxisIndex = categoryAxes.length;
+
+        if (secondaryCategory) {
+            const titleStyle = { color: secondaryCategory.titleColor, fontFamily: secondaryCategory.titleFontFace, fontSize: pointsToPixels(secondaryCategory.titleFontSize) };
+            const titled = secondaryTitleBand > 0;
+            const rowOffset = secondaryRow && !secondaryHigh && !noBottomLabels ? bottomLabelBand : 0;
+
+            categoryAxes.push({
+                type: "category",
+                data: categories,
+                position: secondaryHigh ? highSide : lowSide,
+                offset: rowOffset,
+                ...(secondaryCategory.reversed ? { inverse: true } : {}),
+                axisLine: secondaryRow && !secondaryHigh && !secondaryCategory.hidden && rowOffset > 0 ? { ...axisStyle.axisLine, onZero: false } : { show: false, onZero: false },
+                axisTick: { show: false },
+                axisLabel: {
+                    show: secondaryLabels,
+                    margin: bottomLabelMargin,
+                    color: secondaryCategory.labelColor,
+                    fontFamily: secondaryCategory.labelFontFace,
+                    fontSize: secondaryLabelPx,
+                    ...(secondaryCategory.labelBold ? { fontWeight: "bold" } : {}),
+                    ...(secondaryCategory.labelItalic ? { fontStyle: "italic" } : {}),
+                },
+                ...(titled && secondaryRow
+                    ? {
+                          name: secondaryCategory.title,
+                          nameLocation: "middle",
+                          nameGap: TICK_LENGTH + AXIS_LABEL_MARGIN + secondaryLabelPx * lineEm + gap + (secondaryHigh ? 0 : categoryTitleBand),
+                          nameRotate: secondaryCategory.titleRotate,
+                          nameTextStyle: titleStyle,
+                      }
+                    : {}),
+                splitLine: { show: false },
+                boundaryGap: !chart.categoriesOnTicks,
+            });
+
+            // An overlaid axis's title stands above the plot area, on an axis of its own.
+            if (titled && !secondaryRow) {
+                categoryAxes.push({
+                    type: "category",
+                    data: categories,
+                    position: highSide,
+                    axisLine: { show: false, onZero: false },
+                    axisTick: { show: false },
+                    axisLabel: { show: false },
+                    splitLine: { show: false },
+                    name: secondaryCategory.title,
+                    nameLocation: "middle",
+                    nameGap: (secondaryHigh ? secondaryLabelBand : 0) + gap,
+                    nameRotate: secondaryCategory.titleRotate,
+                    nameTextStyle: titleStyle,
+                });
+            }
         }
 
         // The bar, line and area series on the category axis.
@@ -1508,6 +1606,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // A line's markers are filled in markerFill where the target reads PptxGenJS's marker fill (#604).
                 itemStyle: { opacity: style.colorOpacity, color: (series.type === "line" ? series.markerFill : undefined) ?? color, ...(series.type === "line" ? { borderColor: color, ...seriesSymbolBorder } : series.type === "bar" ? border : {}) },
                 yAxisIndex: series.valueAxisIndex,
+                ...(series.onSecondaryCategoryAxis ? { xAxisIndex: secondaryAxisIndex } : {}),
                 // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
                 // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.
                 ...(chart.type === "mixed" && series.type === "area" ? { z: 1 } : {}),

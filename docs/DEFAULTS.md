@@ -484,13 +484,17 @@ contract includes:
   LibreOffice target and each type's own on the PowerPoint one. A fixed `valAxisMajorUnit` widens the
   automatic bounds to whole steps (3..8 by 2 is 0..10). `valAxes` entries take the chart-level
   `valAxis*` options under their own, as PptxGenJS writes them.
-- Secondary axes: a type with `secondaryValAxis` gets a value axis on the right; `secondaryCatAxis`
-  (with `catAxes[1]`) draws nothing more on the LibreOffice target and is rejected on the PowerPoint
-  one, which draws a second row of category names. PowerPoint cannot open PptxGenJS 4.0.1's XML for a
+- Secondary axes: a type with `secondaryValAxis` gets a value axis on the right. A type with
+  `secondaryCatAxis` (with `catAxes[1]`, which takes the chart-level `catAxis*` options under its own)
+  draws its category labels and title: on the PowerPoint target in a second row under the primary
+  labels, its title under the primary title, and `maxMin` reverses the type's series with the labels;
+  on the LibreOffice target over the primary labels, its title above the plot area, and `maxMin`
+  reverses the labels only. `high` puts the labels above the plot on both. PowerPoint cannot open PptxGenJS 4.0.1's XML for a
   secondary value axis without a secondary category axis (its `<c:crossAx>` names an axis it never
   writes), so such charts follow LibreOffice on both targets.
 - Data tables: PowerPoint draws none on a scatter or bubble chart, so `showDataTable` draws nothing
-  there; LibreOffice draws a malformed one and a bar3D chart's is not drawn yet, so those throw.
+  there; LibreOffice draws a malformed one, so those throw. A bar3D chart's table stands under the
+  box, with its borders and keys on both targets.
 - Chart/plot borders, gridline defaults, format codes, and both complete color
   palettes used by PptxGenJS.
 

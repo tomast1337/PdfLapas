@@ -427,6 +427,16 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     drawsBar3DValueAxisLine: true,
     // Its PDF export of a scatter and a bubble chart with `showDataTable` draws no table, as on a pie (#592).
     drawsScatterDataTable: false,
+    // Its PDF export of synthetic PptxGenJS 4.0.1 scatter charts (4.4 x 4.1in, 12pt labels) numbers x values 1..5
+    // 0..6 by 2, 10..40 0..50 by 10, 1000..4000 0..5000 by 1000, 95..100 94..102 by 2, -5..5 -10..10 by 5, 0..100
+    // 0..150 by 50 and 3..9 0..10 by 2, and on an 8.8in wide chart 1..5 0..6 by 1 and 10..40 0..45 by 5: a value
+    // axis's scale in at most 5 steps along the 4.4in chart's 389px plot and 9 to 11 along the 8.8in one's 777px, which
+    // 4.2 label heights a step gives (#616). A bubble chart's x axis takes it too (1..4 is 0..5 by 1, 10..40 0..50 by 10).
+    // shortcut: 95..100 starts at 94 where the value-axis rule moves it half the range down to 92; find PowerPoint's
+    // rule for a minimum kept above 0 when a deck needs it (#616).
+    // shortcut: PowerPoint also widens a bubble chart's axes for the bubbles (x 0..100 is -50..150, y 3..8 0..10 where a
+    // value axis takes 0..9); model the bubbles' room when a deck needs it (#616).
+    scatterXAxisScale: { kind: "valueAxis" as const, label: "height" as const, perStep: 4.2, rounding: 0 },
     // PowerPoint's PDF export of a synthetic deck (#558: a 4.4 x 4.1in pie, 40/25/20/15, 12pt Arial values, no
     // dataLabelPosition) puts each label 162 to 168px from the center of a 182px ring, as LibreOffice's bestFit rule
     // gives (PPTX_DEFAULTS.chart.pieLabel.bestFitRimRatio: 166, 167, 165 and 168px), and keeps "Lorem" / "40%" of an
@@ -447,8 +457,11 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // second line and not the first: each type keeps its own `<c:smooth>` (#594).
     comboLineSmoothFromFirstLineType: false,
     // Its PDF export of a bar and line combo whose line type has `secondaryCatAxis`, with `catAxes: [{}, {}]`, draws a
-    // second row of category names under the first (#594), which the renderers do not draw, so the option is rejected.
-    drawsSecondaryCategoryAxis: true,
+    // second row of category names under the first (#594), in catAxes[1]'s label color and size; its title under the
+    // primary one; `maxMin` reverses the row and the line series together; `high` moves the row above the plot (#603).
+    // shortcut: with a maxMin secondary axis it also moves the secondary value axis to the left, where it stays on the
+    // right here; move it when a deck needs both.
+    secondaryCategoryAxis: { placement: "row" as const, seriesFollowAxis: true },
     // Column charts with `valAxisDisplayUnit: "thousands"` (values 3000 to 7000) and `"hundreds"` (300 to 700) number
     // both axes 0..8, and `valAxisDisplayUnitLabel` prints "Thousands" beside the axis (#566).
     // shortcut: the name is drawn level above the axis, where PowerPoint turns it upright left of the axis; turn it when

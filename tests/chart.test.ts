@@ -960,7 +960,7 @@ describe("chart normalization and rendering", () => {
         }
     });
 
-    test("reads catAxes and a secondary category axis that draws nothing (#594)", () => {
+    test("reads catAxes and a secondary category axis (#594, #603)", () => {
         const secondary: PptxGenJS.IChartMulti[] = [
             { type: "bar", data: categoricalData, options: {} },
             { type: "line", data: [{ name: "Line", labels: ["A", "B", "C"], values: [100, 300, 200] }], options: { secondaryValAxis: true, secondaryCatAxis: true } },
@@ -974,7 +974,7 @@ describe("chart normalization and rendering", () => {
 
         const rejections: [PptxGenJS.IChartOpts, string][] = [
             [{ valAxes: [{}, {}] }, "series[1].options.secondaryCatAxis[needs secondaryValAxis and catAxes[1]]"],
-            [{ valAxes: [{}, {}], catAxes: [{}, { catAxisTitle: "Sec" }] }, "catAxes[1].catAxisTitle"],
+            [{ valAxes: [{}, {}], catAxes: [{}, { catAxisLineColor: "FF0000" }] }, "catAxes[1].catAxisLineColor"],
             [{ valAxes: [{}, {}], catAxes: [{ catAxisCrossesAt: 2 }, {}] }, "catAxes[0].catAxisCrossesAt"],
         ];
 
@@ -987,8 +987,51 @@ describe("chart normalization and rendering", () => {
             }
         }
 
-        // PowerPoint's PDF export draws a second row of category names, which the renderers do not (drawsSecondaryCategoryAxis).
-        expect(() => normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, {}] }, "powerpoint")).toThrow("secondaryCatAxis");
+        // catAxes[1] keeps the chart-level catAxis* options under its own; PowerPoint draws it in a row of its own and
+        // runs the line along it, LibreOffice draws it over the primary labels and keeps the line on the primary axis.
+        const both = { valAxes: [{}, {}], catAxisLabelFontSize: 9, catAxes: [{}, { catAxisLabelColor: "C00000", catAxisOrientation: "maxMin", showCatAxisTitle: true, catAxisTitle: "Sec" }] } as PptxGenJS.IChartOpts;
+        const powerpoint = normalizeChart(secondary, [], both, "powerpoint");
+        const libreoffice = normalizeChart(secondary, [], both);
+
+        expect(powerpoint.secondaryCategoryAxis).toMatchObject({ placement: "row", labelColor: "#C00000", labelFontSize: 9, reversed: true, showTitle: true, title: "Sec", labelPosition: "low" });
+        expect(powerpoint.categoryAxis.reversed).toBeUndefined();
+        expect(powerpoint.series.map(series => series.onSecondaryCategoryAxis)).toEqual([undefined, undefined, true]);
+        expect(libreoffice.secondaryCategoryAxis?.placement).toBe("overlay");
+        expect(libreoffice.series.map(series => series.onSecondaryCategoryAxis)).toEqual([undefined, undefined, undefined]);
+        expect(normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, { catAxisLabelPos: "high" }] }, "powerpoint").secondaryCategoryAxis?.labelPosition).toBe("high");
+
+        // The secondary row is measured under a column chart's labels, without a data table.
+        expect(() => normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, {}], barDir: "bar" }, "powerpoint")).toThrow("secondaryCatAxis[barDir bar]");
+        expect(() => normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, {}], showDataTable: true })).toThrow("secondaryCatAxis[showDataTable]");
+
+        // The SVG: the secondary labels in their color, reversed, and its title; the primary labels below them on
+        // PowerPoint, at their height on LibreOffice.
+        const labels = (target: "libreoffice" | "powerpoint") => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            const slide = presentation.addSlide();
+
+            // PptxGenJS takes a combo chart's options second, where its declarations type the data.
+            (slide.addChart as Function)(secondary, { x: 1, y: 1, w: 4, h: 3, ...both });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const texts = Array.from(svg?.querySelectorAll("text") ?? []);
+            const y = (text: Element | undefined) => Number(/translate\([^ ]+ ([^)]+)\)/.exec(text?.getAttribute("transform") ?? "")?.[1]);
+            const x = (text: Element) => Number(/translate\(([^ ]+) /.exec(text.getAttribute("transform") ?? "")?.[1]);
+            // Left to right.
+            const red = texts.filter(text => text.getAttribute("fill") === "#C00000").sort((a, b) => x(a) - x(b));
+            const primary = texts.find(text => text.textContent === "A" && text.getAttribute("fill") !== "#C00000");
+
+            return { red: red.map(text => text.textContent), title: texts.some(text => text.textContent === "Sec"), below: y(red[0]) - y(primary) };
+        };
+        const powerpointLabels = labels("powerpoint");
+        const libreofficeLabels = labels("libreoffice");
+
+        expect(powerpointLabels.red).toEqual(["C", "B", "A"]);
+        expect(powerpointLabels.title).toBe(true);
+        expect(powerpointLabels.below).toBeGreaterThan(5);
+        expect(libreofficeLabels.red).toEqual(["C", "B", "A"]);
+        expect(libreofficeLabels.title).toBe(true);
+        expect(libreofficeLabels.below).toBeCloseTo(0, 0);
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
@@ -1011,6 +1054,37 @@ describe("chart normalization and rendering", () => {
         expect(normalizeChart("bar3D", categoricalData, { bar3DShape: "invalid" }).bar3DShape).toBe("box");
         // Stacked totals reach 9: a 3D axis takes no extra step near its data (#541).
         expect(normalizeChart("bar3D", categoricalData, { barGrouping: "stacked" }).valueAxisMaximum).toBe(9);
+    });
+
+    test("numbers a scatter chart's x axis as PowerPoint does, from 0 by the room its labels leave (scatterXAxisScale, #616)", () => {
+        // The x axis's labels, the last ones ECharts writes (after the y axis's).
+        const xLabels = (target: "libreoffice" | "powerpoint", x: number[], wide: boolean, count: number): string[] => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart(
+                "scatter",
+                [
+                    { name: "X", values: x },
+                    { name: "Lorem", values: [2, 5, 3, 7].slice(0, x.length) },
+                ],
+                { ...(wide ? { x: 0.6, y: 0.9, w: 8.8, h: 4.5 } : { x: 0.4, y: 0.9, w: 4.4, h: 4.1 }), catAxisLabelFontFace: "Arial", valAxisLabelFontFace: "Arial", lineSize: 0 },
+            );
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+
+            return Array.from(svg?.querySelectorAll("text") ?? [], text => text.textContent ?? "").slice(-count);
+        };
+
+        // PowerPoint's PDF exports of these charts, 4.4 and 8.8 inches wide.
+        expect(xLabels("powerpoint", [1, 2, 4, 5], false, 4)).toEqual(["0", "2", "4", "6"]);
+        expect(xLabels("powerpoint", [1, 2, 4, 5], true, 7)).toEqual(["0", "1", "2", "3", "4", "5", "6"]);
+        expect(xLabels("powerpoint", [10, 20, 30, 40], false, 6)).toEqual(["0", "10", "20", "30", "40", "50"]);
+        expect(xLabels("powerpoint", [10, 20, 30, 40], true, 10)).toEqual(["0", "5", "10", "15", "20", "25", "30", "35", "40", "45"]);
+        // Its labels in General, as both applications print them: 1000, not 1,000.
+        expect(xLabels("powerpoint", [1000, 2000, 3000, 4000], false, 6)).toEqual(["0", "1000", "2000", "3000", "4000", "5000"]);
+        expect(xLabels("powerpoint", [-5, -2, 1, 5], false, 5)).toEqual(["-10", "-5", "0", "5", "10"]);
+        expect(xLabels("powerpoint", [0, 30, 60, 100], false, 4)).toEqual(["0", "50", "100", "150"]);
+        // LibreOffice 26.2.6 keeps the scale over the x values (#548).
+        expect(xLabels("libreoffice", [10, 20, 30, 40], false, 9)).toEqual(["5", "10", "15", "20", "25", "30", "35", "40", "45"]);
     });
 
     test("steps a bar3D value axis by the target's label heights per step (bar3DLabelHeightsPerStep, #541)", () => {
@@ -2366,9 +2440,7 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
 
     test("rejects the category-axis options a chart type cannot draw, naming them", () => {
         expect(() => normalizeChart("radar", quarters, { catAxisLabelRotate: 45 })).toThrow("catAxisLabelRotate[radar]");
-        expect(() => normalizeChart("bar3D", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[bar3D]");
-        expect(() => normalizeChart("bar3D", quarters, { catAxisLabelPos: "high" })).toThrow("catAxisLabelPos[high][bar3D]");
-        expect(() => normalizeChart("bar3D", quarters, { valAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("valAxisCrossesAt[bar3D]");
+        expect(() => normalizeChart("bar3D", quarters, { catAxisBaseTimeUnit: "days" } as PptxGenJS.IChartOpts)).toThrow("catAxisBaseTimeUnit[bar3D]");
         // A scatter chart's x axis is a value axis: the y axis crosses it at that x value (#591).
         const xy = [
             { name: "X", values: [1, 2, 3, 4, 5, 6] },
@@ -2385,6 +2457,31 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("line", [{ name: "Lorem", labels: ["45292"], values: [1] }], { catLabelFormatCode: "h:mm" })).toThrow("catLabelFormatCode[format]");
         expect(() => normalizeChart("bar3D", quarters, { dataLabelBkgrdColors: true })).toThrow("dataLabelBkgrdColors[bar3D]");
         expect(() => normalizeChart("bar", quarters, { catAxisOrientation: "minMax", valAxisCrossesAt: "autoZero" } as PptxGenJS.IChartOpts)).not.toThrow();
+    });
+
+    test("draws a bar3D chart's axis crossings, high category labels and data table as both targets do (#591, #592)", () => {
+        const bar3D = (options: PptxGenJS.IChartOpts) => chartSvg("bar3D", pair, options);
+        const x = (text: Element | undefined) => Number(text?.getAttribute("x"));
+        const y = (text: Element | undefined) => Number(text?.getAttribute("y"));
+        const textNamed = (svg: Element | null, content: string) => Array.from(svg?.querySelectorAll("text") ?? []).find(text => text.textContent === content);
+        const fronts = (svg: Element | null) => Array.from(svg?.querySelectorAll(".bar3d-front") ?? []);
+        const plain = bar3D({});
+
+        // catAxisCrossesAt 2 puts the value labels between the first and second categories, `max` right of the box.
+        expect(x(textNamed(bar3D({ catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts), "0"))).toBeGreaterThan(x(textNamed(plain, "Q1")));
+        expect(x(textNamed(bar3D({ catAxisCrossesAt: "max" } as unknown as PptxGenJS.IChartOpts), "0"))).toBeGreaterThan(x(textNamed(plain, "Q4")));
+        // valAxisCrossesAt moves where the unstacked bars start, so the drawn faces change.
+        expect(fronts(bar3D({ valAxisCrossesAt: 4 } as PptxGenJS.IChartOpts)).map(face => face.getAttribute("points"))).not.toEqual(fronts(plain).map(face => face.getAttribute("points")));
+        // `high` puts the category labels above the value labels' top.
+        const high = bar3D({ catAxisLabelPos: "high" });
+
+        expect(y(textNamed(high, "Q1"))).toBeLessThan(y(textNamed(high, "6")));
+        // The data table: its header of category names, each series' row, no axis labels, with keys and rules.
+        const table = bar3D({ showDataTable: true, showDataTableKeys: true, showDataTableHorzBorder: true });
+
+        expect(Array.from(table?.querySelectorAll(".bar3d-table") ?? [], text => text.textContent)).toEqual(["Q1", "Q2", "Q3", "Q4", "Lorem", "3", "5", "4", "7", "Ipsum", "5", "2", "6", "4"]);
+        expect(textsOf(table).filter(text => text === "Q1")).toHaveLength(1);
+        expect(table?.querySelectorAll(".bar3d-table-rule")).toHaveLength(2);
     });
 
     test("normalizes the data table, with borders and keys where the target draws them (#567)", () => {
@@ -2404,8 +2501,9 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("bubble", bubbleData, { showDataTable: true })).toThrow("showDataTable[bubble]");
         expect(normalizeChart("scatter", pair, { showDataTable: true }, "powerpoint").dataTable).toBeUndefined();
         expect(normalizeChart("bubble", bubbleData, { showDataTable: true }, "powerpoint").dataTable).toBeUndefined();
-        expect(() => normalizeChart("bar3D", pair, { showDataTable: true })).toThrow("showDataTable[bar3D]");
-        expect(() => normalizeChart("bar3D", pair, { showDataTable: true }, "powerpoint")).toThrow("showDataTable[bar3D]");
+        // Both draw a bar3D chart's table with its borders and keys (#592).
+        expect(normalizeChart("bar3D", pair, options).dataTable).toMatchObject({ horizontalBorder: true, verticalBorder: true, outline: true, keys: true });
+        expect(normalizeChart("bar3D", pair, options, "powerpoint").dataTable).toMatchObject({ horizontalBorder: true, keys: true });
         // dataTableFormatCode formats the values where the target reads it (readsDataTableFormatCode), no target yet.
         expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "libreoffice").dataTable?.valueFormatCode).toBeUndefined();
         expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "powerpoint").dataTable?.valueFormatCode).toBeUndefined();

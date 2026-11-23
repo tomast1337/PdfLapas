@@ -2293,6 +2293,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartDateAxisFixture(presentation);
     populateChartTypeOptionFixture(presentation);
     populateChartOptionSourceFixture(presentation);
+    populateChartAxisPlacementFixture(presentation);
 }
 
 /**
@@ -3694,4 +3695,46 @@ export function populateChartOptionSourceFixture(presentation: Presentation): vo
     const months = ["45292", "45323", "45352", "45383"];
 
     slide.addChart("line", [{ name: "Lorem", labels: months, values: [3, 5, 4, 7] }], { ...shared, x: 5.2, y: 3.2, w: 4.4, valAxisMajorUnit: 2, catLabelFormatCode: "mmm-yy", showDataTable: true });
+}
+
+/**
+ * bar3D crossings, high category labels and a data table, and a secondary category axis (#591, #592, #603): LibreOffice
+ * 26.2.6 grows the bars from valAxisCrossesAt, stands the value labels at catAxisCrossesAt, moves `high` labels to the
+ * back wall's top, draws a bar3D table with its borders and keys, and draws catAxes[1]'s labels over the primary ones
+ * with its title above the plot. A parity slide after the others (no page number moves).
+ */
+export function populateChartAxisPlacementFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("bar3D crossings, tables and a secondary category axis", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const pair = [
+        { name: "Lorem", labels, values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+    ];
+    // Light boxes and no gridlines, as on the bar3D axis and data table slides: the projection still differs from
+    // LibreOffice's (#541).
+    const bar3D: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, chartColors: ["DEEBF7", "FBE5D6"], barGrouping: "standard", catAxisLabelFontFace: "Arial", valAxisLabelFontFace: "Arial" };
+
+    slide.addChart("bar3D", pair, { ...bar3D, x: 0.4, y: 0.8, catAxisCrossesAt: 2, valAxisCrossesAt: 4 } as PptxGenJS.IChartOpts);
+    slide.addChart("bar3D", pair, { ...bar3D, x: 5.2, y: 0.8, showDataTable: true, showDataTableHorzBorder: true, showDataTableVertBorder: true, showDataTableOutline: true, showDataTableKeys: true, dataTableFontSize: 9 });
+    slide.addChart("bar3D", pair, { ...bar3D, x: 0.4, y: 3.2, catAxisLabelPos: "high" });
+    const combo: PptxGenJS.IChartMulti[] = [
+        { type: "bar", data: pair, options: { barGrouping: "clustered" } },
+        { type: "line", data: [{ name: "Dolor", labels, values: [6, 9, 7, 10] }], options: { secondaryValAxis: true, secondaryCatAxis: true } },
+    ];
+
+    // PptxGenJS takes a combo chart's options second, where its declarations type the data.
+    (slide.addChart as Function)(combo, {
+        x: 5.2,
+        y: 3.2,
+        w: 4.4,
+        h: 2.3,
+        catAxisLabelFontFace: "Arial",
+        valAxisLabelFontFace: "Arial",
+        // Light columns: a pixel's shift of a saturated column outweighs the labels this slide is for.
+        chartColors: ["DEEBF7", "FBE5D6", "F4B183"],
+        valAxes: [{}, {}],
+        catAxes: [{}, { catAxisLabelColor: "C00000", showCatAxisTitle: true, catAxisTitle: "Secondary" }],
+    });
 }

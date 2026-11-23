@@ -285,6 +285,18 @@ export class PuppeteerSlide implements PptxSlide {
 
                 return { ...axis, automaticScale: { ...axis.automaticScale, stepRoom: { ...direction, maxIncrements: room.maxIncrements } } };
             }),
+            // A scatter or bubble chart's automatic x axis may scale as a value axis (scatterXAxisScale, #616).
+            ...(target.scatterXAxisScale.kind === "valueAxis" && (normalized.type === "scatter" || normalized.type === "bubble") && normalized.categoryAxis.xScale?.majorUnit === undefined
+                ? {
+                      categoryAxis: {
+                          ...normalized.categoryAxis,
+                          xScale: {
+                              ...normalized.categoryAxis.xScale,
+                              stepRoom: { label: target.scatterXAxisScale.label, perStep: target.scatterXAxisScale.perStep, rounding: target.scatterXAxisScale.rounding, maxIncrements: target.valueAxisStepRoom.maxIncrements },
+                          },
+                      },
+                  }
+                : {}),
             ...(target.bar3DNamesSingleSeries && normalized.type === "bar3D" ? { namesSingleDepthSlot: true } : {}),
             // A bubble's value label prints its y value or, on some targets, its size (bubbleValueLabelShowsSize).
             ...(target.bubbleValueLabelShowsSize && normalized.type === "bubble" ? { dataLabels: { ...normalized.dataLabels, valueIsBubbleSize: true } } : {}),

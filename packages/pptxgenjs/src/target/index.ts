@@ -292,6 +292,12 @@ export type RenderingTargetProfile = {
      */
     readonly drawsScatterDataTable: boolean;
     /**
+     * How a scatter or bubble chart's automatic x axis is scaled: to its x values, or as a value axis, 0 included, in at
+     * most `floor(length / (perStep × label) + rounding)` steps up to `valueAxisStepRoom.maxIncrements`
+     * (`NormalizedChartCatAxis.xScale.stepRoom`).
+     */
+    readonly scatterXAxisScale: { readonly kind: "xValues" } | { readonly kind: "valueAxis"; readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
+    /**
      * Where a pie's labels go when PptxGenJS writes no `<c:dLblPos>` (dataLabelPosition unset, or one it drops):
      * "bestFit" near the rim, or "ctr" at mid-radius.
      */
@@ -326,10 +332,12 @@ export type RenderingTargetProfile = {
      */
     readonly comboLineSmoothFromFirstLineType: boolean;
     /**
-     * Whether a combo chart type with `secondaryCatAxis` draws a second category axis (`catAxes[1]`, its own
-     * `<c:catAx>`), or none; the renderers draw none, so a target that draws it rejects the option.
+     * How a combo chart type with `secondaryCatAxis` draws its category axis (`catAxes[1]`, its own `<c:catAx>`): its
+     * labels in a `row` of their own beside the primary ones and its title after the primary title, or `overlay`ing the
+     * primary labels with its title above the plot area; and whether the type's series run along that axis
+     * (`seriesFollowAxis`: reversed with its `maxMin`), or along the primary one.
      */
-    readonly drawsSecondaryCategoryAxis: boolean;
+    readonly secondaryCategoryAxis: { readonly placement: "row" | "overlay"; readonly seriesFollowAxis: boolean };
     /**
      * Whether a value axis divides its labels by `valAxisDisplayUnit` and prints the unit's name for
      * `valAxisDisplayUnitLabel` (`<c:dispUnits>`), or prints the values as they are (`NormalizedChartValueAxis.displayUnit`).

@@ -44,6 +44,25 @@ export type WasmRendererOptions = {
     onMissingFont?: MissingFontPolicy;
 };
 
+export type WasmRendererPoolOptions = Omit<WasmRendererOptions, "wasm"> & {
+    /**
+     * Worker threads, each with its own renderer and its own copy of `fonts` in WASM memory (about 330 MB of RSS per worker with
+     * `loadSystemFonts()`'s default set, less with only the faces the decks use). Default: one per core but one, at most 8.
+     */
+    workers?: number;
+};
+
+/** What createWasmRendererPool() returns (Node/Bun): a renderer whose renders run in worker threads. */
+export type WasmRendererPool = PresentationRenderer & {
+    /** What the last render to finish could not draw; with several in flight, read the error of the one you need instead. */
+    warnings(): string[];
+    /** The font faces the last render to finish asked for that none of the fonts provides. */
+    missingFonts(): MissingFont[];
+    /** Terminates the workers; queued and in-flight renders reject. */
+    close(): Promise<void>;
+    [Symbol.asyncDispose](): Promise<void>;
+};
+
 export type SystemFontOptions = {
     /** Directories searched recursively. Defaults to the platform's system and user font directories. */
     dirs?: readonly string[];
@@ -116,6 +135,10 @@ export async function createWasmRenderer(options: WasmRendererOptions): Promise<
     }
 
     return new WasmRenderer(binding, options.onUnsupported, options.onMissingFont);
+}
+
+export async function createWasmRendererPool(_options: WasmRendererPoolOptions): Promise<WasmRendererPool> {
+    throw new Error("createWasmRendererPool() starts worker threads and is only available under Node/Bun; in a browser use createWasmRenderer(), in a Web Worker to keep the page responsive");
 }
 
 export async function loadSystemFonts(_options?: SystemFontOptions): Promise<Uint8Array[]> {

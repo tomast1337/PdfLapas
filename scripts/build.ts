@@ -13,7 +13,7 @@ const PACKAGES = [
     { name: "model", entrypoints: ["index"] },
     { name: "puppeteer", entrypoints: ["index"] },
     { name: "pptxgenjs", entrypoints: ["index", "html"] },
-    { name: "wasm", entrypoints: ["browser", "node"] },
+    { name: "wasm", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "pdfkit", entrypoints: ["browser", "node"] },
     { name: "react", entrypoints: ["index"] },
 ] as { name: string; entrypoints: string[] }[];

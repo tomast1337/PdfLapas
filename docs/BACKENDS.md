@@ -391,6 +391,10 @@ pres.addSlide().addText("Hello", { x: 1, y: 1, w: 4, h: 1, fontFace: "Calibri" }
 await pres.writeFile({ fileName: "hello.pdf" });
 ```
 
+A renderer draws on the thread that calls it. On a server, `createWasmRendererPool()` takes the same options plus
+`workers` and renders in worker threads instead; see
+[Rendering in worker threads](./USAGE.md#rendering-in-worker-threads-wasm).
+
 ```typescript
 // Browser
 import PuppeteerGen from "@pdflapas/pptxgenjs/html";

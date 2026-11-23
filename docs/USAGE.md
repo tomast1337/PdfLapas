@@ -778,12 +778,12 @@ latency (p50, p95, p99), throughput, the process's RSS and heap, and the number 
 (Chromium, read from `/proc`, so Linux only); after each level it waits for the idle browser to close and prints the
 same after a full collection.
 
-| Variable                    | Default          | Meaning                                                  |
-| --------------------------- | ---------------- | -------------------------------------------------------- |
-| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm` and `pdfkit` |
-| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another             |
-| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                        |
-| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                  |
+| Variable                    | Default          | Meaning                                                               |
+| --------------------------- | ---------------- | --------------------------------------------------------------------- |
+| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool` and `pdfkit` |
+| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                          |
+| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                     |
+| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                               |
 
 ```bash
 BENCH_LOAD_ENGINES=puppeteer BENCH_LOAD_CONCURRENCY=16 BENCH_LOAD_SECONDS=600 BENCH_LOAD_SAMPLE_SECONDS=60 bun run bench:load
@@ -810,10 +810,62 @@ What that means for a service:
   browser closes one second after the last render and relaunches on the next; after every level the process was
   back at 170-185 MB with no Chromium left, and 10 minutes at 16 (22,272 renders) showed no growth.
 - **WASM and PDFKit** render on the calling thread, so concurrency adds latency, not throughput, and a render
-  blocks the event loop for its duration (#578). Run them in a few worker threads, each with its own renderer,
-  when one core is not enough. Memory does not grow with renders: 10 minutes at 16 (27,851 WASM renders) ended at
-  the same 475 MB RSS as two minutes.
+  blocks the event loop for its duration (#578). For WASM, use the worker pool below when one core is not enough.
+  Memory does not grow with renders: 10 minutes at 16 (27,851 WASM renders) ended at the same 475 MB RSS as two
+  minutes.
 - A failing render (the broken image) fails alone: no other request failed or slowed in any run.
+
+### Rendering in worker threads (WASM)
+
+`createWasmRendererPool()` (Node and Bun) starts worker threads, each with its own WASM renderer and the fonts
+loaded once, and implements `PresentationRenderer` like `createWasmRenderer()`, so it goes in the same `renderer`
+option. `render()` posts the HTML document to the first free worker (one document in flight per worker, the rest
+wait in one FIFO queue) and resolves with the PDF bytes the worker transfers back. Use it on a server that renders
+with WASM under concurrent requests: renders run on several cores and no longer block the event loop.
+
+```typescript
+import PuppeteerGen from "@pdflapas/pptxgenjs";
+import { createWasmRendererPool, loadSystemFonts } from "@pdflapas/wasm";
+
+// Once, at startup: the workers load their fonts before this resolves.
+const renderer = await createWasmRendererPool({ fonts: await loadSystemFonts(), workers: 4 });
+
+// Per request.
+const pres = new PuppeteerGen(undefined, { renderer });
+pres.addSlide().addText("Hello", { x: 1, y: 1, w: 4, h: 1 });
+const pdf = await pres.toPdf();
+
+// At shutdown (optional: an idle pool does not keep the process alive).
+await renderer.close();
+```
+
+- **Options.** The same as `createWasmRenderer()` (`fonts`, `onUnsupported`, `onMissingFont`) plus `workers`,
+  which defaults to one per core but one, at most 8. A render rejects with the error `WasmRenderer.render()` throws
+  for the same document; `onMissingFont` runs on the calling thread, so a function works. `warnings()` and
+  `missingFonts()` describe the last render to finish, which with several in flight may not be yours.
+- **Memory.** Each worker keeps its own copy of the fonts in WASM memory; the font bytes passed in are shared once.
+  With `loadSystemFonts()`'s default set (287 MB of font files on the machine below), 8 workers took the process to
+  3.2 GB RSS, about 330 MB per worker; load only the faces your decks use to lower it.
+- **Failures.** A worker that dies is replaced; the render it was running rejects and says so, and the others carry
+  on. `close()` terminates the workers and rejects what is still queued or in flight.
+- **Limits.** Building the deck and its HTML (`toHtml()`, about 13 ms per request in the mix below) still runs on
+  the calling thread, and it now bounds throughput: past about 90 renders/s, run more processes (#609). PDFKit has
+  no pool yet (#608).
+
+Measured with `BENCH_LOAD_ENGINES=wasm-pool,wasm bun run bench:load` (Linux x64, 32 cores, Bun 1.4.4, 8 workers,
+30 s per level, the mixed decks above; the single renderer measured slower here than in the table above, so the two
+are side by side from the same run):
+
+| Renderer         | Concurrency | Renders/s | p50    | p95     | p99      |
+| ---------------- | ----------- | --------- | ------ | ------- | -------- |
+| WASM, one thread | 1           | 27.7      | 22 ms  | 36 ms   | 50 ms    |
+| WASM, one thread | 4           | 35.4      | 27 ms  | 464 ms  | 615 ms   |
+| WASM, one thread | 16          | 33.0      | 29 ms  | 2567 ms | 3205 ms  |
+| WASM, one thread | 64          | 35.0      | 32 ms  | 8981 ms | 10402 ms |
+| WASM pool        | 1           | 34.0      | 20 ms  | 35 ms   | 39 ms    |
+| WASM pool        | 4           | 77.7      | 38 ms  | 97 ms   | 117 ms   |
+| WASM pool        | 16          | 88.0      | 104 ms | 518 ms  | 575 ms   |
+| WASM pool        | 64          | 89.8      | 537 ms | 1009 ms | 1109 ms  |
 
 ### Fonts for the PowerPoint target
 

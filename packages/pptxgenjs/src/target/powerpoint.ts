@@ -357,6 +357,16 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // label heights), and the same scale on our 153px axis needs 2.14 to 4.29; 2.25 sits in both.
     // shortcut: fitted to that one automatic chart; measure more lengths and sizes when a deck steps differently (#541).
     bar3DLabelHeightsPerStep: 2.25,
+    // PowerPoint's PDF export of a synthetic deck (40 charts, #589, #527) needs more room per step than LibreOffice
+    // and allows 11 steps. Column, line and area axes in 10pt Arial (11.2pt labels): 3, -2, 4, 7 runs -3..8 by 1 on
+    // 282 and 181pt axes, -4..8 by 2 on 109pt and -5..10 by 5 on 66pt; 3, 9, 16, 12 runs 0..18 by 2 on 181pt and 0..20
+    // by 5 on 109pt; 3, 5, 4, 7 runs 0..8 by 2 on 101.5pt, and by 1 at 8pt on 141.5pt but by 2 at 14pt on 129.5pt and
+    // at 18pt on 120pt; 3, 9, 16, 12 at 14pt runs 0..18 by 2 on 173pt. A step needs more than 1.14 and at most 1.23
+    // label heights; 1.18 fits all, on its lengths and on ours. Horizontal bar axes at 10pt: 3, 9, 16, 12 runs 0..18 by 2 on 393pt and 0..20 by 5 on 249 and 177pt, a stack
+    // totalling 16 0..18 by 2 on 609pt, 3, -2, 4, 7 -4..8 by 2 on 403pt: more than 3.28 and at most 3.89 label heights.
+    // shortcut: 11 steps is the least the deck shows (0..17 by 1 on 282pt is refused, so at most 16), and the
+    // horizontal room is fitted at one font size, height or width alike; measure more when a deck steps otherwise (#589).
+    valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1.18, rounding: 0 }, horizontal: { label: "height" as const, perStep: 3.6, rounding: 0 }, maxIncrements: 11 },
     // The same export prints "Lorem" at the depth axis of both single-series charts, where LibreOffice prints none.
     // shortcut: a stacked bar3D's depth label is not measured on PowerPoint and keeps LibreOffice's none (#541).
     bar3DNamesSingleSeries: true,

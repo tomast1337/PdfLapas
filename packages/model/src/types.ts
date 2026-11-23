@@ -377,11 +377,21 @@ export type NormalizedChartValueAxis = {
     /** Whether the axis runs from its maximum to its minimum (`valAxisOrientation: "maxMin"`); absent: minimum first. */
     reversed?: boolean;
     /**
-     * On a bar3D chart, whose step LibreOffice picks from the drawn length of the axis: the data's low and high ends (0
-     * included) and whether the caller set the minimum and the maximum; absent: `minimum` to `maximum` as they are.
-     * `labelHeightsPerStep` is how many label heights of drawn axis each step needs; absent: one.
+     * On an axis without `majorUnit` or a log scale, whose step Office picks from the drawn length of the axis: the data's
+     * low and high ends (on a bar3D chart, 0 included) and whether the caller set the minimum and the maximum; absent:
+     * `minimum` to `maximum` as they are. `minimum` and `maximum` then hold the scale before that choice. On a bar3D
+     * chart `labelHeightsPerStep` is how many label heights of drawn axis each step needs; absent: one. On a 2D chart
+     * `stepRoom` sets the most steps, `floor(length / (perStep × label) + rounding)` between 2 and `maxIncrements`, where
+     * `label` is the labels' height or the widest label's width; absent: the scale before that choice.
      */
-    automaticScale?: { low: number; high: number; fixedMinimum: boolean; fixedMaximum: boolean; labelHeightsPerStep?: number };
+    automaticScale?: {
+        low: number;
+        high: number;
+        fixedMinimum: boolean;
+        fixedMaximum: boolean;
+        labelHeightsPerStep?: number;
+        stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number };
+    };
     logScaleBase?: number;
     /**
      * Where the category axis crosses this axis, which is also where its unstacked bars and its areas start (the

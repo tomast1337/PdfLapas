@@ -54,10 +54,11 @@ export type FixedAxisBound = { kind: "none" } | { kind: "minimum"; value: number
  * 5. The interval is automaticAxisInterval's. Each automatic bound rounds out to whole intervals counted from the fixed
  *    bound (from 0 when none is fixed), then moves one interval further where the data comes within borderRatio of the
  *    range of it, unless it is 0. More than maxIncrements steps take the next interval in 1, 2, 5 x 10^k.
- * A scatter chart's x axis passes its data range, with no fixed bound and not toward 0.
+ * A scatter chart's x axis passes its data range, with no fixed bound and not toward 0. A renderer that knows the drawn
+ * axis passes the steps its labels leave room for as maxIncrements (the target's valueAxisStepRoom, #585).
  */
-export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBound, towardZero: boolean): AxisScale {
-    const { maxIncrements, borderRatio, wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
+export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBound, towardZero: boolean, maxIncrements: number = PPTX_DEFAULTS.chart.automaticScale.maxIncrements): AxisScale {
+    const { borderRatio, wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
     let autoMinimum = fixed.kind !== "minimum";
     let autoMaximum = fixed.kind !== "maximum";
     let sourceMinimum = fixed.kind === "minimum" ? fixed.value : low;
@@ -99,7 +100,7 @@ export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBo
 
     // The intervals count from the fixed bound, so a fixed minimum of 7 draws 7, 12, 17 and not 10, 15.
     const base = !autoMinimum ? tempMinimum : !autoMaximum ? tempMaximum : 0;
-    let interval = automaticAxisInterval(tempMinimum, tempMaximum);
+    let interval = automaticAxisInterval(tempMinimum, tempMaximum, maxIncrements);
     let scale: AxisScale = { minimum: low, maximum: high, interval };
 
     // Each pass at least doubles the interval, so three passes reach one that fits.

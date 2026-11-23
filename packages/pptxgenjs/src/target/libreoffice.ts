@@ -235,6 +235,17 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     chartLegendListsUnfilledPoints: false,
     topRightLegend: { kind: "beside" as const },
     bar3DLabelHeightsPerStep: 1,
+    // ChartView lays a 2D chart out twice and scales its value axes again on the second pass, with at most as many
+    // steps as labels fit along the drawn axis (VCartesianAxis::estimateMaximumAutoMainIncrementCount, 2 to 10). Its
+    // gridlines in its 26.2 PDF export of 1018 synthetic column, line and area charts (8 to 28pt Arial, plot 40 to 400pt
+    // tall, data 3..7 to 120..870) fit the label height rounded to the nearest whole step with 37 misses, each within
+    // 0.3em of a threshold: 3, 5, 4, 7 at 10pt runs 0..8 by 2 on a 73pt axis and by 1 on an 86.5pt one. On 180 horizontal
+    // bar charts (10 and 18pt, plot 58 to 367pt wide) the step is the first scale's widest label width, floored:
+    // 0.3..0.9 at 10pt ("0.1", 13.7pt) steps by 0.2 on a 128pt axis and by 0.1 on a 139pt one, 230..770 at 18pt ("900",
+    // 30pt) by 500 on 126pt, 200 on 188pt and 100 on 297pt.
+    // shortcut: 12pt labels step a little sooner than the rule and a horizontal axis whose labels LibreOffice turns
+    // (under about 100pt wide at 10pt) steps otherwise; measure them when a deck needs them (#585).
+    valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1, rounding: 0.5 }, horizontal: { label: "width" as const, perStep: 1, rounding: 0 }, maxIncrements: 10 },
     bar3DNamesSingleSeries: false,
     bubbleValueLabelShowsSize: true,
     // Its PDF export of a bar and an area chart with showSerName and showValue prints "North; 7" (#477).

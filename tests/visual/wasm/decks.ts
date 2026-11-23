@@ -9,6 +9,7 @@ import {
     populateChartCategoryOptionFixture,
     populateChartDataTableFixture,
     populateChartPieBestFitFixture,
+    populateChartAutomaticScaleFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
     populateChartDataLabelFixture,
@@ -378,6 +379,16 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartPieBestFit: {
         populate: presentation => {
             populateChartPieBestFitFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartAutomaticScale: the shared fixture's automatic value-axis scale slide (#585, #548); every chart gets a crop.
+    chartAutomaticScale: {
+        populate: presentation => {
+            populateChartAutomaticScaleFixture(presentation);
 
             return presentation;
         },

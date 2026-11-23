@@ -232,6 +232,16 @@ export type RenderingTargetProfile = {
      */
     readonly bar3DLabelHeightsPerStep: number;
     /**
+     * How a 2D chart's automatic value axis fits its steps to the drawn axis (#585): at most `floor(length / (perStep ×
+     * label) + rounding)` steps, between 2 and `maxIncrements`, where `label` is the labels' height or the widest
+     * label's width, on a vertical axis and on a horizontal one (`NormalizedChartValueAxis.automaticScale.stepRoom`).
+     */
+    readonly valueAxisStepRoom: {
+        readonly vertical: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
+        readonly horizontal: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
+        readonly maxIncrements: number;
+    };
+    /**
      * Whether a bar3D chart with one unstacked series prints its name at the depth axis, or no depth label
      * (`NormalizedChart.namesSingleDepthSlot`).
      */

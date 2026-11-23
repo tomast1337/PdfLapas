@@ -242,7 +242,16 @@ const valueAxis = z.strictObject({
     minorTickMark: tickMark,
     majorUnit: finite.optional(),
     reversed: z.boolean().optional(),
-    automaticScale: z.strictObject({ low: finite, high: finite, fixedMinimum: z.boolean(), fixedMaximum: z.boolean(), labelHeightsPerStep: z.number().positive().optional() }).optional(),
+    automaticScale: z
+        .strictObject({
+            low: finite,
+            high: finite,
+            fixedMinimum: z.boolean(),
+            fixedMaximum: z.boolean(),
+            labelHeightsPerStep: z.number().positive().optional(),
+            stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
+        })
+        .optional(),
     logScaleBase: finite.optional(),
     categoryAxisCrossing: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("min") }), z.strictObject({ kind: z.literal("max") }), z.strictObject({ kind: z.literal("value"), value: finite })]).optional(),
     displayUnit: z.strictObject({ divisor: z.number().positive(), label: z.string().optional() }).optional(),

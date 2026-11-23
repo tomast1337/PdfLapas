@@ -221,13 +221,18 @@ export function normalizeTextRun(
         }
     }
 
+    // A zigzag line in band thicknesses (UnderlineShape.zigzagLine): the run's own band at its drawn size, in px.
+    const zigzagLinePx = underlineShape?.zigzagLine !== undefined && underlineBand ? underlineShape.zigzagLine * underlineBand.thickness * (escapement === undefined ? fontSize : fontSize * RENDERING_TARGETS[target].escapementSizeRatio) : undefined;
     const decoration: NormalizedTextRun["decoration"] = {
         underline: underlined,
         underlineStyle,
         underlineColor,
         ...(underlineShape
             ? {
-                  underlineShape: { ...(underlineBand ? { band: underlineBand } : {}), pieces: underlineShape.pieces },
+                  underlineShape: {
+                      ...(underlineBand ? { band: underlineBand } : {}),
+                      pieces: zigzagLinePx === undefined ? underlineShape.pieces : underlineShape.pieces.map(piece => (piece.kind === "zigzag" ? { ...piece, thickness: zigzagLinePx } : piece)),
+                  },
                   ...(decorationRules.bands.kind === "font" ? { underlineLineBand: true } : {}),
               }
             : {}),

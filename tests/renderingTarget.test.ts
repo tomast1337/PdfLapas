@@ -769,7 +769,10 @@ describe("rendering targets", () => {
         const presentation = new PuppeteerGenPowerPoint();
 
         presentation.addSlide().addText("lorem‑ipsum", { x: 1, y: 1, w: 3, h: 1 });
-        expect((await presentation.toHtml()).html).toMatch(/<span class="text-run" data-non-breaking-hyphen="hyphen-minus" style="[^"]*"[^>]*>lorem‑ipsum<\/span>/);
+        const marked = /<span class="text-run" data-non-breaking-hyphen="hyphen-minus" style="[^"]*"[^>]*>((?:<span style="letter-spacing: [^"]*;">[^<]*<\/span>)+)<\/span>/.exec((await presentation.toHtml()).html);
+
+        // Calibri's kern pairs cut the word into word spans (#577); together they hold the run's text.
+        expect(marked?.[1]?.replace(/<[^>]*>/g, "")).toBe("lorem‑ipsum");
     });
 
     // PptxGenJS writes <a:innerShdw> well-formed in a picture's <p:spPr>; LibreOffice 26.2's PDF export shows the bare picture.

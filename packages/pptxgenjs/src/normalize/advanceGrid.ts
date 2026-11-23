@@ -1,5 +1,5 @@
 // The PowerPoint target's advance grid (RENDERING_TARGETS.advanceGridPt) as letter-spacing on each word of a run.
-import { LAYOUT_UNITS_PER_PX, pointsToPixels } from "@pdflapas/model";
+import { LAYOUT_UNITS_PER_PX, type NormalizedWordPiece, pointsToPixels } from "@pdflapas/model";
 import type { GlyphAdvances } from "#src/defaults";
 
 /**
@@ -8,7 +8,7 @@ import type { GlyphAdvances } from "#src/defaults";
  */
 export type WordSpacing = {
     readonly space: number;
-    readonly words: readonly number[];
+    readonly words: readonly (number | readonly NormalizedWordPiece[])[];
     readonly spaces?: readonly number[];
 };
 
@@ -24,7 +24,7 @@ export type GridSpacing = { kind: "grid"; spacing: WordSpacing } | { kind: "natu
 export type GridCursor = {
     rounded: number;
     laidOut: number;
-    word?: number | undefined;
+    word?: readonly NormalizedWordPiece[] | undefined;
 };
 
 /** Whether `piece` (`runPieces`) is a stretch of spaces, which `WordSpacing.spaces` spaces: no word, no tab. */
@@ -112,6 +112,36 @@ export function wordAfter(text: string): string {
     return end < 0 ? text : text.slice(0, end + 1);
 }
 
+/** `pieces` cut after their first `characters` characters: the pieces before, and those after; a piece across the cut is in both. */
+function cutPieces(pieces: readonly NormalizedWordPiece[], characters: number): { before: NormalizedWordPiece[]; after: NormalizedWordPiece[] } {
+    const before: NormalizedWordPiece[] = [];
+    const after: NormalizedWordPiece[] = [];
+    let at = 0;
+
+    for (const piece of pieces) {
+        const inBefore = Math.min(piece.characters, Math.max(0, characters - at));
+
+        if (inBefore > 0) {
+            before.push({ characters: inBefore, spacing: piece.spacing });
+        }
+
+        if (inBefore < piece.characters) {
+            after.push({ characters: piece.characters - inBefore, spacing: piece.spacing });
+        }
+
+        at += piece.characters;
+    }
+
+    return { before, after };
+}
+
+/** A word's pieces as `WordSpacing.words` holds them: one number when it is not cut. */
+function wordEntry(pieces: readonly NormalizedWordPiece[]): number | readonly NormalizedWordPiece[] {
+    const [piece, ...others] = pieces;
+
+    return piece !== undefined && !others.length ? piece.spacing : pieces;
+}
+
 const floorLayoutUnit = (width: number) => Math.floor(width * LAYOUT_UNITS_PER_PX + FLOAT_NOISE) / LAYOUT_UNITS_PER_PX;
 const ceilLayoutUnit = (width: number) => Math.ceil(width * LAYOUT_UNITS_PER_PX - FLOAT_NOISE) / LAYOUT_UNITS_PER_PX;
 const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_DIGITS;
@@ -144,11 +174,11 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * powerpoint.ts). Kerning is the `kern` table's (GlyphAdvances.kerning), the only one PowerPoint reads, and the
  * renderers draw every run on the grid unkerned (`font-kerning: none`, normalize/text.ts): they would kern from GPOS,
  * which differs from the `kern` table in Calibri Light, Constantia and Cambria and leaves Segoe UI and Palatino
- * Linotype unkerned (#399). So a word's letter-spacing carries each pair whose left character is in it, spread over its
- * characters, and a pair whose left glyph is a space goes to the spaces' own span (`spaces`): the word ends where
+ * Linotype unkerned (#399). So a word's letter-spacing carries each pair whose left character is in it, and a pair whose left glyph is a space goes to the spaces' own span (`spaces`): the word ends where
  * PowerPoint's does, and the spaces before Arial's " T" take that pair.
- * shortcut: inside a word each pair is spread over the word's characters, so a glyph between its start and end sits up
- * to the word's kerning off PowerPoint's (word starts match); split the word at its pairs if a deck shows it.
+ * Each pair's left character is a piece of the word of its own, a span whose letter-spacing carries the pair, so every
+ * glyph sits where PowerPoint's does to a LayoutUnit: with the pairs spread over the word, a glyph inside a 48pt word sat up to 4.3pt
+ * (Arial "P.A.V."), 4.6pt (Times New Roman "WAV") or 5.5pt (Segoe UI) off PowerPoint's (#577).
  * A glyph that several code points map is kerned only as the last of them, and as the space, as PowerPoint does
  * (readGlyphAdvances, #539): Segoe UI's "(j" and Palatino Linotype's "Y-" are not kerned.
  * The sums run on across the runs of a paragraph through `cursor`: started again at each run, they added up to a
@@ -157,10 +187,10 @@ const spacing = (value: number) => Math.round(value * SPACING_DIGITS) / SPACING_
  * sets `cursor` back to 0, as a tab and a soft break do.
  * `after` is the text of the next runs that PowerPoint kerns with this one (same face, size, weight and style, kerned),
  * up to `wordAfter`. A pair across the run edge is kerned like one inside the run, on its left character's piece (#398).
- * A word that goes on into `after` is laid out as one word: each of its characters, in this run and the next, takes one
- * letter-spacing (`cursor.word`), which carries the pair at the run edge with the others, and Chromium, whose font
- * includes the letter-spacing, shapes it across the spans. With the sums floored at each run's end instead, the spans'
- * letter-spacings differed by a LayoutUnit, and the pair, counted in neither sum, went unkerned. A word does not go on from Han or full-width
+ * A word that goes on into `after` is laid out as one word, cut at its pairs as one: the next run takes the pieces past
+ * this run's characters (`cursor.word`), a piece across the edge on both sides with its letter-spacing, which carries the
+ * pair at the run edge with the others. With the sums floored at each run's end instead, the spans' letter-spacings
+ * differed by a LayoutUnit, and the pair, counted in neither sum, went unkerned. A word does not go on from Han or full-width
  * marks into other characters or back (`fullWidthStretches`), nor into a mark that hangs (normalize/text.ts).
  * shortcut: a break inside a word (after a hyphen, or between Han characters, also at a run boundary) sees the word's
  * spacing spread evenly, its start up to a LayoutUnit before PowerPoint's; spread it by character when a deck shows
@@ -212,7 +242,7 @@ export function advanceGridWordSpacing(text: string, sizePt: number, font: Glyph
     // Each space is laid out one LayoutUnit wider than its rounded advance, rounded up, and a little under that.
     const spaceWidth = ceilLayoutUnit(space.rounded + charSpacing) + LAYOUT_UNIT;
     const spaceSpacing = spaceWidth - UNDER_LAYOUT_UNIT - space.natural;
-    const words: number[] = [];
+    const words: (number | readonly NormalizedWordPiece[])[] = [];
     // `rounded`: PowerPoint's width of the paragraph so far; `laidOut`: the profile's, on whole LayoutUnits.
     let { rounded, laidOut } = cursor;
     const spaces: number[] = [];
@@ -254,9 +284,11 @@ export function advanceGridWordSpacing(text: string, sizePt: number, font: Glyph
 
         if (index === 0 && continued !== undefined && isWord(piece.join(""))) {
             // The rest of a word an earlier run started: the sums already end with it.
-            words.push(continued);
-            if (last && goesOn) {
-                cursor.word = continued;
+            const { before, after: rest } = cutPieces(continued, piece.length);
+
+            words.push(wordEntry(before));
+            if (last && goesOn && rest.length) {
+                cursor.word = rest;
             }
 
             continue;
@@ -293,25 +325,56 @@ export function advanceGridWordSpacing(text: string, sizePt: number, font: Glyph
 
             laidOut += stretch;
         } else {
-            // The renderers draw the word unkerned: its letter-spacing carries its pairs.
+            // The renderers draw the word unkerned: its letter-spacing carries its pairs. Each pair's left character is
+            // a piece of its own, the pair in its letter-spacing, so the pair moves only the glyphs after it, as
+            // PowerPoint's does: each piece but the last ends where the rounded advances and pairs so far do, floored to
+            // a LayoutUnit, as a word does. No break opportunity is added, so the word's start and end, and the lines,
+            // stay as they were.
+            const wordPieces: NormalizedWordPiece[] = [];
             let natural = 0;
+            let count = 0;
+            let start = laidOut;
             let roundedSum = 0;
+            let pairs = 0;
+            // Ends the piece so far where the word's sums are now.
+            const cut = () => {
+                const end = floorLayoutUnit(rounded + pairs + roundedSum);
 
-            for (const character of characters) {
+                wordPieces.push({ characters: count, spacing: spacing((end - start - UNDER_LAYOUT_UNIT - natural) / count) });
+                start = end;
+                natural = 0;
+                count = 0;
+            };
+
+            for (const [at, character] of characters.entries()) {
                 const advanced = advance(character);
+                const last = at === characters.length - 1;
+                const pair = last ? edge : kern(character, characters[at + 1]);
+
+                if (pair !== 0 && count > 0) {
+                    cut();
+                }
 
                 natural += advanced.natural;
+                count += 1;
                 roundedSum = roundedSum + advanced.rounded + charSpacing;
+                if (pair !== 0 && !last) {
+                    pairs += pair;
+                    cut();
+                }
             }
 
             rounded += inner + edge + roundedSum;
             const step = offStep(rounded);
             const end = step.kind === "on" ? floorLayoutUnit(rounded) : Math.max(floorLayoutUnit(rounded), step.step + PAST_STEP);
-            const wordSpacing = spacing((end - laidOut - UNDER_LAYOUT_UNIT - natural) / characters.length);
 
-            words.push(wordSpacing);
+            wordPieces.push({ characters: count, spacing: spacing((end - start - UNDER_LAYOUT_UNIT - natural) / count) });
+            // A word that goes on into the next run leaves it the pieces past this run's characters.
+            const { before, after: rest } = cutPieces(wordPieces, piece.length);
+
+            words.push(wordEntry(before));
             if (joins) {
-                cursor.word = wordSpacing;
+                cursor.word = rest;
             }
 
             laidOut = end;

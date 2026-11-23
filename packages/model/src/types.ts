@@ -148,6 +148,12 @@ export type NormalizedTextLink = {
     slide?: number;
 };
 
+/** A piece of a word (`NormalizedTextRun.wordCharacterSpacing`): its length in code points and its letter-spacing in px. */
+export type NormalizedWordPiece = {
+    characters: number;
+    spacing: number;
+};
+
 export type NormalizedTextRun = {
     text: string;
     fontFace: string;
@@ -167,9 +173,11 @@ export type NormalizedTextRun = {
     /**
      * The extra advance in px inside each word of `text`, in order, in place of `characterSpacing`, which then spaces
      * only its spaces and tabs: the PowerPoint target's advance grid word by word. A word is a stretch of `text`
-     * without a space (U+0020) or tab. Omitted: `characterSpacing` spaces every character.
+     * without a space (U+0020) or tab. A word split at its kern pairs (PowerPoint kerns each pair on its own left
+     * glyph) has its pieces instead, in order, together covering the word. Omitted: `characterSpacing` spaces every
+     * character.
      */
-    wordCharacterSpacing?: readonly number[];
+    wordCharacterSpacing?: readonly (number | readonly NormalizedWordPiece[])[];
     /**
      * The extra advance in px on each stretch of spaces between words of `text` (a tab ends one), in order, in place
      * of `characterSpacing`: the PowerPoint target's pairs kerned on a space (Arial's " T") and spaces ending off its grid,

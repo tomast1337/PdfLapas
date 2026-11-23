@@ -195,7 +195,12 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * -37 units of 2048) where Calibri does not, and Chromium and the WASM renderer drop a pair across a word span's
  * edge, so Arial's words drifted right by those pairs (+2.4pt over the line at 12pt, +7.2pt at 36pt, Calibri within
  * 0.13pt); the piece of each pair's left character takes it now (`advanceGridWordSpacing`), and both renderers put
- * Arial's word starts within 0.13pt of PowerPoint's at every size. A pair belongs to its left glyph's advance when a
+ * Arial's word starts within 0.13pt of PowerPoint's at every size. Inside a word each pair is on its left glyph too:
+ * measured against its PDF export of a synthetic deck ("AVAVAV WAVY LATTE Tyyo P.A.V." at 48pt in Arial, Times New
+ * Roman, Calibri and Segoe UI, margin 0), every glyph sits at the rounded advances plus the pairs before it within
+ * 0.36pt. With a word's pairs spread over its characters, glyphs inside it were up to 4.3pt (Arial), 4.6pt (Times New
+ * Roman), 3.9pt (Calibri) and 5.5pt (Segoe UI) off; each pair's left glyph is now a piece of its own
+ * (`advanceGridWordSpacing`), and Chromium, the WASM renderer and PDFKit put every glyph within 0.36pt (#577). A pair belongs to its left glyph's advance when a
  * line breaks: measured against its PDF export of a synthetic deck ("Lorem ipsum AVAVA xo" and "... AVAVA To" in
  * Arial at 12 and 18pt, boxes from 0.7pt under the line's width to 0.05pt over it plus "A " and " T"), "A " at the
  * line's end counts in its width, and " T" leaves with the trailing space: the target breaks those 12 boxes as

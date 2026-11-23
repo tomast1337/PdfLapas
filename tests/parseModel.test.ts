@@ -111,11 +111,33 @@ describe("parseModel()", () => {
         expect(rejection(spacing, [0.1, 0.2]).message).toContain("runs[0].wordCharacterSpacing: ");
         expect(rejection(spacing, []).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].wordCharacterSpacing");
         expect(rejection(spacing, [Number.NaN]).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].wordCharacterSpacing[0]");
+        // A word cut at its kern pairs: its pieces cover its characters.
+        expect(rejection(spacing, [[{ characters: 1, spacing: 0.1 }]]).message).toContain("must cover the word");
+        expect(rejection(spacing, [[{ characters: 0, spacing: 0.1 }]]).message).toContain("runs[0].wordCharacterSpacing[0]");
         // "Hi" has no stretch of spaces, and space letter-spacing comes only with word letter-spacing.
         const spaces = ["slides", 0, "objects", 0, "text", "paragraphs", 0, "runs", 0, "spaceCharacterSpacing"] as const;
 
         expect(rejection(spaces, [0.1]).message).toContain("runs[0].spaceCharacterSpacing: ");
         expect(rejection(spaces, []).message).toContain("comes with wordCharacterSpacing");
+    });
+
+    test("writes a word cut at its kern pairs as a word span per piece, side by side", async () => {
+        const model = smallModel() as { slides: { objects: { text: { paragraphs: { runs: Json[] }[] } }[] }[] };
+        const run = model.slides[0]?.objects[0]?.text.paragraphs[0]?.runs[0];
+
+        if (!run) {
+            throw new Error("the small model has no run");
+        }
+
+        run.wordCharacterSpacing = [
+            [
+                { characters: 1, spacing: -0.5 },
+                { characters: 1, spacing: 0.25 },
+            ],
+        ];
+        const { html } = await modelToHtml(parseModel(model), { createDocument: createNodeDocument });
+
+        expect(html).toContain('<span style="letter-spacing: -0.5px;">H</span><span style="letter-spacing: 0.25px;">i</span>');
     });
 
     test("modelToHtml() checks its input; the error names the path", async () => {

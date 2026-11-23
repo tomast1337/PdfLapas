@@ -253,7 +253,23 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox): { attribu
                         throw new Error(`A text run has ${spacings.length} wordCharacterSpacing values but more words: "${run.text}"; give one value per word`);
                     }
 
-                    pieces.push(span(spacing, piece));
+                    if (typeof spacing === "number") {
+                        pieces.push(span(spacing, piece));
+                        continue;
+                    }
+
+                    // A word split at its kern pairs: a span per piece, side by side, so no break opportunity is added.
+                    const characters = [...piece];
+                    let at = 0;
+
+                    for (const wordPiece of spacing) {
+                        pieces.push(span(wordPiece.spacing, characters.slice(at, at + wordPiece.characters).join("")));
+                        at += wordPiece.characters;
+                    }
+
+                    if (at !== characters.length) {
+                        throw new Error(`A text run's word "${piece}" has pieces of ${at} characters in wordCharacterSpacing; give pieces that cover its ${characters.length}`);
+                    }
                 }
 
                 runContent = pieces;

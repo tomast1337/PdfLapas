@@ -86,7 +86,7 @@ function inheritedOptions(parent: PptxGenJS.TextPropsOptions, child: PptxGenJS.T
  * whose advances in the run's weight and style are read with no `kern` pairs, is drawn unkerned.
  * shortcut: a face whose advances are not read (its font is not readable) and whose `pairKerning` is not false is
  * kerned, so the renderers kern it from GPOS where PowerPoint may not; pass its advances or `pairKerning` when a deck
- * uses one.
+ * uses one. Whether to default to unkerned instead is #607.
  */
 function kerned(options: PptxGenJS.TextPropsOptions, target: RenderingTarget, fontMetrics: FontMetricsLookup): boolean {
     if (!RENDERING_TARGETS[target].readsKern) {
@@ -278,7 +278,7 @@ export function normalizeTextRun(
         const gridSpacing = grid.spacing;
         const [word, ...others] = gridSpacing.words;
 
-        if (word !== undefined && !others.length && runPieces(text).length === 1) {
+        if (typeof word === "number" && !others.length && runPieces(text).length === 1) {
             spacing = { characterSpacing: word };
         } else if (!gridSpacing.words.length && !gridSpacing.spaces) {
             spacing = { characterSpacing: gridSpacing.space };

@@ -10,7 +10,7 @@ import { advanceGridWordSpacing, isWord, runPieces, type WordSpacing, wordAfter 
 import { floorTextWrapWidth, normalizeText } from "../packages/pptxgenjs/src/normalize/text";
 import { installedAdvances } from "./installedFonts";
 import { PRINT_ZOOM, printHtml } from "../packages/puppeteer/src/printWorkarounds";
-import { inchesToPixels, LAYOUT_UNITS_PER_PX, type NormalizedTextBox, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
+import { inchesToPixels, LAYOUT_UNITS_PER_PX, type NormalizedTextBox, type NormalizedWordPiece, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
 import { type BoxFloorCase, boxFloorCases, boxFloorDeck, contextFloorCases } from "./boxFloorCases";
 import { kernWrapCases, kernWrapDeck } from "./kernWrapCases";
 import { wrapLimitCases, wrapLimitDeck } from "./wrapLimitCases";
@@ -38,6 +38,15 @@ function wordSpacing(...args: Parameters<typeof advanceGridWordSpacing>): WordSp
     }
 
     return spacing.spacing;
+}
+
+/** The letter-spacing of a word that is not cut at a kern pair (`WordSpacing.words`). */
+function whole(spacing: number | readonly NormalizedWordPiece[] | undefined): number {
+    if (typeof spacing !== "number") {
+        throw new Error(`a word cut at its kern pairs or missing: ${JSON.stringify(spacing)}`);
+    }
+
+    return spacing;
 }
 
 /** A resolver's result for `advances`; `unknown` without. */
@@ -111,13 +120,21 @@ const CMAP_FORMAT_4 = words(0, 1, 3, 1, 0, 12, 4, 42, 0, 6, 4, 1, 2, 66, 67, 0xf
 // cmap with one (3,10) format 12 subtable: U+1F600-U+1F601 to glyphs 4 and 5.
 const CMAP_FORMAT_12 = words(0, 1, 3, 10, 0, 12, 12, 0, 0, 28, 0, 0, 0, 1, 0x1, 0xf600, 0x1, 0xf601, 0, 4);
 
-// Arial's advances (space 569, "A" 1366, "T" 1251, "o" 1139) and kern pairs "A " -113, " T" -37 and "To" -227.
+// Arial's advances (space 569, "A" and "V" 1366, "T" 1251, "o" 1139) and kern pairs "A " -113, " T" -37, "To" -227,
+// "AV" and "VA" -152.
 const codePoint = (character: string) => character.codePointAt(0) ?? 0;
 const KERNED: GlyphAdvances = {
     unitsPerEm: 2048,
-    advances: new Map([..." ATo"].map((character, index) => [codePoint(character), [569, 1366, 1251, 1139][index] ?? 0])),
+    advances: new Map([..." AToV"].map((character, index) => [codePoint(character), [569, 1366, 1251, 1139, 1366][index] ?? 0])),
     kerning: new Map([
-        [codePoint("A"), new Map([[codePoint(" "), -113]])],
+        [
+            codePoint("A"),
+            new Map([
+                [codePoint(" "), -113],
+                [codePoint("V"), -152],
+            ]),
+        ],
+        [codePoint("V"), new Map([[codePoint("A"), -152]])],
         [codePoint(" "), new Map([[codePoint("T"), -37]])],
         [codePoint("T"), new Map([[codePoint("o"), -227]])],
     ]),
@@ -129,6 +146,25 @@ describe("advanceGridWordSpacing", () => {
     const natural = (units: number) => pointsToPixels((units * 8) / 2048);
     /** The profile's width of a piece laid out with `spacing` after each of its `count` characters: rounded up to a LayoutUnit. */
     const laidOut = (naturalPx: number, count: number, spacing: number) => Math.ceil((naturalPx + count * spacing) * LAYOUT_UNITS_PER_PX) / LAYOUT_UNITS_PER_PX;
+    /** The profile's width of a word of `naturals` (px per character) laid out with its `WordSpacing.words` entry: each piece rounded up to a LayoutUnit. */
+    const wordLaidOut = (naturals: readonly number[], spacing: number | readonly NormalizedWordPiece[] | undefined) => {
+        const pieces = typeof spacing === "number" ? [{ characters: naturals.length, spacing }] : (spacing ?? [{ characters: naturals.length, spacing: Number.NaN }]);
+        let at = 0;
+        let width = 0;
+
+        for (const piece of pieces) {
+            let naturalPx = 0;
+
+            for (const advance of naturals.slice(at, at + piece.characters)) {
+                naturalPx += advance;
+            }
+
+            width += laidOut(naturalPx, piece.characters, piece.spacing);
+            at += piece.characters;
+        }
+
+        return width;
+    };
 
     test("is PowerPoint's 1/576 in grid on the PowerPoint target and none on LibreOffice", () => {
         expect(GRID).toBe(0.125);
@@ -151,11 +187,11 @@ describe("advanceGridWordSpacing", () => {
         const [a, i] = spacing.words;
 
         // "a" rounds to 4.5pt, 6 px, a whole number of LayoutUnits; laid out 1/16 LayoutUnit under it.
-        expect(laidOut(natural(1139), 1, a ?? 0)).toBe(6);
+        expect(laidOut(natural(1139), 1, whole(a))).toBe(6);
         // The space rounds to 2.25pt, 3 px, and is laid out a LayoutUnit wider.
         expect(laidOut(natural(569), 1, spacing.space)).toBe(3 + LAYOUT_UNIT);
         // "i" rounds to 1.75pt: the run's rounded 8.5pt (11.333 px) floored to 725/64, less what "a" and the space took.
-        expect(laidOut(natural(455), 1, i ?? 0)).toBe(725 / 64 - 6 - (3 + LAYOUT_UNIT));
+        expect(laidOut(natural(455), 1, whole(i))).toBe(725 / 64 - 6 - (3 + LAYOUT_UNIT));
     });
 
     const font = installedAdvances("Arial", false, false);
@@ -197,7 +233,7 @@ describe("advanceGridWordSpacing", () => {
                 const rounded = pointsToPixels(roundedPt);
                 const naturalPx = pointsToPixels(naturalPt);
 
-                return { word: isWord(piece), rounded, laidOut: laidOut(naturalPx, characters.length, isWord(piece) ? (spacing.words[word++] ?? Number.NaN) : spacing.space) };
+                return { word: isWord(piece), rounded, laidOut: laidOut(naturalPx, characters.length, isWord(piece) ? whole(spacing.words[word++]) : spacing.space) };
             });
 
             expect(word).toBe(spacing.words.length);
@@ -258,16 +294,18 @@ describe("advanceGridWordSpacing", () => {
                 let inner = 0;
                 let advancesPx = 0;
                 let roundedPx = 0;
+                const naturals: number[] = [];
 
                 for (const [at, character] of characters.entries()) {
                     inner += kern(characters[at - 1], character);
+                    naturals.push(units(font.advances.get(code(character)) ?? 0));
                     advancesPx += units(font.advances.get(code(character)) ?? 0);
                     roundedPx += pointsToPixels(Math.round(((font.advances.get(code(character)) ?? 0) * fontSize) / font.unitsPerEm / GRID) * GRID);
                 }
 
                 const edge = kern(characters.at(-1), pieces[index + 1]?.[0]);
                 // The renderers draw the run unkerned: the letter-spacing carries its pairs.
-                const width = laidOut(advancesPx, characters.length, isWord(piece) ? (spacing.words[word] ?? Number.NaN) : (spacing.spaces?.[stretch] ?? spacing.space));
+                const width = isWord(piece) ? wordLaidOut(naturals, spacing.words[word]) : laidOut(advancesPx, characters.length, spacing.spaces?.[stretch] ?? spacing.space);
                 const start = { rounded, laid };
 
                 rounded += inner + edge + roundedPx;
@@ -316,13 +354,49 @@ describe("advanceGridWordSpacing", () => {
             // " T" starts on the space, which takes it in a span of its own; unkerned, the space keeps the run's.
             expect(spacing.spaces?.length ?? 0).toBe(kerned ? 1 : 0);
             // The renderers draw every pair unkerned (font-kerning: none): the letter-spacing carries "To" too.
-            const start = laidOut(em(1366), 1, a ?? 0) + laidOut(em(569), 1, spacing.spaces?.[0] ?? spacing.space);
-            const end = start + laidOut(em(1251) + em(1139), 2, to ?? 0);
+            const start = laidOut(em(1366), 1, whole(a)) + laidOut(em(569), 1, spacing.spaces?.[0] ?? spacing.space);
+            const end = start + wordLaidOut([em(1251), em(1139)], to);
             const powerPointStart = rounded(1366) + rounded(569) + pair(-113 - 37);
             const powerPointEnd = powerPointStart + rounded(1251) + rounded(1139) + pair(-227);
 
             expect({ kerned, start: start - powerPointStart < 3 * LAYOUT_UNIT && start >= powerPointStart }).toEqual({ kerned, start: true });
             expect({ kerned, end: powerPointEnd - end < 3 * LAYOUT_UNIT && end <= powerPointEnd + 1e-9 }).toEqual({ kerned, end: true });
+            // Kerned, "T" is a piece of its own, so "o" starts where PowerPoint's does, its pair on "T" (#577); unkerned, "To" is one span.
+            expect({ kerned, cut: typeof to !== "number" }).toEqual({ kerned, cut: kerned });
+            if (typeof to !== "number") {
+                const o = start + wordLaidOut([em(1251)], to?.slice(0, 1));
+                const powerPointO = powerPointStart + rounded(1251) + pair(-227);
+
+                expect(o - powerPointO).toBeLessThan(3 * LAYOUT_UNIT);
+                expect(o - powerPointO).toBeGreaterThan(-LAYOUT_UNIT);
+            }
+        }
+    });
+
+    // Measured against PowerPoint's PDF export (#577): inside a 48pt word each glyph sits at the rounded advances plus
+    // the pairs before it, each pair on its left glyph.
+    test("starts each glyph of a kerned word within a LayoutUnit of PowerPoint's, each pair's left glyph a piece of its own", () => {
+        const size = 48;
+        const em = (units: number) => pointsToPixels((units * size) / 2048);
+        const rounded = (units: number) => pointsToPixels(Math.round((units * size) / 2048 / GRID) * GRID);
+        const text = "AVATo";
+        const advances = [1366, 1366, 1366, 1251, 1139];
+        const pairs = [-152, -152, 0, -227, 0];
+        const pieces = wordSpacing(text, size, KERNED, GRID, 0, true).words[0];
+
+        if (typeof pieces === "number" || pieces === undefined) {
+            throw new Error(`${text} is not cut at its pairs`);
+        }
+
+        // "A", "V", "A" ("AV", "VA"), then "T" ("To") alone, so "A" before it is one too, and "o".
+        expect(pieces.map(piece => piece.characters)).toEqual([1, 1, 1, 1, 1]);
+        let laid = 0;
+        let powerPoint = 0;
+
+        for (const [at, piece] of pieces.entries()) {
+            expect({ at, within: laid - powerPoint > -LAYOUT_UNIT - 1e-9 && laid - powerPoint <= 1e-9 }).toEqual({ at, within: true });
+            laid += laidOut(em(advances[at] ?? 0), 1, piece.spacing);
+            powerPoint += rounded(advances[at] ?? 0) + em(pairs[at] ?? 0);
         }
     });
 
@@ -332,21 +406,41 @@ describe("advanceGridWordSpacing", () => {
         const pair = (units: number) => pointsToPixels((units * 12) / 2048);
 
         // "A " (-113 units at 12pt) narrows "A", the line's end were it to break there; " T" (-37) narrows the space.
-        expect((spacing?.words[0] ?? 0) - (unkerned?.words[0] ?? 0)).toBeCloseTo(pair(-113), 1);
+        expect(whole(spacing?.words[0]) - whole(unkerned?.words[0])).toBeCloseTo(pair(-113), 1);
         expect((spacing?.spaces?.[0] ?? 0) - (unkerned?.space ?? 0)).toBeCloseTo(pair(-37), 1);
-        expect(spacing?.words[1]).toBeCloseTo(unkerned?.words[1] ?? Number.NaN, 1);
+        expect(whole(spacing?.words[1])).toBeCloseTo(whole(unkerned?.words[1]), 1);
     });
 
-    test("gives a word split across kerned runs one letter-spacing, and kerns a pair across the run edge as inside one run", () => {
-        const whole = wordSpacing("AVA To", 24, KERNED, GRID, 0, true);
+    test("cuts a word split across kerned runs at its pairs as in one run, and kerns a pair across the run edge as inside one run", () => {
+        const one = wordSpacing("AVA To", 24, KERNED, GRID, 0, true);
         const cursor = { rounded: 0, laidOut: 0 };
         const split = ["A", "V", "A ", "To"].map((text, index, texts) => wordSpacing(text, 24, KERNED, GRID, 0, true, cursor, wordAfter(texts.slice(index + 1).join(""))));
+        const pieces = one?.words[0];
 
-        // Every piece of "AVA" takes the whole word's spacing, so Chromium shapes it across the spans and kerns "AV" and "VA".
-        expect(split.slice(0, 3).map(spacing => spacing?.words[0])).toEqual([whole?.words[0], whole?.words[0], whole?.words[0]]);
+        // "AVA" is cut around each pair's left glyph ("AV", "VA", "A "): each run takes its piece of the word in one run.
+        expect(typeof pieces === "number" ? [] : pieces?.map(piece => piece.characters)).toEqual([1, 1, 1]);
+        expect(split.slice(0, 3).map(spacing => spacing?.words[0])).toEqual(typeof pieces === "number" ? [] : (pieces?.map(piece => piece.spacing) ?? []));
         // " T", across the edge after "A ", is on the space as in one run, and "To" ends where it does in one run.
-        expect(split[2]?.spaces).toEqual(whole?.spaces ?? []);
-        expect(split[3]?.words).toEqual(whole?.words.slice(1) ?? []);
+        expect(split[2]?.spaces).toEqual(one?.spaces ?? []);
+        expect(split[3]?.words).toEqual(one?.words.slice(1) ?? []);
+    });
+
+    test("cuts a piece that crosses a run edge in two of the same letter-spacing", () => {
+        const one = wordSpacing("AToo", 24, KERNED, GRID, 0, true);
+        const cursor = { rounded: 0, laidOut: 0 };
+        const split = ["ATo", "o"].map((text, index, texts) => wordSpacing(text, 24, KERNED, GRID, 0, true, cursor, wordAfter(texts.slice(index + 1).join(""))));
+        const pieces = one?.words[0];
+
+        if (typeof pieces === "number" || pieces === undefined) {
+            throw new Error("AToo is not cut at its pair");
+        }
+
+        // "AToo" is cut around "T" ("To"): "oo" crosses the edge after "ATo", and each side keeps its letter-spacing.
+        expect(pieces.map(piece => piece.characters)).toEqual([1, 1, 2]);
+        const oo = pieces[2];
+
+        expect(split[0]?.words[0]).toEqual([...pieces.slice(0, 2), { characters: 1, spacing: oo?.spacing ?? Number.NaN }]);
+        expect(split[1]?.words[0]).toBe(oo?.spacing ?? Number.NaN);
     });
 
     test("spaces a stretch of spaces with no pair as the run, and leaves a tab's neighbours unkerned", () => {
@@ -504,7 +598,7 @@ describe("resolveGlyphAdvances option", () => {
 
         expect(runs?.[1]?.wordCharacterSpacing).toEqual(words("i a i")?.slice(2) ?? []);
         // At 7pt "i a" ends off a LayoutUnit: carried on, the "a" after it would take another spacing.
-        expect(runs?.[3]?.characterSpacing).toBe(words("a")?.[0] ?? Number.NaN);
+        expect(runs?.[3]?.characterSpacing).toBe(whole(words("a")?.[0]));
     });
 
     test("lays the PowerPoint target's words out on the grid as letter-spacing, composed with charSpacing", () => {
@@ -730,8 +824,9 @@ describe("a kerned run on the PowerPoint grid in Chromium", () => {
     const SIZES = [12, 18, 36];
 
     // From 12pt PowerPoint puts each word at the run's advances rounded to the grid plus every kern pair unrounded,
-    // "A " and " T" too, which Chromium leaves out across a word span's edge.
-    test.skipIf(!font?.kerning?.size)("starts each word where PowerPoint's rounded advances and kern pairs put it, with the installed Arial", async () => {
+    // "A " and " T" too, which Chromium leaves out across a word span's edge, and each glyph after a pair inside a word
+    // at the pair on its left glyph (#577): the word is cut there, a span per piece.
+    test.skipIf(!font?.kerning?.size)("starts each word, and each glyph after a pair inside one, where PowerPoint's rounded advances and kern pairs put it, with the installed Arial", async () => {
         if (!font) {
             throw new Error("unreachable: skipped without Arial");
         }
@@ -769,20 +864,27 @@ describe("a kerned run on the PowerPoint grid in Chromium", () => {
             const expected: number[] = [];
             let x = 0;
 
+            const pair = (left: string | undefined, right: string | undefined) => units(left === undefined || right === undefined ? 0 : (font.kerning?.get(left.codePointAt(0) ?? 0)?.get(right.codePointAt(0) ?? 0) ?? 0));
+            // Whether each expected start is a word's (else a piece's after a pair inside a word).
+            const wordStarts: boolean[] = [];
+
             for (const [at, character] of characters.entries()) {
-                if (character !== " " && (at === 0 || characters[at - 1] === " ")) {
+                const previous = characters[at - 1];
+                const wordStart = at === 0 || previous === " ";
+
+                if (character !== " " && (wordStart || pair(previous, character) !== 0)) {
                     expected.push(pointsToPixels(x));
+                    wordStarts.push(wordStart);
                 }
 
-                const next = characters[at + 1];
-
-                x += Math.round(units(font.advances.get(character.codePointAt(0) ?? 0) ?? 0) / GRID) * GRID + units(next === undefined ? 0 : (font.kerning?.get(character.codePointAt(0) ?? 0)?.get(next.codePointAt(0) ?? 0) ?? 0));
+                x += Math.round(units(font.advances.get(character.codePointAt(0) ?? 0) ?? 0) / GRID) * GRID + pair(character, characters[at + 1]);
             }
 
             const drawn = (starts[index] ?? []).map(start => start / PRINT_ZOOM);
 
-            // At most two LayoutUnits past PowerPoint's start (advanceGridWordSpacing).
-            expect(drawn.map((start, word) => ({ fontSize, word, within: start - (expected[word] ?? Number.NaN) > -1e-6 && start - (expected[word] ?? Number.NaN) < 3 / LAYOUT_UNITS_PER_PX }))).toEqual(
+            // A word's start at most two LayoutUnits past PowerPoint's start (advanceGridWordSpacing), a piece's within a
+            // LayoutUnit before it (floored) and as far past.
+            expect(drawn.map((start, word) => ({ fontSize, word, within: start - (expected[word] ?? Number.NaN) > (wordStarts[word] ? 0 : -1 / LAYOUT_UNITS_PER_PX) - 1e-6 && start - (expected[word] ?? Number.NaN) < 3 / LAYOUT_UNITS_PER_PX }))).toEqual(
                 expected.map((_, word) => ({ fontSize, word, within: true })),
             );
         }
@@ -869,7 +971,8 @@ describe("a kerned line at the wrap limit in Chromium", () => {
                         const words = Array.from(box.querySelectorAll(".text-run span"));
                         const top = (text: string) => words.find(word => word.textContent === text)?.getBoundingClientRect().top;
 
-                        return top("AVAVA") === top("Lorem");
+                        // "AVAVA" is cut at its pairs (#577), a span per letter; only it has an "A".
+                        return top("A") === top("Lorem");
                     }),
                 );
             } finally {

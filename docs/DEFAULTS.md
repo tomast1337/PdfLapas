@@ -436,13 +436,13 @@ contract includes:
 - Legend, data-label, axis visibility, and data-table flags.
 - Data labels: 12pt black Arial, `#,##0` (a pie or doughnut: `0%` with `showPercent`, else `General`),
   outside a clustered bar's end, in a stacked bar's or a doughnut ring's center, right of a line point
-  and inside a pie slice when PptxGenJS writes no `c:dLblPos`; a pie label puts its category, value and
-  percentage on separate lines, as LibreOffice draws them. PptxGenJS deletes every `dataLabelPosition`
+  and inside a pie slice when PptxGenJS writes no `c:dLblPos`; a pie label puts its series name, category,
+  value and percentage on separate lines, as LibreOffice and PowerPoint draw them. PptxGenJS deletes every `dataLabelPosition`
   on area, radar, bar3D and doughnut charts: LibreOffice centers an area label, puts a radar or scatter
   label right of its point and a bar3D label above its bar. `showSerName` joins the series name and the
   value with `; ` on the LibreOffice target and `, ` on the PowerPoint one; a scatter chart's `showLabel` draws each point's own label (its series' `labels`),
   and a bubble chart's `showValue` prints the bubble size on the LibreOffice target (its y value on the
-  PowerPoint one, which is not measured). A combo chart's chart type takes its own label options.
+  PowerPoint one, measured). A combo chart's chart type takes its own label options.
 - Legend keys: a bar, area or pie entry is a filled square at 0.6 of the legend font size (8px at
   10pt), as Office and LibreOffice draw it; a line entry shows its line and marker.
 - Line cap/dash/width, marker shape/size/border, and smoothing.
@@ -460,10 +460,11 @@ contract includes:
   chart's plot area); a value outside 0..1 is dropped with a warning. The deprecated top-level `fill`
   sets the plot area's fill color and `border` replaces its border, as PptxGenJS 4.0.1 reads them.
   LibreOffice draws no plot-area fill or border on pie, doughnut, radar or bar3D charts, so those
-  options throw there.
+  options throw there; PowerPoint draws them, around a pie, doughnut or radar chart's square box and a
+  bar3D chart's plot area.
 - Radar value axis: at most two steps on the LibreOffice target, as LibreOffice scales it (0..10 by 5
-  for a maximum of 7, 0..40 by 20 for 23), and at most four on the PowerPoint one (0..8 by 2 for a
-  maximum of 7, one measurement), numbered on the first spoke; its gridlines are the rings, its axis line every
+  for a maximum of 7, 0..40 by 20 for 23), and the 2D value-axis scale in at most seven steps on the
+  PowerPoint one (0..8 by 2 for 7, 0..25 by 5 for 23, 0..140 by 20 for 130), numbered on the first spoke; its gridlines are the rings, its axis line every
   spoke, and the categories run clockwise from the top.
 - Pie angle, doughnut hole size, radar style, and blank-value behavior.
 - bar3D view: `rotX` 30, `rotY` 30 and perspective 30 (a 15° field of view) project the box, with one
@@ -472,8 +473,14 @@ contract includes:
   `chartColors[index]` (a 0.4pt hairline, as LibreOffice draws an `<a:ln>` without a width). PptxGenJS
   writes that point (and each point of a single-series bar chart with `lineSize: 0`) without a fill, so
   LibreOffice fills it in the theme's accent1, 4472C4, and keys the legend in the series color.
+  PowerPoint lists each point of a single-series bar or bar3D chart with `<c:dPt>` in the legend, keyed
+  as drawn; a combo chart's bar type keeps the series entry.
+- bar3D value axis: PowerPoint draws its line and tick marks on the wall's edge; LibreOffice draws
+  neither, so the line and tick options draw nothing there.
 - Combo charts: each chart type styles its own series (`chartColorsOpacity`, `dataBorder`, line and
-  marker options, `invertedColors`). Smoothing follows the first line type's `lineSmooth` on the
+  marker options, `invertedColors`). A line type's markers are filled in `chartColors[i]`, `i` the series'
+  index in the whole chart, on the PowerPoint target, as PptxGenJS writes them; LibreOffice fills them in
+  the line color. Smoothing follows the first line type's `lineSmooth` on the
   LibreOffice target and each type's own on the PowerPoint one. A fixed `valAxisMajorUnit` widens the
   automatic bounds to whole steps (3..8 by 2 is 0..10). `valAxes` entries take the chart-level
   `valAxis*` options under their own, as PptxGenJS writes them.
@@ -482,6 +489,8 @@ contract includes:
   one, which draws a second row of category names. PowerPoint cannot open PptxGenJS 4.0.1's XML for a
   secondary value axis without a secondary category axis (its `<c:crossAx>` names an axis it never
   writes), so such charts follow LibreOffice on both targets.
+- Data tables: PowerPoint draws none on a scatter or bubble chart, so `showDataTable` draws nothing
+  there; LibreOffice draws a malformed one and a bar3D chart's is not drawn yet, so those throw.
 - Chart/plot borders, gridline defaults, format codes, and both complete color
   palettes used by PptxGenJS.
 

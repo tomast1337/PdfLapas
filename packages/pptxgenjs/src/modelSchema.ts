@@ -330,6 +330,7 @@ const chart = z.strictObject({
                     lineSize: nonNegative,
                 })
                 .optional(),
+            markerFill: cssColor.optional(),
         }),
     ),
     colors: z.array(cssColor),

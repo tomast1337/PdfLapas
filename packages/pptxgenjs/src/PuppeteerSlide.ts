@@ -262,11 +262,12 @@ export class PuppeteerSlide implements PptxSlide {
             ...(target.firstAreaSeriesInFront && ((normalized.type === "area" && normalized.grouping === "standard") || (normalized.type === "mixed" && normalized.series.some(item => item.type === "area" && !item.stack)))
                 ? { firstSeriesInFront: true }
                 : {}),
-            // Normalization sets automaticPointFill only on a bar or bar3D group's only series, whose <c:dPt>s have no
-            // fill; with no other series the target may list its points in the legend (chartLegendListsUnfilledPoints).
-            // shortcut: a bar chart whose <c:dPt>s are filled (varyColors) keeps the series entry, and a combo chart's
-            // single-series bar group too; neither is measured against PowerPoint (#552).
-            ...(target.chartLegendListsUnfilledPoints && normalized.series.length === 1 && normalized.series[0]?.automaticPointFill ? { legendListsPoints: true } : {}),
+            // A bar or bar3D chart's only series gets a <c:dPt> per point, filled (varyColors) or not (automaticPointFill),
+            // and the target may list its points in the legend (chartLegendListsPoints); a combo chart keeps its series
+            // entries (#552).
+            ...(target.chartLegendListsPoints && (normalized.type === "bar" || normalized.type === "bar3D") && normalized.series.length === 1 && (normalized.series[0]?.automaticPointFill || normalized.series[0]?.varyColors)
+                ? { legendListsPoints: true }
+                : {}),
             // An automatic value axis's step needs the target's room along the drawn axis: on a bar3D chart its label
             // heights (bar3DLabelHeightsPerStep), on a 2D chart its rule for the axis's direction (valueAxisStepRoom);
             // the target may name a single series at the depth axis (bar3DNamesSingleSeries).

@@ -357,6 +357,8 @@ export type NormalizedChartSeries = {
     pointFills?: CssColor[];
     /** The series' own fill opacity, outline, line and markers (a combo chart type's own options); absent: the chart's. */
     style?: NormalizedChartSeriesStyle;
+    /** Its markers' fill, where it is not the line's color (a combo chart's line type); absent: the series color. */
+    markerFill?: CssColor;
 };
 
 /** How a series is filled, outlined and lined, with the same meaning as the chart's fields of the same names. */
@@ -436,7 +438,7 @@ export type NormalizedChartDataLabels = {
     showCategory: boolean;
     /** The series name; absent: not shown. */
     showSeriesName?: boolean;
-    /** What joins the series name and the value (the rendering target's); absent: ", ". */
+    /** What joins the series name and the value (the rendering target's; a slice's fields each take a line); absent: ", ". */
     fieldSeparator?: string;
     /** Whether a bubble's value label prints its size in place of its y value; absent: the y value. */
     valueIsBubbleSize?: boolean;

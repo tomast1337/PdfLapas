@@ -389,7 +389,9 @@ describe("Puppeteer print workarounds", () => {
     }, 60_000);
 
     test("runs a line-band underline's dash pattern on across runs of one look, and starts it again at a colour change (#397)", async () => {
-        const presentation = new PuppeteerGenPowerPoint();
+        // A face no runner has, its post band (Arial's) given through fontMetrics, so the HTML states the band in em and
+        // the print step draws the dashes whatever fonts are installed (#391).
+        const presentation = new PuppeteerGenPowerPoint(undefined, { fontMetrics: { Lorem: { unitsPerEm: 2048, winAscent: 1854, winDescent: 434, underline: { position: -217, thickness: 150 } } } });
 
         presentation.addSlide().addText(
             [
@@ -397,7 +399,7 @@ describe("Puppeteer print workarounds", () => {
                 { text: "small ", options: { fontSize: 12, underline: { style: "dash" } } },
                 { text: "other", options: { fontSize: 12, underline: { style: "dash", color: "C00000" } } },
             ],
-            { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial", margin: 0, valign: "top" },
+            { x: 1, y: 1, w: 6, h: 1, fontFace: "Lorem", margin: 0, valign: "top" },
         );
         const content = pdfContentStreams(await new PuppeteerPdfRenderer().render(await presentation.toHtml())).join("\n");
         // Each dash is a subpath from its top-left corner; the text is glyphs, so these are the dashes only.

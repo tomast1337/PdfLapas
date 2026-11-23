@@ -9,10 +9,10 @@ export const UNDERLINE_TYPES = Object.freeze(["sng", "dbl", "heavy", "dotted", "
 export type UnderlineType = (typeof UNDERLINE_TYPES)[number];
 
 /**
- * An underline type's shape: its pieces around the band. `zigzagLine`: each zigzag's line is that many of the run's own
- * band thickness T tall, where the run's face is known; otherwise the piece's px `thickness`.
+ * An underline type's shape: its pieces around the band. `zigzagLine`: each zigzag's line is `inBand` of the run's own
+ * band thickness T tall, T taken as `fallbackBandEm` of the font size where the run's face is not known.
  */
-export type UnderlineShape = { readonly pieces: readonly NormalizedDecorationPiece[]; readonly zigzagLine?: number };
+export type UnderlineShape = { readonly pieces: readonly NormalizedDecorationPiece[]; readonly zigzagLine?: { readonly inBand: number; readonly fallbackBandEm: number } };
 
 /**
  * Where a target draws underlines and strikes, and their shapes around the band (docs/HTML_PROFILE.md). `bands`

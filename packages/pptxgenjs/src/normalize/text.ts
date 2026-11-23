@@ -221,8 +221,10 @@ export function normalizeTextRun(
         }
     }
 
-    // A zigzag line in band thicknesses (UnderlineShape.zigzagLine): the run's own band at its drawn size, in px.
-    const zigzagLinePx = underlineShape?.zigzagLine !== undefined && underlineBand ? underlineShape.zigzagLine * underlineBand.thickness * (escapement === undefined ? fontSize : fontSize * RENDERING_TARGETS[target].escapementSizeRatio) : undefined;
+    // A zigzag line in band thicknesses (UnderlineShape.zigzagLine): the run's own band, or the fallback one where its
+    // face is not known, at its drawn size, in px.
+    const zigzagLine = underlineShape?.zigzagLine;
+    const zigzagLinePx = zigzagLine === undefined ? undefined : zigzagLine.inBand * (underlineBand?.thickness ?? zigzagLine.fallbackBandEm) * (escapement === undefined ? fontSize : fontSize * RENDERING_TARGETS[target].escapementSizeRatio);
     const decoration: NormalizedTextRun["decoration"] = {
         underline: underlined,
         underlineStyle,

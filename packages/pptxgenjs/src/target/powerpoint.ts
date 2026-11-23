@@ -33,10 +33,11 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
 
 /** Its zigzag's line, one step of its 1/600 in device grid tall, in px. */
 const WAVE_LINE_PX = PPTX_DEFAULTS.units.cssDpi / BASELINE_GRID_PER_INCH;
-/** `wavyHeavy`'s zigzag line, in those steps, where the run's face is not known: T/2 at 20pt Arial. */
-const HEAVY_WAVE_LINES = 6;
-/** `wavyHeavy`'s zigzag line, in the band's thickness T. */
-const HEAVY_WAVE_LINE = 0.5;
+/**
+ * `wavyHeavy`'s zigzag line: T/2 of the band, T taken as Arial's (post underlineThickness 150 of 2048 units per em)
+ * where the run's face is not known.
+ */
+const HEAVY_WAVE_LINE = Object.freeze({ inBand: 0.5, fallbackBandEm: 150 / 2048 });
 const line = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: 0, height: 1, ...(dashes ? { dashes } : {}) }] });
 /** A heavy type's line: 1.5T from P - T, as `heavy`, with the light type's dash pattern. */
 const heavyLine = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: -1, height: 1.5, ...(dashes ? { dashes } : {}) }] });
@@ -112,7 +113,7 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
         dotDotDash: line(DOT_DOT_DASHES),
         dotDotDashHeavy: heavyLine(DOT_DOT_DASHES),
         wavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }] },
-        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: HEAVY_WAVE_LINES * WAVE_LINE_PX }], zigzagLine: HEAVY_WAVE_LINE },
+        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }], zigzagLine: HEAVY_WAVE_LINE },
         wavyDbl: {
             pieces: [
                 { kind: "zigzag", top: -1, height: 1, thickness: WAVE_LINE_PX },

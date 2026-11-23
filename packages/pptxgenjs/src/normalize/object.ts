@@ -19,12 +19,14 @@ export type NormalizeObjectFlags = {
 };
 
 export function normalizeObjectStyle(options: ObjectStyleOptions, defaults: PositionOptions, pageSize: PageSize, objectName: string, flags: NormalizeObjectFlags = {}): NormalizedObjectStyle {
+    const transform = normalizeTransform(options);
+
     return {
         geometry: normalizeGeometry(options, defaults, pageSize),
-        transform: normalizeTransform(options),
+        transform,
         fill: flags.fill ? normalizeFill(options.fill) : undefined,
         line: flags.line ? normalizeLine(options.line) : undefined,
-        shadow: flags.shadow ? normalizeShadow(options.shadow) : undefined,
+        shadow: flags.shadow ? normalizeShadow(options.shadow, transform) : undefined,
         objectName: options.objectName ?? objectName,
     };
 }

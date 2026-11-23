@@ -223,6 +223,11 @@ Every object is one absolutely positioned element with class `slide-element` plu
 | `border-*`         | the line, for objects without SVG geometry (`border-style: none` if none) |
 | `box-shadow`       | `[inset ]<x>px <y>px <blur>px <color>`, for objects without SVG geometry  |
 
+A shadow's `<x>`, `<y>` (`box-shadow`, `drop-shadow()` on `svg.shape-svg`, a run's `text-shadow`) are in the
+box's own space, under its `transform`, as CSS reads them; every renderer turns and flips them with the box.
+PptxGenJS writes an outer shadow with `rotWithShape="0"`, cast in slide space, so `normalizeShadow` writes its
+offset turned back by the object's rotation and flips (#624).
+
 | Model kind       | Element                                                                      |
 | ---------------- | ---------------------------------------------------------------------------- |
 | `text`           | `div.slide-element.slide-text`, with `data-shape` and an SVG when it has one |

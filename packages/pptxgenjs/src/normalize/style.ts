@@ -1,6 +1,6 @@
 import type PptxGenJS from "pptxgenjs";
 import { PPTX_DEFAULTS } from "#src/defaults";
-import type { CssColor, NormalizedFill, NormalizedLine, NormalizedShadow } from "@pdflapas/model";
+import type { CssColor, NormalizedFill, NormalizedLine, NormalizedShadow, NormalizedTransform } from "@pdflapas/model";
 import { colorToCSS, TRANSPARENT } from "#src/color";
 import { UnsupportedFeatureError } from "#src/UnsupportedFeatureError";
 import { checkedSize } from "#src/normalize/size";
@@ -231,7 +231,13 @@ export function innerShadowError(object: string): UnsupportedFeatureError {
     );
 }
 
-export function normalizeShadow(value?: PptxGenJS.ShadowProps): NormalizedShadow {
+/**
+ * `transform` is the object's: the HTML states an offset in the box's own space, under its rotation and flips, as CSS
+ * reads `box-shadow` and `drop-shadow()`. An inner shadow turns with its picture (PowerPoint's PDF export, #345); an
+ * outer one is cast in slide space, as PptxGenJS writes rotWithShape="0" and LibreOffice 26.2 and PowerPoint draw it
+ * (#624), so its offset is turned back by the transform.
+ */
+export function normalizeShadow(value?: PptxGenJS.ShadowProps, transform: Pick<NormalizedTransform, "rotation" | "flipH" | "flipV"> = { rotation: 0, flipH: false, flipV: false }): NormalizedShadow {
     if (!value || value.type === "none") {
         return { visible: false, color: TRANSPARENT, blur: 0, offsetX: 0, offsetY: 0, inset: false };
     }
@@ -248,12 +254,19 @@ export function normalizeShadow(value?: PptxGenJS.ShadowProps): NormalizedShadow
     const opacity = value.opacity || defaults.opacity;
     const color = normalizeColor({ color: value.color || defaults.color, transparency: (1 - opacity) * 100 });
 
+    const slideX = Math.cos(angle) * offset;
+    const slideY = Math.sin(angle) * offset;
+    // CSS maps a box offset onto the slide by flipping it, then rotating it: undo the rotation, then the flips.
+    const turn = inner ? 0 : degreesToRadians(-transform.rotation);
+    const boxX = slideX * Math.cos(turn) - slideY * Math.sin(turn);
+    const boxY = slideX * Math.sin(turn) + slideY * Math.cos(turn);
+
     return {
         visible: true,
         color,
         blur,
-        offsetX: Math.cos(angle) * offset,
-        offsetY: Math.sin(angle) * offset,
+        offsetX: !inner && transform.flipH ? -boxX : boxX,
+        offsetY: !inner && transform.flipV ? -boxY : boxY,
         inset: inner,
     };
 }

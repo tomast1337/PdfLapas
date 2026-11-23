@@ -252,6 +252,22 @@ export type RenderingTargetProfile = {
         readonly maxIncrements: number;
     };
     /**
+     * Which automatic scale a value axis (and a scatter or bubble chart's x axis scaled as one) takes: LibreOffice's,
+     * whose bounds round out and move a step further near the data (`automaticAxisScale`), or PowerPoint's padded one
+     * (`paddedAxisScale`), its bounds padded by `ratio` of the range (a bar3D axis's by `bar3DRatio`) before they round, at most `maxSteps` steps over the
+     * padded range, a bubble chart's data widened by `bubbleRoom` of its range, and the room's steps counted between the
+     * rounded bounds or over the padded range on a vertical and on a horizontal axis
+     * (`NormalizedChartValueAxis.automaticScale.padding`, `NormalizedChartCatAxis.xScale.padding`).
+     */
+    readonly automaticScale:
+        | { readonly kind: "borderExpansion" }
+        | { readonly kind: "padded"; readonly ratio: number; readonly bar3DRatio: number; readonly maxSteps: number; readonly bubbleRoom: number; readonly count: { readonly vertical: "bounds" | "range"; readonly horizontal: "bounds" | "range" } };
+    /**
+     * Where a bubble chart's y axis crosses its x axis for a numeric catAxisCrossesAt: that x value plus this shift
+     * (`NormalizedChartCatAxis.valueAxisCrossing`).
+     */
+    readonly bubbleCategoryCrossingShift: number;
+    /**
      * Whether a bar3D chart with one unstacked series prints its name at the depth axis, or no depth label
      * (`NormalizedChart.namesSingleDepthSlot`).
      */
@@ -292,11 +308,10 @@ export type RenderingTargetProfile = {
      */
     readonly drawsScatterDataTable: boolean;
     /**
-     * How a scatter or bubble chart's automatic x axis is scaled: to its x values, or as a value axis, 0 included, in at
-     * most `floor(length / (perStep × label) + rounding)` steps up to `valueAxisStepRoom.maxIncrements`
-     * (`NormalizedChartCatAxis.xScale.stepRoom`).
+     * How a scatter or bubble chart's automatic x axis is scaled: to its x values, or as a horizontal value axis, 0
+     * included, in the room `valueAxisStepRoom.horizontal` gives its labels (`NormalizedChartCatAxis.xScale.stepRoom`).
      */
-    readonly scatterXAxisScale: { readonly kind: "xValues" } | { readonly kind: "valueAxis"; readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
+    readonly scatterXAxisScale: { readonly kind: "xValues" } | { readonly kind: "valueAxis" };
     /**
      * Where a pie's labels go when PptxGenJS writes no `<c:dLblPos>` (dataLabelPosition unset, or one it drops):
      * "bestFit" near the rim, or "ctr" at mid-radius.

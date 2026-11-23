@@ -1120,6 +1120,12 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartValueAxis.automaticScale.stepRoom.perStep`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.automaticScale.stepRoom.rounding`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.automaticScale.stepRoom.maxIncrements` | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartValueAxis.automaticScale.padding`                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartAxisPadding.ratio`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartAxisPadding.maxSteps`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartAxisPadding.dropsHalfRange`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartAxisPadding.bubbleRoom`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartAxisPadding.count`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.logScaleBase`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.gridLineColor`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.gridLineWidth`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1232,6 +1238,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartCatAxis.xScale.stepRoom.perStep`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.stepRoom.rounding`                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.stepRoom.maxIncrements`           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale.padding`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.labelFormatCode`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.reversed`                                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.lineColor`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

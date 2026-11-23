@@ -2,7 +2,7 @@ import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts
 import { GraphicComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
 import { type EChartsCoreOption, format, init, use } from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
-import { automaticAxisInterval, automaticAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
+import { automaticAxisInterval, automaticAxisScale, type FixedAxisBound, paddedAxisScale } from "#src/chart/axisScale";
 import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -638,7 +638,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const plotWidth = layout ? layout.w * width : width - gridLeft - gridRight;
     const valueAxisLength = horizontal ? plotWidth : layout ? layout.h * height : height - gridTop - gridBottom;
     const scaledValueAxes: NormalizedChartValueAxis[] = [];
-    // The most steps a room fits along an axis of that length: the labels' height, or the widest label of the first
+    // How many steps a room fits along an axis of that length: the labels' height, or the widest label of the first
     // scale (minimum to maximum by its automatic interval) in the axis's format, per step.
     const stepRoomIncrements = (
         room: NonNullable<NonNullable<NormalizedChartValueAxis["automaticScale"]>["stepRoom"]>,
@@ -662,8 +662,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             }
         }
 
-        return Math.max(2, Math.min(room.maxIncrements, Math.floor(length / (room.perStep * Math.max(1, labelSize)) + room.rounding)));
+        return length / (room.perStep * Math.max(1, labelSize));
     };
+    // LibreOffice's rule takes whole steps, between 2 and the room's maxIncrements.
+    const wholeSteps = (room: { rounding: number; maxIncrements: number }, steps: number) => Math.max(2, Math.min(room.maxIncrements, Math.floor(steps + room.rounding)));
 
     for (const [index, axis] of chart.valueAxes.entries()) {
         const automatic = axis.automaticScale;
@@ -676,9 +678,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             continue;
         }
 
-        const maxIncrements = stepRoomIncrements(room, valueAxisLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
+        const roomSteps = stepRoomIncrements(room, valueAxisLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
         const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
-        const scale = automaticAxisScale(automatic.low, automatic.high, fixed, true, { kind: "automatic", maxIncrements });
+        const scale = automatic.padding
+            ? paddedAxisScale(automatic.low, automatic.high, fixed, automatic.padding, { kind: "room", steps: roomSteps })
+            : automaticAxisScale(automatic.low, automatic.high, fixed, true, { kind: "automatic", maxIncrements: wholeSteps(room, roomSteps) });
 
         scaledValueAxes.push({ ...axis, minimum: automatic.fixedMinimum ? axis.minimum : scale.minimum, maximum: automatic.fixedMaximum ? axis.maximum : scale.maximum, majorUnit: scale.interval });
     }
@@ -1178,19 +1182,22 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const xLow = Math.min(...xValues);
         const xHigh = Math.max(...xValues);
         const xRoom = fixedX?.stepRoom;
-        const xRoomStep = xRoom
-            ? {
-                  kind: "automatic" as const,
-                  maxIncrements: stepRoomIncrements(xRoom, plotWidth, {
-                      ...automaticAxisScale(xLow, xHigh, xFixed, true),
-                      labelFontSize: categoryAxisModel.labelFontSize,
-                      labelFontFace: categoryAxisModel.labelFontFace,
-                      labelFormatCode: categoryAxisModel.labelFormatCode ?? "General",
-                      divisor: 1,
-                  }),
-              }
-            : undefined;
-        const automaticX = xValues.length > 0 ? automaticAxisScale(xLow, xHigh, xFixed, xRoom !== undefined, xStep ?? xRoomStep) : undefined;
+        const xRoomSteps = xRoom
+            ? stepRoomIncrements(xRoom, plotWidth, {
+                  ...automaticAxisScale(xLow, xHigh, xFixed, true),
+                  labelFontSize: categoryAxisModel.labelFontSize,
+                  labelFontFace: categoryAxisModel.labelFontFace,
+                  labelFormatCode: categoryAxisModel.labelFormatCode ?? "General",
+                  divisor: 1,
+              })
+            : 0;
+        const xPadding = fixedX?.padding;
+        const automaticX =
+            xValues.length === 0
+                ? undefined
+                : xPadding
+                  ? paddedAxisScale(xLow, xHigh, xFixed, xPadding, xStep ?? { kind: "room", steps: xRoomSteps })
+                  : automaticAxisScale(xLow, xHigh, xFixed, xRoom !== undefined, xStep ?? (xRoom ? { kind: "automatic", maxIncrements: wholeSteps(xRoom, xRoomSteps) } : undefined));
         const xMinimum = fixedX?.minimum ?? automaticX?.minimum;
         const xMaximum = fixedX?.maximum ?? automaticX?.maximum;
         const xScale =
@@ -1201,8 +1208,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // Where each axis crosses the other (catAxisCrossesAt on the x axis, valAxisCrossesAt on the y axis, #591): at an
         // end, or a value inside, the zero of a hidden copy of the crossed axis shifted by it (ECharts puts an axis line
         // on another axis's zero only), as on a category chart. LibreOffice 26.2.6 and PowerPoint draw the y axis at x 3
-        // and the x axis at y 20 for catAxisCrossesAt 3 and valAxisCrossesAt 20. shortcut: PowerPoint draws a bubble
-        // chart's y axis at x 1.5 for catAxisCrossesAt 2, PdfLapas at 2 as LibreOffice; find its rule when a deck needs it. shortcut: the labels stay at the plot's edge, where
+        // and the x axis at y 20 for catAxisCrossesAt 3 and valAxisCrossesAt 20; PowerPoint draws a bubble chart's y axis
+        // half a category early (bubbleCategoryCrossingShift, applied in the model). shortcut: the labels stay at the plot's edge, where
         // LibreOffice draws them beside the moved line (#584).
         const yAxisModel = scaledValueAxes[0];
         const yAxisCrossing = categoryAxisModel.valueAxisCrossing;

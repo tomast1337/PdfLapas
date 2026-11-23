@@ -274,6 +274,7 @@ const valueAxis = z.strictObject({
             fixedMaximum: z.boolean(),
             labelHeightsPerStep: z.number().positive().optional(),
             stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
+            padding: z.strictObject({ ratio: z.number().min(0), maxSteps: z.number().int().min(1), dropsHalfRange: z.boolean(), bubbleRoom: z.number().min(0), count: z.enum(["bounds", "range"]) }).optional(),
         })
         .optional(),
     logScaleBase: finite.optional(),
@@ -412,6 +413,7 @@ const chart = z.strictObject({
                 maximum: finite.optional(),
                 majorUnit: z.number().positive().optional(),
                 stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
+                padding: z.strictObject({ ratio: z.number().min(0), maxSteps: z.number().int().min(1), dropsHalfRange: z.boolean(), bubbleRoom: z.number().min(0), count: z.enum(["bounds", "range"]) }).optional(),
             })
             .optional(),
         reversed: z.boolean().optional(),

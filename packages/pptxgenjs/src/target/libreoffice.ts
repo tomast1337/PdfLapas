@@ -249,6 +249,11 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // shortcut: 12pt labels step a little sooner than the rule and a horizontal axis whose labels LibreOffice turns
     // (under about 100pt wide at 10pt) steps otherwise; measure them when a deck needs them (#585).
     valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1, rounding: 0.5 }, horizontal: { label: "width" as const, perStep: 1, rounding: 0 }, maxIncrements: 10 },
+    // chart2 ScaleAutomatism rounds the data's bounds out to the step, then moves one a step further where the data comes
+    // within 1/21 of the range of it (PPTX_DEFAULTS.chart.automaticScale).
+    automaticScale: { kind: "borderExpansion" as const },
+    // Its PDF export draws a scatter and a bubble chart's y axis at x 3 for catAxisCrossesAt 3 (#591).
+    bubbleCategoryCrossingShift: 0,
     bar3DNamesSingleSeries: false,
     bubbleValueLabelShowsSize: true,
     // Its PDF export of a bar and an area chart with showSerName and showValue prints "North; 7" (#477).

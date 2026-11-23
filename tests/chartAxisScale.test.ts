@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type PptxGenJS from "pptxgenjs";
-import { automaticAxisInterval, automaticAxisScale, bar3DAxisScale, type FixedAxisScale } from "../packages/pptxgenjs/src/chart/axisScale";
+import type { NormalizedChartAxisPadding } from "@pdflapas/model";
+import { automaticAxisInterval, automaticAxisScale, bar3DAxisScale, type FixedAxisScale, paddedAxisScale } from "../packages/pptxgenjs/src/chart/axisScale";
 import { normalizeChart } from "../packages/pptxgenjs/src/normalize/chart";
 
 describe("automatic axis scale", () => {
@@ -193,5 +194,91 @@ describe("automatic axis scale", () => {
         for (const [low, high, fixed, maxIncrements, minimum, maximum, interval] of cases) {
             expect(bar3DAxisScale(low, high, fixed, maxIncrements)).toEqual({ minimum, maximum, interval });
         }
+    });
+});
+
+describe("PowerPoint's padded automatic scale", () => {
+    const column: NormalizedChartAxisPadding = { ratio: 0.05, maxSteps: 10, dropsHalfRange: true, bubbleRoom: 0, count: "bounds" };
+    const scatter = { ...column, dropsHalfRange: false };
+    const scale = (low: number, high: number, padding: NormalizedChartAxisPadding, steps = 100): string => {
+        const { minimum, maximum, interval } = paddedAxisScale(low, high, { kind: "none" }, padding, { kind: "room", steps });
+
+        return `${minimum}..${maximum}/${interval}`;
+    };
+
+    test("matches PowerPoint's PDF export of synthetic column, line and secondary value axes (#589, #619)", () => {
+        // Data low and high, then PowerPoint's axis, on axes long enough for every step the padded range allows.
+        const cases: [number, number, string][] = [
+            // The minimum drops to 0 under 5/6 of the maximum, else half the range toward 0.
+            [83, 100, "0..120/20"],
+            [83.4, 100, "75..105/5"],
+            [88, 100, "82..102/2"],
+            [95, 100, "92..101/1"],
+            [99, 100, "98.4..100.2/0.2"],
+            [950, 1000, "920..1010/10"],
+            [1000, 1200, "900..1250/50"],
+            [5000, 5600, "4700..5700/100"],
+            [100, 100, "0..120/20"],
+            [-5, -5, "-6..0/1"],
+            [-100, -83, "-120..0/20"],
+            [-100, -95, "-101..-92/1"],
+            [0.85, 1, "0.75..1.05/0.05"],
+            [12, 13, "11.4..13.2/0.2"],
+            // A bound that is not 0 pads by 5% of the range, and the padded range takes at most 10 steps.
+            [0, 9.5, "0..10/1"],
+            [0, 9.6, "0..12/2"],
+            [0, 19, "0..20/2"],
+            [0, 19.1, "0..25/5"],
+            [0, 47.6, "0..50/5"],
+            [0, 47.7, "0..60/10"],
+            [0, 10, "0..12/2"],
+            [-0.2, 10, "-2..12/2"],
+            [-2, 7.9, "-4..10/2"],
+            [-2, 7.4, "-4..8/2"],
+            [-2, 7, "-3..8/1"],
+            [-10, -0.1, "-12..0/2"],
+            [-9.5, 0, "-10..0/1"],
+            [-3, 3, "-4..4/1"],
+            [-0.5, 9.5, "-2..10/2"],
+            [6, 10, "0..12/2"],
+            [3, 7.4, "0..8/1"],
+            [0.0012, 0.0097, "0..0.012/0.002"],
+        ];
+
+        for (const [low, high, expected] of cases) {
+            expect(`${low}..${high} ${scale(low, high, column)}`).toBe(`${low}..${high} ${expected}`);
+        }
+    });
+
+    test("keeps a scatter axis's minimum far from 0 and pads it, and widens a bubble chart's data (#616)", () => {
+        expect(scale(950, 1000, scatter)).toBe("940..1010/10");
+        expect(scale(85, 100, scatter)).toBe("84..102/2");
+        expect(scale(5000, 5600, scatter)).toBe("4900..5700/100");
+        expect(scale(-100, -95, scatter)).toBe("-101..-94/1");
+        // 95..100 on a 4.2in wide plot, whose room leaves about four steps.
+        expect(scale(95, 100, { ...scatter, count: "range" }, 4.5)).toBe("94..102/2");
+        // Bubbles: y 3..8 0..10 by 1, x 0..100 -50..150 by 50 on a narrow plot, y 20..90 0..120 by 20.
+        expect(scale(3, 8, { ...scatter, bubbleRoom: 0.125 })).toBe("0..10/1");
+        expect(scale(0, 100, { ...scatter, bubbleRoom: 0.125, count: "range" }, 4.5)).toBe("-50..150/50");
+        expect(scale(0, 100, { ...scatter, bubbleRoom: 0.125 })).toBe("-20..120/20");
+        expect(scale(20, 90, { ...scatter, bubbleRoom: 0.125 })).toBe("0..120/20");
+    });
+
+    test("takes a longer step where the room's steps run out, counted between the bounds or over the padded range", () => {
+        // 3, 9, 16, 12 on a short column axis: 0..18 by 2 is 9 steps, 0..20 by 5 four.
+        expect(scale(0, 16, column, 9)).toBe("0..18/2");
+        expect(scale(0, 16, column, 8.9)).toBe("0..20/5");
+        // -2..7 pads to 9.9 steps of 1, rounded out to 11.
+        expect(scale(-2, 7, column, 11)).toBe("-3..8/1");
+        expect(scale(-2, 7, { ...column, count: "range" }, 10)).toBe("-3..8/1");
+        expect(scale(-2, 7, column, 10)).toBe("-4..8/2");
+        // A bar3D axis pads by nothing: 3, 5, 4, 7 is 0..7 by 1.
+        expect(scale(2, 7, { ...column, ratio: 0 }, 7)).toBe("0..7/1");
+    });
+
+    test("counts the steps from a fixed bound and keeps a fixed step", () => {
+        expect(paddedAxisScale(3, 9, { kind: "minimum", value: 1 }, column, { kind: "room", steps: 100 })).toEqual({ minimum: 1, maximum: 10, interval: 1 });
+        expect(paddedAxisScale(3, 9, { kind: "maximum", value: 20 }, column, { kind: "room", steps: 100 })).toEqual({ minimum: 0, maximum: 20, interval: 2 });
+        expect(paddedAxisScale(3, 9, { kind: "none" }, column, { kind: "fixed", interval: 4 })).toEqual({ minimum: 0, maximum: 12, interval: 4 });
     });
 });

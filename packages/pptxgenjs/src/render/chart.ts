@@ -1273,7 +1273,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         }
 
         // barOverlapPct: each bar of a category overlaps the next by that share of its width (a gap when negative).
-        const visibleSeries = stacked ? 1 : Math.max(1, barCount);
+        const visibleSeries = stackedBars ? 1 : Math.max(1, barCount);
         const overlap = chart.barOverlapPercent ?? 0;
         const barWidth = `${100 / (visibleSeries - ((visibleSeries - 1) * overlap) / 100 + chart.barGapWidthPercent / 100)}%`;
         const border = chart.dataBorder ? { borderColor: chart.dataBorder.color, borderWidth: pointsToPixels(chart.dataBorder.width) } : {};

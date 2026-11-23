@@ -2292,6 +2292,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartAutomaticScaleFixture(presentation);
     populateChartDateAxisFixture(presentation);
     populateChartTypeOptionFixture(presentation);
+    populateChartOptionSourceFixture(presentation);
 }
 
 /**
@@ -3074,6 +3075,7 @@ export function populateChartScatterAxesFixture(presentation: Presentation): voi
     slide.addText("Scatter axes", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
     const shared: PptxGenJS.IChartOpts = { y: 0.9, w: 4.4, h: 4.1, chartColors: ["4472C4", "ED7D31"], lineDataSymbol: "none" };
 
+    // Near the low ends: LibreOffice 26.2.6 draws the labels beside the moved axis lines, PdfLapas at the plot's edge (#584).
     slide.addChart(
         "scatter",
         [
@@ -3642,4 +3644,54 @@ export function populateChartTypeOptionFixture(presentation: Presentation): void
         barGrouping: "standard",
         serGridLine: { color: "C00000", size: 1 },
     });
+}
+
+/**
+ * Chart options read from where PptxGenJS writes them (#595, #596, #594, #591, #593): a fixed major unit with automatic
+ * bounds, a combo whose bar type has its own opacity and border beside two line types of their own width and marker
+ * under chart-level value axis options and valAxes, a secondary axis with its own fixed step, a scatter chart whose
+ * axes cross inside the plot, and a data table under a date axis. A parity slide after the others (no page
+ * number moves) and the WASM chartOptionSources deck, which crops each chart.
+ */
+export function populateChartOptionSourceFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Steps, combo styles, crossings and date tables", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 20, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const pair = [
+        { name: "Lorem", labels, values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+    ];
+    // Light colors, as on the combo types slide: a pixel of offset on a dark line or bar costs more than the option it scores.
+    const shared: PptxGenJS.IChartOpts = { w: 2.95, h: 2.3, valGridLine: { style: "none" }, chartColors: ["9DC3E6", "F4B183", "A9D18E"] };
+
+    // 2..7 by 2: LibreOffice 26.2.6 widens the automatic bounds to 2..8, a whole step (#595).
+    slide.addChart("line", pair, { ...shared, x: 0.3, y: 0.8, valAxisMajorUnit: 2 });
+    (slide.addChart as Function)(
+        [
+            { type: "bar", data: pair, options: { chartColorsOpacity: 60, dataBorder: { pt: 1, color: "7F7F7F" } } },
+            { type: "line", data: [{ name: "Dolor", labels, values: [2, 6, 3, 5] }], options: { chartColors: ["A9D18E"], lineSize: 1, lineDataSymbol: "circle" } },
+            { type: "line", data: [{ name: "Amet", labels, values: [6, 3, 7, 2] }], options: { chartColors: ["C9C9C9"], lineSize: 4, lineDataSymbol: "square" } },
+        ],
+        { ...shared, x: 3.5, y: 0.8, valAxisLabelColor: "7030A0", valAxisMaxVal: 8, valAxes: [{ valAxisMajorUnit: 2 }] },
+    );
+    (slide.addChart as Function)(
+        [
+            { type: "bar", data: pair, options: {} },
+            { type: "line", data: [{ name: "Dolor", labels, values: [100, 300, 200, 400] }], options: { chartColors: ["A9D18E"], secondaryValAxis: true } },
+        ],
+        { ...shared, x: 6.7, y: 0.8, valAxes: [{}, { valAxisMajorUnit: 100 }] },
+    );
+    slide.addChart(
+        "scatter",
+        [
+            { name: "X", values: [1, 2, 3, 4, 5, 6] },
+            { name: "Lorem", values: [10, 22, 15, 30, 25, 18] },
+        ],
+        { ...shared, x: 0.3, y: 3.2, w: 4.4, catAxisCrossesAt: 1, valAxisCrossesAt: 5, catGridLine: { style: "none" } } as PptxGenJS.IChartOpts,
+    );
+    // Excel serials: 45292 is 1 January 2024.
+    const months = ["45292", "45323", "45352", "45383"];
+
+    slide.addChart("line", [{ name: "Lorem", labels: months, values: [3, 5, 4, 7] }], { ...shared, x: 5.2, y: 3.2, w: 4.4, valAxisMajorUnit: 2, catLabelFormatCode: "mmm-yy", showDataTable: true });
 }

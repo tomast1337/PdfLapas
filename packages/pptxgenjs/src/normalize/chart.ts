@@ -196,7 +196,12 @@ const MIXED_LABEL_OPTIONS = [
     "showSerName",
     "showValue",
 ] as const;
-const SUPPORTED_MIXED_SERIES_OPTIONS = new Set<string>(["secondaryValAxis", ...MIXED_LABEL_OPTIONS]);
+// A combo chart type's own options that PptxGenJS reads on that type's chart element only: a line type's line and
+// marker, a bar type's gap and overlap. With one value per kind they are drawn chart-wide (#590). Its raw
+// lineDataSymbolLineSize is written in EMU, not points (addChartDefinition converts only the chart's), so it stays out.
+const MIXED_LINE_OPTIONS = ["lineDataSymbol", "lineDataSymbolLineColor", "lineDataSymbolSize", "lineSize", "lineSmooth"] as const;
+const MIXED_BAR_OPTIONS = ["barGapWidthPct", "barOverlapPct"] as const;
+const SUPPORTED_MIXED_SERIES_OPTIONS = new Set<string>(["barGrouping", "chartColors", "secondaryCatAxis", "secondaryValAxis", ...MIXED_LABEL_OPTIONS, ...MIXED_LINE_OPTIONS, ...MIXED_BAR_OPTIONS]);
 const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "showValAxisTitle",
     "valAxisDisplayUnit",
@@ -634,10 +639,42 @@ function normalizeDataLabels(type: NormalizedChartType, options: PptxGenJS.IChar
 
 type ChartInputType = PptxGenJS.CHART_NAME | PptxGenJS.IChartMulti[];
 
-export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.OptsChartData[], options: PptxGenJS.IChartOpts = {}, target: RenderingTarget = DEFAULT_RENDERING_TARGET): NormalizedChart {
+export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.OptsChartData[], requestedOptions: PptxGenJS.IChartOpts = {}, target: RenderingTarget = DEFAULT_RENDERING_TARGET): NormalizedChart {
     const profile = RENDERING_TARGETS[target];
     const mixed = Array.isArray(type);
     const chartTypes = mixed ? type.map(chart => chart.type) : [type];
+    // A combo chart's line options as its line type sets them, and its bar options as its bar type does (#590).
+    const typeOptions: Record<string, unknown> = {};
+    const typeOptionSetBy = new Map<string, number>();
+    const unsupportedTypeOptions: string[] = [];
+
+    for (const [index, chart] of (mixed ? type : []).entries()) {
+        const keys: readonly string[] = chart.type === "line" ? MIXED_LINE_OPTIONS : chart.type === "bar" ? MIXED_BAR_OPTIONS : [];
+
+        for (const key of keys) {
+            const value: unknown = chart.options?.[key as keyof PptxGenJS.IChartOpts];
+
+            if (value === undefined) {
+                continue;
+            }
+
+            const earlier = typeOptionSetBy.get(key);
+
+            if (earlier !== undefined && typeOptions[key] !== value) {
+                unsupportedTypeOptions.push(`series[${index}].options.${key}[differs from series[${earlier}]]`);
+            }
+
+            typeOptions[key] = value;
+            typeOptionSetBy.set(key, index);
+        }
+    }
+
+    if (unsupportedTypeOptions.length) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: unsupportedTypeOptions });
+    }
+
+    // Every key comes from MIXED_LINE_OPTIONS or MIXED_BAR_OPTIONS, read from the type's own IChartOpts.
+    const options: PptxGenJS.IChartOpts = { ...requestedOptions, ...(typeOptions as PptxGenJS.IChartOpts) };
 
     // Refuse a chart type, a combination or an option the renderers do not draw.
     if (mixed && (type.length === 0 || type.some(chart => !MIXED_CHART_TYPES.has(chart.type)))) {
@@ -653,7 +690,10 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
 
         for (const [index, chart] of type.entries()) {
             for (const key of Object.keys(chart.options ?? {})) {
-                if (chart.options[key as keyof PptxGenJS.IChartOpts] !== undefined && !SUPPORTED_MIXED_SERIES_OPTIONS.has(key)) {
+                const value: unknown = chart.options[key as keyof PptxGenJS.IChartOpts];
+
+                // A secondary category axis is not drawn; a false one is the default.
+                if (value !== undefined && (!SUPPORTED_MIXED_SERIES_OPTIONS.has(key) || (key === "secondaryCatAxis" && value !== false))) {
                     unsupported.push(`series[${index}].options.${key}`);
                 }
             }
@@ -828,15 +868,17 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         return normalizeColor(source[index % source.length] ?? "");
     };
     const withPointStyle = (item: NormalizedChartSeries, colors: readonly string[]): NormalizedChartSeries => {
-        if (item.type === "bar" && options.lineSize !== 0) {
-            return { ...item, varyColors: true, ...(invertedColors ? { pointFills: item.values.map((value, index) => pointColor(colors, value, index)) } : {}) };
+        // A bar type reads the chart's lineSize, not a line type's.
+        if (item.type === "bar" && requestedOptions.lineSize !== 0) {
+            // A combo chart type's own palette is not the chart's, so each point names its fill.
+            return { ...item, varyColors: true, ...(invertedColors || colors !== palette ? { pointFills: item.values.map((value, index) => pointColor(colors, value, index)) } : {}) };
         }
 
         // shortcut: the automatic fill of the first series; a single-series bar group after other series in a combo
         // chart may take a later accent, measure it when a deck needs it.
         const automaticPointFill = normalizeColor(PPTX_DEFAULTS.theme.colors.accent1);
 
-        if (item.type === "bar3D" && options.lineSize !== 0) {
+        if (item.type === "bar3D" && requestedOptions.lineSize !== 0) {
             return { ...item, automaticPointFill, pointLineColors: item.values.map((value, index) => pointColor(colors, value, index)) };
         }
 
@@ -845,6 +887,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     let series: NormalizedChartSeries[];
     // A combo chart series' chart type options, by series index.
     const seriesOptions: PptxGenJS.IChartOpts[] = [];
+    // A combo chart type's own chartColors, after the chart's palette: its series index them from their offset.
+    const typePalette: string[] = [];
 
     if (!Array.isArray(type)) {
         series = normalizeSeries(normalizedType, data);
@@ -856,11 +900,21 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         series = [];
 
         for (const chart of type) {
-            for (const item of normalizeSeries(chart.type as NormalizedChartType, chart.data)) {
-                // PptxGenJS restarts colors within each mixed chart-type group.
-                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const) };
+            // PptxGenJS restarts colors within each mixed chart-type group, from the type's own chartColors when it has
+            // them (`{ ...options, ...type.options }`).
+            const ownColors = chart.options?.chartColors?.length ? chart.options.chartColors : undefined;
+            const colorOffset = palette.length + typePalette.length;
 
-                series.push(chart.type === "bar" && chart.data.length === 1 && pointColors ? withPointStyle(placed, pointColors) : placed);
+            if (ownColors) {
+                typePalette.push(...ownColors);
+            }
+
+            const typePointColors = ownColors ? (ownColors.length > 1 || invertedColors ? ownColors : undefined) : pointColors;
+
+            for (const item of normalizeSeries(chart.type as NormalizedChartType, chart.data)) {
+                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const), ...(ownColors ? { colorIndex: colorOffset + (item.colorIndex % ownColors.length) } : {}) };
+
+                series.push(chart.type === "bar" && chart.data.length === 1 && typePointColors ? withPointStyle(placed, typePointColors) : placed);
                 seriesOptions.push(chart.options ?? {});
             }
         }
@@ -907,15 +961,23 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // Each series stacks as its chart element's <c:grouping> says, also in a combo chart, where PptxGenJS writes one
     // element per type: the bar grouping on the bars, "stacked" on the areas only for "stacked", none on the lines (#529).
     // A target stacks a combo chart's percentStacked bars by value or as shares of 1 (comboPercentBarStack, #537).
-    const barStack = mixed && normalizedGrouping === "percentStacked" ? profile.comboPercentBarStack : normalizedGrouping === "stacked" || normalizedGrouping === "percentStacked" ? normalizedGrouping : undefined;
+    // A combo chart type's own barGrouping replaces the chart's on its element, unchecked (#590).
+    const seriesGroupings: NormalizedChart["grouping"][] = [];
 
     for (const [index, item] of series.entries()) {
-        const stack = item.type === "line" ? undefined : item.type === "area" ? (normalizedGrouping === "stacked" ? normalizedGrouping : undefined) : barStack;
+        const typeGrouping = seriesOptions[index]?.barGrouping ?? grouping;
+        const itemGrouping = !mixed ? normalizedGrouping : typeGrouping === "stacked" || typeGrouping === "percentStacked" || typeGrouping === "standard" || typeGrouping === "clustered" ? typeGrouping : PPTX_DEFAULTS.chart.grouping.bar;
+        const barStack = mixed && itemGrouping === "percentStacked" ? profile.comboPercentBarStack : itemGrouping === "stacked" || itemGrouping === "percentStacked" ? itemGrouping : undefined;
+        const stack = item.type === "line" ? undefined : item.type === "area" ? (itemGrouping === "stacked" ? itemGrouping : undefined) : barStack;
+
+        seriesGroupings.push(itemGrouping);
 
         if (stack) {
             series[index] = { ...item, stack };
         }
     }
+
+    const stackedBars = series.some(item => item.type === "bar" && item.stack !== undefined);
 
     const hasSecondaryValueAxis = series.some(item => item.valueAxisIndex === 1);
 
@@ -932,7 +994,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
 
     if (mixed) {
         for (const [index, item] of series.entries()) {
-            series[index] = { ...item, dataLabels: normalizeDataLabels(item.type, { ...options, ...seriesOptions[index] }, normalizedGrouping, chartTypes, profile) };
+            series[index] = { ...item, dataLabels: normalizeDataLabels(item.type, { ...options, ...seriesOptions[index] }, seriesGroupings[index] ?? normalizedGrouping, chartTypes, profile) };
         }
     }
 
@@ -1145,7 +1207,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
               }
             : undefined;
     // `<c:overlap val="${stacked ? 100 : barOverlapPct || 0}"/>` on a bar chart; a stack is one bar already.
-    const barOverlapPercent = (normalizedType === "bar" || normalizedType === "mixed") && !barStack ? Math.max(-100, Math.min(100, finiteNumber(options.barOverlapPct, "barOverlapPct", 0))) : 0;
+    const barOverlapPercent = (normalizedType === "bar" || normalizedType === "mixed") && !stackedBars ? Math.max(-100, Math.min(100, finiteNumber(options.barOverlapPct, "barOverlapPct", 0))) : 0;
 
     if (secondaryDataRange) {
         valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, { kind: "linear" }, "valAxes[1].", chartTypes, {}, profile.readsValueAxisDisplayUnits));
@@ -1186,7 +1248,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     return {
         type: normalizedType,
         series,
-        colors: palette.map(color => normalizeColor(color)),
+        colors: [...palette, ...typePalette].map(color => normalizeColor(color)),
         colorOpacity: Math.max(0, Math.min(1, (options.chartColorsOpacity ?? 100) / 100)),
         // Text options.
         showLegend: options.showLegend ?? PPTX_DEFAULTS.chart.showLegend,

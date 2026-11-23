@@ -836,6 +836,58 @@ describe("chart normalization and rendering", () => {
         expect(libreOffice.valueAxisMaximum).toBe(10);
     });
 
+    test("reads a combo chart type's own barGrouping, chartColors and line and bar options (#590)", () => {
+        const line = { name: "Line", labels: ["A", "B", "C"], values: [6, 9, 7] };
+        const combo = (barOptions: PptxGenJS.IChartOpts, lineOptions: PptxGenJS.IChartOpts = {}): PptxGenJS.IChartMulti[] => [
+            { type: "bar", data: categoricalData, options: barOptions },
+            { type: "line", data: [line], options: lineOptions },
+        ];
+        // PptxGenJS writes each type with `{ ...options, ...type.options }`: the bar type's barGrouping stacks its bars.
+        const stacked = normalizeChart(combo({ barGrouping: "stacked" }), [], {});
+
+        expect(stacked.series.map(series => series.stack)).toEqual(["stacked", "stacked", undefined]);
+        expect(stacked.grouping).toBe("clustered");
+        expect(stacked.valueAxisMaximum).toBe(10);
+        expect(stacked.barOverlapPercent).toBeUndefined();
+        // A type's own grouping replaces the chart's; a line's draws nothing.
+        expect(normalizeChart(combo({ barGrouping: "clustered" }, { barGrouping: "stacked" }), [], { barGrouping: "stacked" }).series.map(series => series.stack)).toEqual([undefined, undefined, undefined]);
+        // A stacked bar type keeps the label positions of a stack.
+        expect(normalizeChart(combo({ barGrouping: "stacked", showValue: true, dataLabelPosition: "outEnd" }), [], {}).series[0]?.dataLabels?.position).toBe("outEnd");
+
+        // Each type's chartColors color its own series, after the chart's palette, as in the PptxGenJS demo.
+        const colored = normalizeChart(combo({ chartColors: ["CC0000", "33CC00"] }, { chartColors: ["0088CC"] }), [], { chartColors: ["111111"] });
+
+        expect<string[]>(colored.colors).toEqual(["#111111", "#CC0000", "#33CC00", "#0088CC"]);
+        expect<(string | undefined)[]>(colored.series.map(series => colored.colors[series.colorIndex])).toEqual(["#CC0000", "#33CC00", "#0088CC"]);
+        // A single-series bar type with more than one color of its own fills each point from them.
+        expect<string[] | undefined>(
+            normalizeChart(
+                [
+                    { type: "bar", data: [categoricalData[0]!], options: { chartColors: ["CC0000", "33CC00"] } },
+                    { type: "line", data: [line], options: {} },
+                ],
+                [],
+                {},
+            ).series[0]?.pointFills,
+        ).toEqual(["#CC0000", "#33CC00", "#CC0000"]);
+
+        // A line type's line options and a bar type's gap and overlap are drawn chart-wide.
+        const styled = normalizeChart(combo({ barGapWidthPct: 80, barOverlapPct: 20 }, { lineSize: 4, lineSmooth: true, lineDataSymbol: "square", lineDataSymbolSize: 9, lineDataSymbolLineColor: "FF0000" }), [], { lineSize: 1 });
+
+        expect<unknown[]>([styled.lineSize, styled.lineSmooth, styled.lineSymbol, styled.lineSymbolSize, styled.lineSymbolLineColor]).toEqual([4, true, "square", 9, "#FF0000"]);
+        expect([styled.barGapWidthPercent, styled.barOverlapPercent]).toEqual([80, 20]);
+        // A false secondaryCatAxis is the default.
+        expect(() => normalizeChart(combo({}, { secondaryCatAxis: false }), [], {})).not.toThrow();
+
+        // Two line types with different line sizes cannot share the chart's.
+        try {
+            normalizeChart([...combo({}, { lineSize: 2 }), { type: "line", data: [line], options: { lineSize: 3 } }], [], {});
+            throw new Error("Expected normalization to fail");
+        } catch (error) {
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["series[2].options.lineSize[differs from series[1]]"]);
+        }
+    });
+
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
         const chart = normalizeChart("bar3D", categoricalData, {
             bar3DShape: "cylinder",

@@ -92,6 +92,11 @@ export function fallbackSegments(text: string, fontFace: string, bold: boolean, 
     // Nothing is held after a run whose faces are not looked up.
     hold.face = undefined;
 
+    // Without an emoji every grapheme below takes `chain`: one stretch, without segmenting the text.
+    if (genericFallback !== undefined && !PICTOGRAPHIC.test(text)) {
+        return [{ text, fallbackFaces: chain }];
+    }
+
     if (genericFallback !== undefined) {
         const emojiChain = [genericFallback.emojiFace, ...chain.filter(face => face !== genericFallback.emojiFace)];
         const stretches: { text: string; fallbackFaces: readonly string[] }[] = [];

@@ -27,8 +27,10 @@ function images(content: DefaultTreeAdapterTypes.DocumentFragment): FragmentElem
  */
 export function renderComponent(component: ReturnType<typeof normalizeComponent>, definition: ComponentDefinition, idScope: string, getDocument: () => Document): RenderedComponent {
     const { input, style } = component;
+    // A copy, so a definition that changes its props cannot change the model: toHtml() renders the presentation's own.
+    const props = structuredClone(input.props);
 
-    definition.validate?.(input.props);
+    definition.validate?.(props);
     const context = {
         get document() {
             return getDocument();
@@ -37,7 +39,7 @@ export function renderComponent(component: ReturnType<typeof normalizeComponent>
         height: style.geometry.height!,
         idPrefix: idScope,
     };
-    const result = definition.render(input.props, context);
+    const result = definition.render(props, context);
     const css: InlineStyle = new Map();
     const objectAttributes = applyObjectStyle(css, style);
 

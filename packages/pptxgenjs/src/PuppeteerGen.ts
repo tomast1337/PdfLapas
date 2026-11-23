@@ -343,7 +343,12 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
      * `component` objects keep only type, version and props; rendering them needs the registered definitions.
      */
     getModel(): NormalizedPresentation {
-        return structuredClone({ pageSize: this.pageSize, metadata: { ...this.metadata, ...this.pdfMetadata }, slides: this.slides.map(slide => slide.toModel(this.pageSize, this.masterSlideNumber)) });
+        return structuredClone(this.sharedModel());
+    }
+
+    /** The model sharing the slides' own objects: only for code that does not modify it, as trustedModelToHtml() does not. */
+    private sharedModel(): NormalizedPresentation {
+        return { pageSize: this.pageSize, metadata: { ...this.metadata, ...this.pdfMetadata }, slides: this.slides.map(slide => slide.toModel(this.pageSize, this.masterSlideNumber)) };
     }
 
     /**
@@ -369,7 +374,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
 
     /** The complete self-contained HTML document (images inlined as data URIs). Does not launch a browser. */
     async toHtml(): Promise<HtmlPresentationDocument> {
-        return trustedModelToHtml(this.getModel(), { components: this.components, resolveImage: this.resolveImage, createDocument: this.createDocument });
+        // Not getModel(): its defensive copy was a tenth of a pooled request's main-thread time (#609).
+        return trustedModelToHtml(this.sharedModel(), { components: this.components, resolveImage: this.resolveImage, createDocument: this.createDocument });
     }
 
     /** PDF bytes from the configured renderer; nothing is written to disk. */

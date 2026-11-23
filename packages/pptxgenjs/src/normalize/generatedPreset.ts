@@ -9,6 +9,19 @@ const ANGLE = 60000;
 const clean = (value: number) => (Math.abs(value) < 1e-9 ? 0 : Number(value.toFixed(6)));
 const angleRadians = (value: number) => degreesToRadians(value / ANGLE);
 
+// The preset guides that divide the box: wd2 is w / 2, ssd8 is ss / 8 (ECMA-376 Part 1, 20.1.10.56).
+const DIVISOR_GUIDES = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 32].map(divisor => [divisor, `wd${divisor}`, `hd${divisor}`, `ssd${divisor}`, `lsd${divisor}`] as const);
+
+/** A guide formula split once: its operator, and each operand as a number literal or the guide name it reads. */
+type ParsedFormula = { readonly operator: string; readonly operands: readonly (number | string)[] };
+
+/**
+ * Each formula of the generated tables, parsed on first use. Global because every shape of every presentation in the
+ * process evaluates the same formulas (a shape deck spent most of its preset time splitting them again); bounded by
+ * the distinct formula strings of generatedPresetShapes.ts, never released.
+ */
+const parsedFormulas = new Map<string, ParsedFormula>();
+
 function variables(width: number, height: number): Record<string, number> {
     const values: Record<string, number> = {
         w: width,
@@ -31,35 +44,50 @@ function variables(width: number, height: number): Record<string, number> {
         "7cd8": 315 * ANGLE,
     };
 
-    for (const divisor of [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 32]) {
-        values[`wd${divisor}`] = width / divisor;
-        values[`hd${divisor}`] = height / divisor;
-        values[`ssd${divisor}`] = values.ss! / divisor;
-        values[`lsd${divisor}`] = values.ls! / divisor;
+    for (const [divisor, wd, hd, ssd, lsd] of DIVISOR_GUIDES) {
+        values[wd] = width / divisor;
+        values[hd] = height / divisor;
+        values[ssd] = values.ss! / divisor;
+        values[lsd] = values.ls! / divisor;
     }
 
     return values;
 }
 
 function formulaValue(token: string, values: Record<string, number>): number {
-    const numeric = Number(token);
-
-    if (!Number.isNaN(numeric)) {
-        return numeric;
-    }
-
+    // A guide first: most tokens name one, and no guide name reads as a number.
     const value = values[token];
 
-    if (value === undefined) {
+    if (value !== undefined) {
+        return value;
+    }
+
+    const numeric = Number(token);
+
+    if (Number.isNaN(numeric)) {
         throw new Error(`Unknown DrawingML guide: ${token}`);
     }
 
-    return value;
+    return numeric;
 }
 
 function evaluate(formula: string, values: Record<string, number>): number {
-    const [operator, ...tokens] = formula.trim().split(/\s+/);
-    const args = tokens.map(token => formulaValue(token, values));
+    let parsed = parsedFormulas.get(formula);
+
+    if (parsed === undefined) {
+        const [operator = "", ...tokens] = formula.trim().split(/\s+/);
+
+        parsed = { operator, operands: tokens.map(token => (Number.isNaN(Number(token)) ? token : Number(token))) };
+        parsedFormulas.set(formula, parsed);
+    }
+
+    const { operator, operands } = parsed;
+    const args: number[] = [];
+
+    for (const operand of operands) {
+        args.push(typeof operand === "number" ? operand : formulaValue(operand, values));
+    }
+
     const [x = 0, y = 0, z = 0] = args;
 
     switch (operator) {

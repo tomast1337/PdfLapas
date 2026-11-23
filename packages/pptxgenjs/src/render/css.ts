@@ -14,6 +14,8 @@ const CSS_STRING = /"(?:[^"\\\n]|\\.)*"/g;
 // Outside a string: what could end the declaration or the block, escape a character or open another string.
 const CSS_DELIMITER = /[;{}\\"']/;
 const CSS_FUNCTION = /([\w-]*)\(/g;
+// What sends a value through the checks below: a delimiter, a string or a function call.
+const CSS_NEEDS_CHECK = /[;{}\\"'(]/;
 // The functions the render code writes; url(), image-set() and the like would make Chromium fetch while printing.
 const CSS_FUNCTIONS: ReadonlySet<string> = new Set(["rotate", "scaleX", "scaleY", "rgba", "drop-shadow"]);
 
@@ -26,6 +28,12 @@ export function styleAttribute(style: InlineStyle): Attribute {
     const declarations: string[] = [];
 
     for (const [property, value] of style) {
+        // Most values (lengths, hex colors) hold no quote, call or delimiter, so there is nothing to strip or check.
+        if (!CSS_NEEDS_CHECK.test(value)) {
+            declarations.push(`${property}: ${value};`);
+            continue;
+        }
+
         // A value goes as it is, or throws if it could add a declaration or load a URL. Normalization checks every option
         // that reaches a value (GHSA-c8m6-398f-qcxr was an unchecked `align`), so this throwing is a PdfLapas bug, not bad input.
         const bare = value.replace(CSS_STRING, "");

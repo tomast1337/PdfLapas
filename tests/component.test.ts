@@ -175,3 +175,21 @@ test("HTML images enter the existing image-resolution pipeline", () => {
     expect(images[1]!.dataset.sourceUrl).toBe("https://example.com/logo.png");
     expect(images[0]!.hasAttribute("src")).toBe(false);
 });
+
+test("a renderer that changes its props changes neither the model nor the next toHtml()", async () => {
+    const p = new PuppeteerGen();
+
+    p.registerComponent("mutating/count", 1, {
+        render: props => {
+            props.count = Number(props.count) + 1;
+
+            return `<b>${props.count}</b>`;
+        },
+    });
+    p.addSlide().addComponent({ type: "mutating/count", version: 1, props: { count: 1 } }, options);
+    const first = await p.toHtml();
+
+    expect(await p.toHtml()).toEqual(first);
+    expect(first.html).toContain("<b>2</b>");
+    expect(p.getModel().slides[0]?.objects[0]).toMatchObject({ kind: "component", component: { props: { count: 1 } } });
+});

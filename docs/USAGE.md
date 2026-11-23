@@ -848,24 +848,25 @@ await renderer.close();
   3.2 GB RSS, about 330 MB per worker; load only the faces your decks use to lower it.
 - **Failures.** A worker that dies is replaced; the render it was running rejects and says so, and the others carry
   on. `close()` terminates the workers and rejects what is still queued or in flight.
-- **Limits.** Building the deck and its HTML (`toHtml()`, about 13 ms per request in the mix below) still runs on
-  the calling thread, and it now bounds throughput: past about 90 renders/s, run more processes (#609). PDFKit has
-  no pool yet (#608).
+- **Limits.** Building the deck and its HTML (the PptxGenJS calls and `toHtml()`) still runs on the calling thread:
+  about 5.5 ms of CPU per request in the mix below (`bench:load` prints it as "main thread ... ms CPU per request"),
+  which bounds one process near 150 renders/s. Past that, run more processes. Moving `toHtml()` into the workers
+  would take off about a third of it (#614). PDFKit has no pool yet (#608).
 
-Measured with `BENCH_LOAD_ENGINES=wasm-pool,wasm bun run bench:load` (Linux x64, 32 cores, Bun 1.4.4, 8 workers,
-30 s per level, the mixed decks above; the single renderer measured slower here than in the table above, so the two
-are side by side from the same run):
+Measured with `BENCH_LOAD_ENGINES=wasm,wasm-pool BENCH_LOAD_CONCURRENCY=1,4,16,64 BENCH_LOAD_SECONDS=30 bun run bench:load`
+(Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above; the single renderer measured slower here than in
+the table above, so the two are side by side from the same run):
 
-| Renderer         | Concurrency | Renders/s | p50    | p95     | p99      |
-| ---------------- | ----------- | --------- | ------ | ------- | -------- |
-| WASM, one thread | 1           | 27.7      | 22 ms  | 36 ms   | 50 ms    |
-| WASM, one thread | 4           | 35.4      | 27 ms  | 464 ms  | 615 ms   |
-| WASM, one thread | 16          | 33.0      | 29 ms  | 2567 ms | 3205 ms  |
-| WASM, one thread | 64          | 35.0      | 32 ms  | 8981 ms | 10402 ms |
-| WASM pool        | 1           | 34.0      | 20 ms  | 35 ms   | 39 ms    |
-| WASM pool        | 4           | 77.7      | 38 ms  | 97 ms   | 117 ms   |
-| WASM pool        | 16          | 88.0      | 104 ms | 518 ms  | 575 ms   |
-| WASM pool        | 64          | 89.8      | 537 ms | 1009 ms | 1109 ms  |
+| Renderer         | Concurrency | Renders/s | p50    | p95     | p99     |
+| ---------------- | ----------- | --------- | ------ | ------- | ------- |
+| WASM, one thread | 1           | 43.1      | 16 ms  | 25 ms   | 29 ms   |
+| WASM, one thread | 4           | 43.2      | 22 ms  | 377 ms  | 465 ms  |
+| WASM, one thread | 16          | 44.0      | 23 ms  | 2005 ms | 2542 ms |
+| WASM, one thread | 64          | 45.5      | 23 ms  | 7028 ms | 7535 ms |
+| WASM pool        | 1           | 43.3      | 16 ms  | 27 ms   | 29 ms   |
+| WASM pool        | 4           | 130.8     | 26 ms  | 34 ms   | 43 ms   |
+| WASM pool        | 16          | 143.6     | 68 ms  | 283 ms  | 313 ms  |
+| WASM pool        | 64          | 148.6     | 336 ms | 551 ms  | 628 ms  |
 
 ### Fonts for the PowerPoint target
 

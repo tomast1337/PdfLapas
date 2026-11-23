@@ -369,7 +369,9 @@ face with the character draws what PowerPoint does. Both renderers try them in o
 fontconfig, the WASM renderer `family_stack`'s (the face of the run's `lang`, DejaVu Sans, Liberation Sans,
 Noto Sans CJK JP). These are Microsoft fonts PdfLapas cannot ship: where one is not installed (the visual
 image has none), it is skipped, and a character falls to the next face or to the renderer's own fallback.
-Arial's metric alias, Liberation Sans, stands in for it in both renderers.
+Arial's metric alias, Liberation Sans, stands in for it in both renderers. PowerPoint draws a keycap ("1️⃣") as
+an outline, without colour, so on this target its U+FE0F is written as U+FE0E (text presentation,
+`keycapTextPresentation`), and both renderers draw it from a text font in the run's colour.
 
 On the LibreOffice target the list is the faces LibreOffice draws such a character in, in the visual image, by the
 run face's generic family (fontconfig's serif and monospace lists, every other face sans-serif) and the run's

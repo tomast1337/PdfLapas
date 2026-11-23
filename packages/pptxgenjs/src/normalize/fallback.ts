@@ -78,9 +78,8 @@ export function fallbackChain(fontFace: string, language: string, target: Render
  * Symbol; cut a combining mark the face lacks when a deck shows one.
  * shortcut: ☺ ♥ ♠ in Calibri take Arial, the chain's first with them, where PowerPoint takes Segoe UI Symbol; put it
  * first for text-default emoji when a deck needs the 0.02 to 0.24em.
- * shortcut: a keycap with U+FE0F ("1️⃣") stays whole in the run's face, so a renderer draws it from a colour emoji
- * font, where PowerPoint draws Segoe UI Emoji's black outline; state text presentation in the profile when a deck
- * needs it (#588).
+ * A keycap with U+FE0F ("1️⃣") stays whole in the run's face; on a target with `keycapTextPresentation` its U+FE0F
+ * becomes U+FE0E after this (normalize/text.ts), so a renderer draws the outline, not a colour emoji (#588).
  * With `genericFallback` (LibreOffice), no face's characters are looked up: `text` is cut around each emoji, whose
  * stretch lists `genericFallback.emojiFace` first.
  */

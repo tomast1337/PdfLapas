@@ -146,16 +146,21 @@ describe("the PowerPoint target's fallback faces", () => {
         expect(fallbackSegments("x1\uFE0F\u20E3x", "Arial", false, false, "en-US", "powerpoint", FONTS)).toEqual([{ text: "x1\uFE0F\u20E3x", fallbackFaces: fallbackChain("Arial", "en-US", "powerpoint") }]);
     });
 
-    // Its PDF export draws the keycap as Segoe UI Emoji's outline, without colour layers (#588): U+FE0E asks every
-    // renderer for that text presentation. LibreOffice was not measured and keeps U+FE0F.
-    test("writes a keycap's U+FE0F as U+FE0E on the PowerPoint target only", () => {
-        const texts = (target: "powerpoint" | "libreoffice") =>
-            normalizeText([{ text: "x1️⃣x #️⃣ 2⃣ ❤️" }], { fontFace: "Arial", fontSize: 14 }, target, FONTS)
+    // In its PDF export of a synthetic deck (#588), a character followed by U+FE0F is the face's own text glyph where
+    // the face has it (a keycap's "1", "☺️" in Arial), and a colour emoji where it lacks it ("☺️" in Calibri, "❤️"):
+    // U+FE0E asks every renderer for that text glyph. LibreOffice was not measured and keeps U+FE0F.
+    test("writes U+FE0F after a character the face has as U+FE0E on the PowerPoint target only", () => {
+        const texts = (target: "powerpoint" | "libreoffice", fontFace: string, fonts = FONTS) =>
+            normalizeText([{ text: "x1\uFE0F\u20E3x \u263A\uFE0F 2\u20E3 \u2764\uFE0F" }], { fontFace, fontSize: 14 }, target, fonts)
                 .paragraphs.flatMap(paragraph => paragraph.runs.map(run => run.text))
                 .join("");
+        const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: () => UNKNOWN });
 
-        expect(texts("powerpoint")).toBe("x1︎⃣x #︎⃣ 2⃣ ❤️");
-        expect(texts("libreoffice")).toBe("x1️⃣x #️⃣ 2⃣ ❤️");
+        expect(texts("powerpoint", "Arial")).toBe("x1\uFE0E\u20E3x \u263A\uFE0E 2\u20E3 \u2764\uFE0F");
+        expect(texts("powerpoint", "Times New Roman")).toBe("x1\uFE0F\u20E3x \u263A\uFE0F 2\u20E3 \u2764\uFE0F");
+        // A face whose characters are not known: only a keycap's base is taken as the face's.
+        expect(texts("powerpoint", "Arial", unknown)).toBe("x1\uFE0E\u20E3x \u263A\uFE0F 2\u20E3 \u2764\uFE0F");
+        expect(texts("libreoffice", "Arial")).toBe("x1\uFE0F\u20E3x \u263A\uFE0F 2\u20E3 \u2764\uFE0F");
     });
 
     test("leaves the text whole when a face's characters are unknown, and on the LibreOffice target", () => {

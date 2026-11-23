@@ -285,13 +285,18 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * PMingLiU). The held face goes on into a run of identical options ("这"|"是" both Microsoft JhengHei) and starts over
  * at a change of colour or weight and at a line break. ☺ ™ ↔ ♥ ♠ ‼ are laid out at the advances of the run's
  * face where it has them (Arial, Times New Roman, Courier New) and of Segoe UI Symbol where it lacks them (☺ ♥ ♠ in
- * Calibri), and drawn black, as is a keycap with U+FE0F ("1️⃣ #️⃣ *️⃣", Segoe UI Emoji's outline); "2⃣", without
- * it, keeps 2 in the face and draws U+20E3 in Segoe UI Symbol. Its PDF export draws Segoe UI Emoji without its colour
- * layers. So a keycap with U+FE0F is drawn in text presentation (`keycapTextPresentation`): its U+FE0F is written as
- * U+FE0E, and Chromium and pdf-core then draw the outlined keycap from a text font in the run's colour, where with
- * U+FE0F both drew a colour emoji (#588).
- * shortcut: only black keycaps were measured, so a keycap takes the run's colour; 😀, ⭐ and flags keep their colour
- * emoji. The ptext-emoji probe deck (black and red text) settles both (#588).
+ * Calibri), and drawn in the text colour; "2⃣", without U+FE0F, keeps 2 in the face and draws U+20E3 in Segoe UI
+ * Symbol.
+ * A character followed by U+FE0F is drawn from the run's face when the face has it, ignoring the selector
+ * (`selectsFaceText`, #588): in its PDF export of a synthetic deck (28pt Arial, Calibri, Segoe UI and Times New Roman
+ * in black and in red text, and 60pt Arial), a keycap "1️⃣ #️⃣ *️⃣ 0️⃣" is an outlined box in the text colour, red in red
+ * text, and "☺️ ©️ ™️" are the face's own glyphs in the text colour wherever the face has them (Arial, Times New
+ * Roman; © and ™ in Calibri), while "☺️" in Calibri and Segoe UI, which lack ☺, is Segoe UI Emoji's colour glyph. An
+ * emoji the face lacks follows its presentation: 😀 ⭐ ✅ ❌ 👍 👍🏽, a ZWJ family and, with U+FE0F, ❤️ ✈️ ☀️ are
+ * Segoe UI Emoji's colour glyphs, and "❤ ✈" without U+FE0F monochrome glyphs in the text colour, as both renderers
+ * draw them. A flag ("🇫🇷")
+ * is drawn as its two regional-indicator letters ("FR"), as both renderers draw it.
+ * The selector is written as U+FE0E, which Chromium and pdf-core honour by drawing the text glyph.
  * shortcut: faces other than those measured take the Times New Roman faces; measure another face when a deck needs it.
  * It draws U+2011 NON-BREAKING HYPHEN with the face's U+002D glyph (`nonBreakingHyphen`), even in Times New Roman,
  * which has a U+2011 glyph of its own: in the same export it is glyph 16 in Arial and Times New Roman, the one
@@ -338,7 +343,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     fallbackFaces: FALLBACK_FACES,
     eastAsianFallback: EAST_ASIAN_FALLBACK,
     emojiFace: EMOJI_FACE,
-    keycapTextPresentation: true,
+    selectsFaceText: true,
     genericFallback: undefined,
     nonBreakingHyphen: "hyphen-minus",
     drawsPictureInnerShadow: true,

@@ -179,10 +179,12 @@ export type RenderingTargetProfile = {
     /** The face an emoji (Extended_Pictographic) the run's face lacks is drawn in, ahead of `fallbackFaces`; undefined: none. */
     readonly emojiFace: string | undefined;
     /**
-     * Whether a keycap with U+FE0F ("1️⃣") is drawn in text presentation, its U+FE0F written as U+FE0E in the run
-     * text so each renderer draws the outline glyph in the text colour, not a colour emoji.
+     * Whether a character the run's face maps is drawn from that face even when U+FE0F asks for emoji presentation
+     * ("☺️" in Arial, the "1" of a keycap "1️⃣"): that U+FE0F is written as U+FE0E in the run text, so each renderer
+     * draws the text glyph in the run's colour, not a colour emoji. A face whose characters are not known keeps
+     * U+FE0F, save after a keycap's base.
      */
-    readonly keycapTextPresentation: boolean;
+    readonly selectsFaceText: boolean;
     /** The faces after `fallbackFaces` by the run face's generic family and the run's language; undefined: none. */
     readonly genericFallback: GenericFallback | undefined;
     /**

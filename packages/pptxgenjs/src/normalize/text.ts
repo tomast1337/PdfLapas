@@ -22,8 +22,10 @@ export type TextInput = string | number | PptxGenJS.TextProps[];
 const WORD_JOINER = "⁠";
 /** The point between a closing bracket or "%" and an opening bracket (RENDERING_TARGETS.joinsOpeningBracket). */
 const BEFORE_OPENING_BRACKET = /(?<=[)\]}%])(?=[([{])/gu;
-/** A keycap's U+FE0F VARIATION SELECTOR-16 (RENDERING_TARGETS.keycapTextPresentation), before U+20E3. */
-const KEYCAP_EMOJI_SELECTOR = /(?<=[0-9#*])\uFE0F(?=\u20E3)/gu;
+/** U+FE0F VARIATION SELECTOR-16, emoji presentation, and the character it follows (RENDERING_TARGETS.selectsFaceText). */
+const EMOJI_SELECTOR = /(.)\uFE0F/gsu;
+/** A keycap's base, before U+FE0F U+20E3: drawn from the run's face even where its characters are not known. */
+const KEYCAP_BASE = /^[0-9#*]$/u;
 /** U+FE0E VARIATION SELECTOR-15: text presentation. */
 const TEXT_PRESENTATION = "\uFE0E";
 /** U+2011 NON-BREAKING HYPHEN (RENDERING_TARGETS.nonBreakingHyphen). */
@@ -806,12 +808,18 @@ export function normalizeText(
             }
         }
 
-        if (RENDERING_TARGETS[target].keycapTextPresentation) {
-            // One character for another, so the advance grid's spacing, counted per character, stays as it is.
+        if (RENDERING_TARGETS[target].selectsFaceText) {
+            // U+FE0F after a character the run's face maps, or after a keycap's base, becomes U+FE0E. One character for
+            // another, so the advance grid's spacing, counted per character, stays as it is.
             const presented: NormalizedTextRun[] = [];
 
             for (const run of joinedRuns) {
-                const text = run.text.replace(KEYCAP_EMOJI_SELECTOR, TEXT_PRESENTATION);
+                const face = fontMetrics.glyphAdvances?.(run.fontFace, run.bold, run.italic) ?? { kind: "unknown" };
+                const text = run.text.replace(EMOJI_SELECTOR, (selected, base: string) => {
+                    const inFace = face.kind === "advances" ? face.advances.advances.has(base.codePointAt(0) ?? 0) : KEYCAP_BASE.test(base);
+
+                    return inFace ? `${base}${TEXT_PRESENTATION}` : selected;
+                });
 
                 presented.push(text === run.text ? run : { ...run, text });
             }

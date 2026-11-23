@@ -1,6 +1,6 @@
 // Draws one slide container: its background, then each object in paint order with the common box
 // (docs/HTML_PROFILE.md "Slide objects"): position, size, rotation, flips, opacity, fill and line.
-import { assertLinkUrl } from "@pdflapas/model";
+import { assertLinkUrl, degreesToRadians } from "@pdflapas/model";
 import { color, px, readStyle, type Style, take, takePx } from "./css";
 import { attribute, children, type Element, hasAttribute, hasClass } from "./dom";
 import { type Effect, shadowEffect } from "./effect/index";
@@ -225,13 +225,18 @@ export function drawSlide(slide: Element, context: SlideContext, size: { width: 
             if (effect?.kind === "invalid") {
                 report(effect.report);
             } else if (effect?.kind === "effect") {
-                shadow = effect.effect;
+                // The offset is in the box's space, as CSS reads it: flipped, then rotated onto the slide, where the
+                // shadow is drawn outside the box's transform. The HTML turns an outer shadow's back (rotWithShape="0").
+                const x = box.flipH ? -effect.effect.dx : effect.effect.dx;
+                const y = box.flipV ? -effect.effect.dy : effect.effect.dy;
+                const turn = degreesToRadians(box.rotation);
+
+                shadow = { ...effect.effect, dx: x * Math.cos(turn) - y * Math.sin(turn), dy: x * Math.sin(turn) + y * Math.cos(turn) };
             }
         }
 
         const paint: Paint = { ...context.paint(name), report, opacity: box.opacity };
 
-        // The shadow is cast in slide space, outside the object's rotation and flips (DrawingML `rotWithShape="0"`).
         if (shadow) {
             paint.effects.under(paint.doc, shadow, false, box.opacity, report, () => drawBox(element, style, paint, box));
         } else {

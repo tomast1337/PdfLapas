@@ -554,6 +554,9 @@ const COLW_LENGTH_CASE = { page: PARAGRAPH_PAGE + 1, name: "table-colw-shorter-t
 // A picture's inner shadow: PptxGenJS writes <a:innerShdw> well-formed, and LibreOffice 26.2 draws the bare picture, as
 // the LibreOffice target writes it (drawsPictureInnerShadow); the PowerPoint target draws the shadow over it.
 const IMAGE_INNER_SHADOW_CASE = { page: 11, name: "image-inner-shadow", x: 0.75, y: 4.3, w: 2, h: 1.3 } as const;
+// A rotated picture and a rotated, flipped shape with an outer shadow, beside it: PptxGenJS writes rotWithShape="0", and
+// LibreOffice 26.2 and PowerPoint cast it in slide space, on the left at angle 180 whatever the turn (#624).
+const ROTATED_OUTER_SHADOW_CASE = { page: 11, name: "rotated-outer-shadow", x: 6.1, y: 3.75, w: 3.7, h: 1.65 } as const;
 const NUMBER_SCHEME_CASE = { page: PARAGRAPH_PAGE + 3, name: "text-number-scheme-restart", x: 0.5, y: 1, w: 4, h: 1.8 } as const;
 // The numbering slide: a numbered list over three indent levels, beside the scheme change.
 const NUMBER_LEVELS_CASE = { page: PARAGRAPH_PAGE + 3, name: "text-number-nested-levels", x: 5.2, y: 1, w: 4, h: 1.8 } as const;
@@ -599,6 +602,7 @@ export const PARITY_REGIONS = [
     { page: 59, name: "html-react-component-bars", x: 1, y: 1, w: 6, h: 2 },
     { page: 12, name: "dashed-arrow-line", x: 6.55, y: 1.6, w: 2.6, h: 0 },
     IMAGE_INNER_SHADOW_CASE,
+    ROTATED_OUTER_SHADOW_CASE,
     ...[...ARROW_HEAD_CASES, VERTICAL_LINE_CASE].map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.1, y: y - 0.1, w: w + 0.2, h: h + 0.2 })),
     // populateSlidePropertiesFixture(): the slide numbers, own style and inherited one; its hidden slide prints no page.
     { page: 61, name: "slide-number-own-style", x: 7.5, y: 4.6, w: 2, h: 0.8 },
@@ -2494,6 +2498,12 @@ export function populateImageFixture(presentation: Presentation): void {
 
     imageEffectsSlide.addImage({ data: SAMPLE_IMAGE_DATA, x, y, w, h, shadow: { type: "inner", color: "000000", opacity: 0.75, blur: 8, offset: 6, angle: 45 }, altText: "Image with an inner shadow" });
     imageEffectsSlide.addText("Inner shadow", { x, y: y + h + 0.1, w, h: 0.4, fontFace: "Arial", fontSize: 14, align: "center", margin: 0 });
+
+    // Spread per call: PptxGenJS mutates the shadow options it is given.
+    const castLeft = { type: "outer", color: "000000", opacity: 0.6, blur: 2, offset: 6, angle: 180 } as const;
+
+    imageEffectsSlide.addImage({ data: SAMPLE_IMAGE_DATA, x: 6.5, y: 4.2, w: 1.4, h: 0.8, rotate: 30, shadow: { ...castLeft }, altText: "Rotated image with an outer shadow" });
+    imageEffectsSlide.addShape("rect", { x: 8.3, y: 4.2, w: 1.2, h: 0.7, rotate: 120, flipH: true, fill: { color: "4472C4" }, shadow: { ...castLeft } });
 }
 
 /** The parity fixture's chart slides, also the WASM backend's chart deck (tests/visual/wasm/decks.ts). */

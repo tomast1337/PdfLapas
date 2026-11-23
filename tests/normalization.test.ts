@@ -257,6 +257,40 @@ describe("shared object normalization", () => {
         expect(normalizeShadow({ type: "outer", blur: 8 }).blur).toBeCloseTo(32 / 3, 8);
     });
 
+    // PptxGenJS writes rotWithShape="0": LibreOffice 26.2 and PowerPoint cast an outer shadow in slide space whatever the
+    // object's turn and flips (#624). CSS turns a box-shadow with its box (rotate, then scaleX), so the HTML turns it back.
+    test("turns an outer shadow's offset back by its object's rotation and flips, and leaves an inner one with the object", () => {
+        // Angle 180, 6pt: 8px to the slide's left.
+        const left = { type: "outer", angle: 180, offset: 6 } as const;
+        const box = (rotation: number, flipH = false, flipV = false) => normalizeShadow({ ...left }, { rotation, flipH, flipV });
+        const slide = (shadow: { offsetX: number; offsetY: number }, rotation: number, flipH = false, flipV = false) => {
+            const x = flipH ? -shadow.offsetX : shadow.offsetX;
+            const y = flipV ? -shadow.offsetY : shadow.offsetY;
+            const turn = (rotation * Math.PI) / 180;
+
+            return [x * Math.cos(turn) - y * Math.sin(turn), x * Math.sin(turn) + y * Math.cos(turn)];
+        };
+
+        expect(box(0)).toEqual(normalizeShadow({ ...left }));
+        expect(box(90).offsetX).toBeCloseTo(0, 8);
+        expect(box(90).offsetY).toBeCloseTo(8, 8);
+        expect(box(0, true).offsetX).toBeCloseTo(8, 8);
+
+        for (const [rotation, flipH, flipV] of [
+            [30, false, false],
+            [180, false, false],
+            [30, true, false],
+            [120, true, true],
+        ] as const) {
+            const [x, y] = slide(box(rotation, flipH, flipV), rotation, flipH, flipV);
+
+            expect(x).toBeCloseTo(-8, 8);
+            expect(y).toBeCloseTo(0, 8);
+        }
+
+        expect(normalizeShadow({ type: "inner", angle: 180, offset: 6 }, { rotation: 30, flipH: true, flipV: false })).toEqual(normalizeShadow({ type: "inner", angle: 180, offset: 6 }));
+    });
+
     test("fills unset and zero shadow values like PptxGenJS's slide XML (blur || 8, offset || 4, angle || 270, opacity || 0.75)", () => {
         for (const value of [{ type: "outer" as const }, { type: "outer" as const, blur: 0, offset: 0, angle: 0, opacity: 0 }]) {
             const shadow = normalizeShadow(value);

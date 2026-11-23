@@ -8,6 +8,7 @@ import { inch2EmuToPixels } from "#src/units";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor, type GridSpacing, runPieces, wordAfter } from "./advanceGrid";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "./eastAsianLineBreak";
 import { fallbackChain, type FallbackHold, type FallbackSegment, fallbackSegments } from "./fallback";
+import { normalizeTransform } from "./geometry";
 import { paragraphAlign, verticalAlign } from "./alignment";
 import { normalizeHyperlink } from "./link";
 import { textMarginPixels } from "./margin";
@@ -315,7 +316,8 @@ export function normalizeTextRun(
                   inset: false,
               }
             : undefined,
-        shadow: options.shadow ? normalizeShadow(options.shadow) : undefined,
+        // A string's run shadow is its box's glyph shadow, cast in slide space as the box's (normalizeShadow).
+        shadow: options.shadow ? normalizeShadow(options.shadow, normalizeTransform(options)) : undefined,
         language: options.lang ?? PPTX_DEFAULTS.theme.language,
         link,
         softBreakBefore: options.softBreakBefore ?? PPTX_DEFAULTS.text.softBreakBefore,

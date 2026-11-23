@@ -33,11 +33,6 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
 
 /** Its zigzag's line, one step of its 1/600 in device grid tall, in px. */
 const WAVE_LINE_PX = PPTX_DEFAULTS.units.cssDpi / BASELINE_GRID_PER_INCH;
-/**
- * `wavyHeavy`'s zigzag line: T/2 of the band, T taken as Arial's (post underlineThickness 150 of 2048 units per em)
- * where the run's face is not known.
- */
-const HEAVY_WAVE_LINE = Object.freeze({ inBand: 0.5, fallbackBandEm: 150 / 2048 });
 const line = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: 0, height: 1, ...(dashes ? { dashes } : {}) }] });
 /** A heavy type's line: 1.5T from P - T, as `heavy`, with the light type's dash pattern. */
 const heavyLine = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: -1, height: 1.5, ...(dashes ? { dashes } : {}) }] });
@@ -68,7 +63,7 @@ const DOT_DOT_DASHES = [3, 2, 1, 2, 1, 2];
  * line and the heavy one (1.5T from P - T, as `heavy`): dotted 1.44pt dots 1.44pt apart (DOTS), dash 4.32pt dashes
  * 2.88pt apart (3T, 2T), dashLong 10.08 and 5.76 (7T, 4T), dotDash 4.32, 2.88, 1.44, 2.88 and dotDotDash 4.32,
  * 2.88, 1.44, 2.88, 1.44, 2.88; under a 20pt and a 32pt run on one line the dash is 4.68pt and the gap 3.12pt, 3T and
- * 2T of the line's 1.56pt band, starting again with each run. `wavyHeavy` is `wavy`'s zigzag drawn with a 0.72pt
+ * 2T of the line's 1.56pt band. `wavyHeavy` is `wavy`'s zigzag drawn with a 0.72pt
  * line (six grid steps; 2.16pt half-waves filling the same 2.88pt), `wavyDbl` two 1/600 in zigzags each filling T,
  * from P - T and from P (1.32pt half-waves). `words` is one unbroken line under the words and the spaces, as `sng`.
  * The 48pt `dbl` keeps the rule above: 1.80pt lines from 1.49 and 6.65pt below the baseline, the rule's 1.76 from 1.57
@@ -84,12 +79,16 @@ const DOT_DOT_DASHES = [3, 2, 1, 2, 1, 2];
  * T 1.2, 48pt 10.44/6.96 at T 3.48, Times 12pt at T 0.6), each heavy type 1.5T from P - T (12pt Arial 1.2 to 1.32,
  * 48pt 5.16 to 5.28 at T 3.48), `wavy` a one-step line filling 2T, `wavyDbl` two one-step lines each filling T, and the
  * strike the OS/2 band (60pt Arial 3.00pt from 15.58pt above the baseline, OS/2 2.99 from 15.53; Calibri Bold 60pt 5.40
- * from 15.10, 5.45 from 15.00), the bold face's when bold. `wavyHeavy`'s line is T/2, not six grid steps
- * (`zigzagLine`): 0.48pt at 12pt Arial (T 0.84), 0.96 at 24pt (T 1.8), 1.80 at 48pt (T 3.48), 2.52 at 48pt bold
+ * from 15.10, 5.45 from 15.00), the bold face's when bold. `wavyHeavy`'s line is T/2, not six grid steps: 0.48pt at 12pt Arial (T 0.84), 0.96 at 24pt (T 1.8), 1.80 at 48pt (T 3.48), 2.52 at 48pt bold
  * (T 5.04), 0.36 at 12pt Times New Roman (T 0.6) and 2.28 at 48pt Times bold (T 4.56), each T/2 rounded to the grid;
  * 20pt Arial's 0.72 is T/2 of its 1.44.
- * shortcut: a zigzag starts again with each run where PowerPoint's runs on across a line's runs, and `wavyHeavy`'s line
- * is the run's own T/2, not that of its line's shared band; measure a line of mixed sizes when a deck needs it (#569).
+ * Measured again in its PDF export of a synthetic deck of every type under runs on one line (#397: 24pt then 12pt
+ * Arial, two runs alike, a colour change; Calibri and Segoe UI at 12, 24 and 48pt): the underlines of touching runs
+ * in one colour are one piece, their dash pattern or zigzag running on across the runs and the size change (`dash`
+ * under 24pt then 12pt Arial: one pattern of 4.32pt dashes 2.88pt apart, 3T and 2T of the line's 1.44pt band), and a
+ * colour change cuts the piece at the run's start and starts a new one there in the new colour; `wavyHeavy`'s line is
+ * T/2 of the line's band (0.72pt on that line, where its runs alone take 0.96 and 0.48). Calibri and Segoe UI keep
+ * every rule above within one grid step (12pt Calibri T 0.84, post 0.79; 12pt Segoe UI T 0.72, post 0.70).
  */
 const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
     bands: Object.freeze({ kind: "font" as const }),
@@ -113,7 +112,8 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
         dotDotDash: line(DOT_DOT_DASHES),
         dotDotDashHeavy: heavyLine(DOT_DOT_DASHES),
         wavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }] },
-        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }], zigzagLine: HEAVY_WAVE_LINE },
+        // Its line is T/2 of the band it is drawn around, the line's shared one.
+        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: 0.5, thicknessUnit: "band" }] },
         wavyDbl: {
             pieces: [
                 { kind: "zigzag", top: -1, height: 1, thickness: WAVE_LINE_PX },

@@ -388,6 +388,35 @@ describe("Puppeteer print workarounds", () => {
         expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
     }, 60_000);
 
+    test("runs a line-band underline's dash pattern on across runs of one look, and starts it again at a colour change (#397)", async () => {
+        const presentation = new PuppeteerGenPowerPoint();
+
+        presentation.addSlide().addText(
+            [
+                { text: "Large ", options: { fontSize: 24, underline: { style: "dash" } } },
+                { text: "small ", options: { fontSize: 12, underline: { style: "dash" } } },
+                { text: "other", options: { fontSize: 12, underline: { style: "dash", color: "C00000" } } },
+            ],
+            { x: 1, y: 1, w: 6, h: 1, fontFace: "Arial", margin: 0, valign: "top" },
+        );
+        const content = pdfContentStreams(await new PuppeteerPdfRenderer().render(await presentation.toHtml())).join("\n");
+        // Each dash is a subpath from its top-left corner; the text is glyphs, so these are the dashes only.
+        const lefts = [...content.matchAll(/\n([\d.]+) [\d.]+ m\n/g)].map(match => Number(match[1]));
+        const period = (lefts[1] ?? 0) - (lefts[0] ?? 0);
+        const restarts = [];
+
+        for (const [index, left] of lefts.entries()) {
+            const previous = lefts[index - 1];
+
+            if (previous !== undefined && Math.abs(left - previous - period) > 0.01) {
+                restarts.push(index);
+            }
+        }
+
+        expect(lefts.length).toBeGreaterThan(10);
+        expect(restarts.length).toBe(1);
+    }, 60_000);
+
     test("names the object when a run's decoration geometry is malformed", async () => {
         const presentation = new PuppeteerGen();
 

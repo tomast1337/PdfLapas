@@ -603,6 +603,11 @@ describe("PDFKit renderer", () => {
 
             expect(zigzag.rects).toEqual([]);
             expect(zigzag.content).toMatch(/ l\nh\n[^]*\nf\n/);
+            // A unitless line is in thicknesses: the same zigzag as its px length.
+            const inBand = await underlined(html => html.replace('<span class="text-run"', `<span class="text-run" data-underline="zigzag(-0.5 2 ${0.16 / zigzag.t})"`));
+
+            expect(inBand.content).toBe(zigzag.content);
+            expect(inBand.warnings).toEqual([]);
         });
 
         test("reports a malformed piece or strike band and draws one stripe filling the face's band", async () => {
@@ -634,7 +639,7 @@ describe("PDFKit renderer", () => {
             // The first rect is the slide background.
             const rects = [...content.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re/g)].slice(1).map(match => match.slice(1).map(Number));
 
-            return { baseline: texts(content)[0]?.baseline ?? 0, tops: rects.map(rect => rect[1] ?? 0), heights: rects.map(rect => rect[3] ?? 0) };
+            return { baseline: texts(content)[0]?.baseline ?? 0, lefts: rects.map(rect => rect[0] ?? 0), tops: rects.map(rect => rect[1] ?? 0), heights: rects.map(rect => rect[3] ?? 0) };
         };
         // The post band at `px`: its top below the baseline and its thickness.
         const band = (px: number) => [(-font.underlinePosition * px) / font.unitsPerEm, (font.underlineThickness * px) / font.unitsPerEm] as const;
@@ -657,6 +662,25 @@ describe("PDFKit renderer", () => {
         expect(new Set(mixed.heights).size).toBe(1);
         expect(mixed.heights[0]).toBeGreaterThan(band(16)[1]);
         expect(mixed.heights[0]).toBeLessThan(band(32)[1]);
+        // Dashes under a 24pt then a 12pt run run on as one pattern of 3T on, 2T off in the line's band; a colour change
+        // starts a new one at its run (#397).
+        const dashed = await underlined([
+            { text: "Large ", options: { fontSize: 24, underline: { style: "dash" } } },
+            { text: "small ", options: { fontSize: 12, underline: { style: "dash" } } },
+            { text: "other", options: { fontSize: 12, underline: { style: "dash", color: "C00000" } } },
+        ]);
+        const period = 5 * (dashed.heights[0] ?? 0);
+        const restarts = [];
+
+        for (const [index, left] of dashed.lefts.entries()) {
+            const previous = dashed.lefts[index - 1];
+
+            if (previous !== undefined && Math.abs(left - previous - period) > 0.01) {
+                restarts.push(index);
+            }
+        }
+
+        expect(restarts.length).toBe(1);
         expect(renderer.warnings()).toEqual([]);
     });
 

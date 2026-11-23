@@ -737,19 +737,24 @@ async function prepareForPrint(): Promise<string[]> {
             const PLAIN = new RegExp(`^${NUMBER}$`);
             // The thinnest band the profile draws, in CSS px.
             const MIN_BAND = 0.5;
+            // Widest gap, client px, between two underline segments of a line that one continues: rects of adjacent
+            // runs meet up to layout rounding.
+            const JOIN_PX = 0.05;
             const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
 
-            type Piece = { kind: "line"; top: number; height: number; dashes: number[] } | { kind: "wave"; centre: number; amplitude: number; half: number; stroke: number } | { kind: "zigzag"; top: number; height: number; line: number };
+            type Piece =
+                { kind: "line"; top: number; height: number; dashes: number[] } | { kind: "wave"; centre: number; amplitude: number; half: number; stroke: number } | { kind: "zigzag"; top: number; height: number; line: number; lineInBand: boolean };
             // A band in CSS px: its top below the baseline and its thickness.
             type Band = { offset: number; thickness: number };
-            // A segment in client px, with its band.
-            type Segment = { left: number; right: number; top: number; height: number; band: Band };
+            // A segment in client px, with its band; `joined` once an earlier one of its line continues over it.
+            type Segment = { left: number; right: number; top: number; height: number; band: Band; joined: boolean };
             type Decoration = { pieces: Piece[]; color: string; segments: Segment[] };
             type Placed = { run: HTMLElement; svg: SVGSVGElement; origin: DOMRect; baseline: number; decorations: Decoration[] };
             const fail: (run: HTMLElement, what: string) => never = (run, what) => {
                 throw new Error(`Cannot print '${run.closest<HTMLElement>("[data-object-name]")?.dataset.objectName ?? "unnamed object"}': a .text-run has ${what} (PdfLapas HTML profile, Text, Underline and strike geometry)`);
             };
-            // data-underline or data-strike: pieces in thicknesses, each wave's and zigzag's last value a px stroke.
+            // data-underline or data-strike: pieces in thicknesses, each wave's last value a px stroke, each zigzag's a px
+            // line or, unitless, one in thicknesses.
             const pieces = (run: HTMLElement, name: string): Piece[] => {
                 const value = run.getAttribute(name) ?? "line(0 1)";
                 const parsed: Piece[] = [];
@@ -760,16 +765,16 @@ async function prepareForPrint(): Promise<string[]> {
                     const last = parts.length - 1;
                     const values = parts.map(part => parseFloat(part));
                     const [a = NaN, b = NaN, c = NaN, d = NaN] = values;
-                    const plain = parts.every((part, index) => (kind !== "line" && index === last ? PX : PLAIN).test(part));
+                    const plain = parts.every((part, index) => (kind === "wave" && index === last ? PX : PLAIN).test(part) || (kind === "zigzag" && index === last && PX.test(part)));
 
                     if (kind === "line" && plain && parts.length >= 2 && parts.length % 2 === 0 && b >= MIN_LENGTH && values.slice(2).every(length => length >= MIN_LENGTH)) {
                         parsed.push({ kind, top: a, height: b, dashes: values.slice(2) });
                     } else if (kind === "wave" && plain && parts.length === 4 && b >= 0 && c >= MIN_LENGTH && d >= MIN_LENGTH) {
                         parsed.push({ kind, centre: a, amplitude: b, half: c, stroke: d });
                     } else if (kind === "zigzag" && plain && parts.length === 3 && b >= MIN_LENGTH && c >= MIN_LENGTH) {
-                        parsed.push({ kind, top: a, height: b, line: c });
+                        parsed.push({ kind, top: a, height: b, line: c, lineInBand: PLAIN.test(parts[last] ?? "") });
                     } else {
-                        fail(run, `${name} piece '${written}', which is not line(<top> <height> [<on> <off>]...), wave(<centre> <amplitude> <half> <w>px) or zigzag(<top> <height> <w>px)`);
+                        fail(run, `${name} piece '${written}', which is not line(<top> <height> [<on> <off>]...), wave(<centre> <amplitude> <half> <w>px) or zigzag(<top> <height> <w>px|<w>)`);
                     }
                 }
 
@@ -862,7 +867,7 @@ async function prepareForPrint(): Promise<string[]> {
                             last.left = Math.min(last.left, rect.left);
                             last.right = Math.max(last.right, rect.right);
                         } else {
-                            found.push({ left: rect.left, right: rect.right, top: rect.top, height: rect.height, band });
+                            found.push({ left: rect.left, right: rect.right, top: rect.top, height: rect.height, band, joined: false });
                         }
                     }
                 }
@@ -871,8 +876,9 @@ async function prepareForPrint(): Promise<string[]> {
             };
 
             const placed: Placed[] = [];
-            // The underline segments of data-underline-line-band runs, per paragraph.
-            const lineBands = new Map<Element, Segment[]>();
+            // The underline segments of data-underline-line-band runs, per paragraph, each with its baseline in client px
+            // and its shape and colour.
+            const lineBands = new Map<Element, { segment: Segment; baseline: number; look: string }[]>();
 
             // All reads first, so the drawing below does not lay the document out again for each run.
             for (const run of drawn) {
@@ -897,7 +903,14 @@ async function prepareForPrint(): Promise<string[]> {
                     const paragraph = run.closest(".text-paragraph");
 
                     if (paragraph && run.hasAttribute("data-underline-line-band")) {
-                        lineBands.set(paragraph, [...(lineBands.get(paragraph) ?? []), ...found]);
+                        const look = `${run.getAttribute("data-underline") ?? ""}|${style.textDecorationColor}`;
+                        const entries = lineBands.get(paragraph) ?? [];
+
+                        for (const segment of found) {
+                            entries.push({ segment, baseline: segment.top + segment.height * probe.baseline, look });
+                        }
+
+                        lineBands.set(paragraph, entries);
                     }
 
                     decorations.push({ pieces: pieces(run, "data-underline"), color: style.textDecorationColor, segments: found });
@@ -920,10 +933,12 @@ async function prepareForPrint(): Promise<string[]> {
 
             // data-underline-line-band: the underlines on one line of a paragraph share one band, their bands averaged by
             // their segments' widths. A segment is on a line when it overlaps the line's first one by more than half.
+            // Then a segment continues the one before it on its line when both have one shape and colour, sit on one
+            // baseline and touch, so a dash pattern or zigzag runs on across runs (pdf-core's `join_line_band`).
             for (const found of lineBands.values()) {
                 const lines: Segment[][] = [];
 
-                for (const segment of found) {
+                for (const { segment } of found) {
                     const line = lines.find(([first]) => first && Math.min(first.top + first.height, segment.top + segment.height) - Math.max(first.top, segment.top) > Math.min(first.height, segment.height) / 2);
 
                     if (line) {
@@ -948,6 +963,19 @@ async function prepareForPrint(): Promise<string[]> {
                         segment.band = { offset: offset / width, thickness: thickness / width };
                     }
                 }
+
+                let last: (typeof found)[number] | undefined;
+
+                for (const entry of found) {
+                    const { segment } = entry;
+
+                    if (last && last.look === entry.look && Math.abs(last.baseline - entry.baseline) < JOIN_PX && Math.abs(segment.left - last.segment.right) < JOIN_PX) {
+                        last.segment.right = Math.max(last.segment.right, segment.right);
+                        segment.joined = true;
+                    } else {
+                        last = entry;
+                    }
+                }
             }
 
             const number = (value: number) => String(Number(value.toFixed(4)));
@@ -957,6 +985,10 @@ async function prepareForPrint(): Promise<string[]> {
                     let fill = "";
 
                     for (const segment of found) {
+                        if (segment.joined) {
+                            continue;
+                        }
+
                         // The segment in the SVG's CSS px, P its band's top and t its thickness.
                         const start = (segment.left - origin.left) / zoom;
                         const end = (segment.right - origin.left) / zoom;
@@ -983,7 +1015,8 @@ async function prepareForPrint(): Promise<string[]> {
                             } else if (piece.kind === "zigzag") {
                                 // pdf-core's zigzag: 45-degree slopes, whole half-waves of `reach` from the top down first.
                                 const top = p + piece.top * t;
-                                const reach = Math.max(piece.height * t - piece.line, piece.line);
+                                const line = piece.lineInBand ? piece.line * t : piece.line;
+                                const reach = Math.max(piece.height * t - line, line);
                                 const halves = Math.max(Math.ceil((end - start) / reach), 1);
                                 const lower: string[] = [];
                                 const upper: string[] = [];
@@ -991,7 +1024,7 @@ async function prepareForPrint(): Promise<string[]> {
                                 for (let index = 0; index <= halves; index++) {
                                     const edge = index % 2 === 0 ? top : top + reach;
 
-                                    lower.push(`${number(start + reach * index)} ${number(edge + piece.line)}`);
+                                    lower.push(`${number(start + reach * index)} ${number(edge + line)}`);
                                     upper.push(`${number(start + reach * index)} ${number(edge)}`);
                                 }
 

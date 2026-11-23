@@ -8,7 +8,7 @@ use super::style::{Style, font_families, integer, keyword, number, px, shadow, s
 use crate::color::parse_color;
 use crate::model::{
     Bullet, Decoration, DecorationPiece, DecorationShape, EmBand, LineBox, Outline, Paragraph, ParagraphAlign, Run, Shadow, ShadowKind, Shrink, Synthesis,
-    TabAlign, TabStop, TextBox, TextDirection, TextFit, VerticalAlign, WordSpacing,
+    TabAlign, TabStop, TextBox, TextDirection, TextFit, VerticalAlign, WordSpacing, ZigzagLine,
 };
 
 /// Attributes of the element that holds a text box.
@@ -307,7 +307,7 @@ const MIN_DECORATION_LENGTH: f32 = 0.01;
 /// `data-underline` or `data-strike` (`what` names it): `line(...)`, `wave(...)` and `zigzag(...)` separated by spaces.
 fn decoration_pieces(what: &str, value: &str) -> Result<Vec<DecorationPiece>, String> {
     let invalid = |why: &str| format!("{what}: '{value}' {why}");
-    let grammar = "is not pieces 'line(<top> <height> [<on> <off> ...])', 'wave(<centre> <amplitude> <half> <w>px)' or 'zigzag(<top> <height> <w>px)' separated by spaces";
+    let grammar = "is not pieces 'line(<top> <height> [<on> <off> ...])', 'wave(<centre> <amplitude> <half> <w>px)' or 'zigzag(<top> <height> <w>px|<w>)' separated by spaces";
     let length = |n: f32, name: &str| {
         if n >= MIN_DECORATION_LENGTH {
             Ok(n)
@@ -324,10 +324,12 @@ fn decoration_pieces(what: &str, value: &str) -> Result<Vec<DecorationPiece>, St
             return Err(invalid(grammar));
         }
         rest = after.trim_ascii_start();
-        // The stroke or zigzag line, last, is in px.
-        let args = match name {
-            "wave" | "zigzag" => args.strip_suffix("px").filter(|a| !a.ends_with(' ')).ok_or_else(|| invalid(grammar))?,
-            _ => args,
+        // The stroke, last, is in px; the zigzag line in px or, unitless, in thicknesses.
+        let px = args.strip_suffix("px").filter(|a| !a.ends_with(' '));
+        let (args, line_px) = match (name, px) {
+            ("wave", Some(px)) | ("zigzag", Some(px)) => (px, true),
+            ("wave", None) => return Err(invalid(grammar)),
+            _ => (args, false),
         };
         let mut numbers = Vec::new();
         for word in args.split_ascii_whitespace() {
@@ -353,7 +355,11 @@ fn decoration_pieces(what: &str, value: &str) -> Result<Vec<DecorationPiece>, St
             ("zigzag", &[top, height, line]) => DecorationPiece::Zigzag {
                 top,
                 height: length(height, "a height")?,
-                line: length(line, "a line")?,
+                line: if line_px {
+                    ZigzagLine::Px(length(line, "a line")?)
+                } else {
+                    ZigzagLine::Thicknesses(length(line, "a line")?)
+                },
             },
             _ => return Err(invalid(grammar)),
         });
@@ -603,7 +609,7 @@ fn glow(element: &Element<'_>, style: &Style<'_>) -> Result<Option<Shadow>, Stri
 mod tests {
     use crate::color::Rgba;
     use crate::model::{
-        DecorationPiece, DecorationShape, EmBand, ParagraphAlign, Shrink, SlideObject, Synthesis, TabAlign, TextFit, TextObject, VerticalAlign,
+        DecorationPiece, DecorationShape, EmBand, ParagraphAlign, Shrink, SlideObject, Synthesis, TabAlign, TextFit, TextObject, VerticalAlign, ZigzagLine,
     };
     use crate::profile::parse;
     use crate::profile::tests::document;
@@ -719,7 +725,7 @@ mod tests {
                 .decoration
         };
         let underline = decoration(
-            r#" data-underline="line(0 1 4 2 1 2) wave(0.5 2 4 0.037795px) zigzag(-0.5 2 0.16px)""#,
+            r#" data-underline="line(0 1 4 2 1 2) wave(0.5 2 4 0.037795px) zigzag(-0.5 2 0.16px) zigzag(0 1 0.5)""#,
             " text-decoration-line: underline;",
         );
         assert_eq!(
@@ -739,7 +745,12 @@ mod tests {
                 DecorationPiece::Zigzag {
                     top: -0.5,
                     height: 2.0,
-                    line: 0.16
+                    line: ZigzagLine::Px(0.16)
+                },
+                DecorationPiece::Zigzag {
+                    top: 0.0,
+                    height: 1.0,
+                    line: ZigzagLine::Thicknesses(0.5)
                 },
             ])
         );
@@ -926,6 +937,14 @@ mod tests {
             (
                 run(" data-underline=\"zigzag(0 2 0px)\"", " text-decoration-line: underline;", "x"),
                 "has a line 0, below 0.01",
+            ),
+            (
+                run(" data-underline=\"zigzag(0 2 0)\"", " text-decoration-line: underline;", "x"),
+                "has a line 0, below 0.01",
+            ),
+            (
+                run(" data-underline=\"zigzag(0 2 1 px)\"", " text-decoration-line: underline;", "x"),
+                "'px' is not a number",
             ),
             (run(" data-underline=\" \"", " text-decoration-line: underline;", "x"), "names no piece"),
             (

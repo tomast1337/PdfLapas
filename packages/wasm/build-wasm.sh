@@ -75,7 +75,8 @@ root=$PWD
 # +210 B: a font whose head.unitsPerEm OpenType forbids is not registered (GHSA-fmx3-qwqc-h37c, found by fuzzing add_font: the head table read per face and the range check), 1,062,427 -> 1,062,637 B measured; budget = that size.
 # +2,561 B: underlines and strikes drawn from the pieces and bands the HTML states (#396, #397, #489: the data-underline and data-strike parser, per-line segments joined across glyph runs, stroked waves, the line band), 1,062,637 -> 1,065,198 B measured; budget = that size.
 # +45 B: U+2011 drawn as U+2010 where the HTML says so (#289: data-non-breaking-hyphen "hyphen", the LibreOffice target's), 1,065,198 -> 1,065,243 B measured; budget = that size.
-GZIP_BUDGET=1065243
+# +750 B: line-band underlines of one look run on across runs and a zigzag line in band thicknesses, as PowerPoint draws them (#397: join_line_band and the unitless zigzag line), 1,065,243 -> 1,065,993 B measured; budget = that size.
+GZIP_BUDGET=1065993
 
 locked=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' crates/Cargo.lock)
 if [ "$locked" != "$WASM_BINDGEN_VERSION" ]; then

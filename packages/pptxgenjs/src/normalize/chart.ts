@@ -521,6 +521,8 @@ function normalizeValueAxis(
         majorUnit: scaleKind.kind === "radar" ? scale.interval : majorUnit,
         ...(orientation === "maxMin" ? { reversed: true } : {}),
         ...(bar3D ? { automaticScale: { low: bar3DLow, high: bar3DHigh, fixedMinimum: fixedMinimum !== undefined, fixedMaximum: fixedMaximum !== undefined } } : {}),
+        // A 2D axis's automatic step depends on the room its labels have too (#585), which the renderer knows.
+        ...(scaleKind.kind === "linear" && majorUnit === undefined && logScaleBase === undefined ? { automaticScale: { low: dataRange[0], high: dataRange[1], fixedMinimum: fixedMinimum !== undefined, fixedMaximum: fixedMaximum !== undefined } } : {}),
         logScaleBase,
         labelFormatCode,
         hidden: axisOptions?.valAxisHidden ?? defaults.hidden,

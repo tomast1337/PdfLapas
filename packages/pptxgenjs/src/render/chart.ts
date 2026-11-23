@@ -6,6 +6,7 @@ import { automaticAxisInterval, automaticAxisScale } from "#src/chart/axisScale"
 import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
+import { builtInFontMetrics } from "#src/fontMetrics";
 import type { ChartExtensionInput } from "#src/chart/types";
 import type { NormalizedChart, NormalizedChartValueAxis, NormalizedObjectStyle } from "@pdflapas/model";
 import { pointsToPixels } from "@pdflapas/model";
@@ -589,18 +590,63 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // needs both.
     const gridRight = chart.valueAxes.length > 1 ? width * 0.14 + rightLegendBand : valueAxisRight ? gutter + rightLegendBand : Math.max(width * 0.02, rightLegendBand);
     const gridBottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendBand : 0) + categoryTitleBand + categoryBand;
+    const gridTop = gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2) + topLegendBand;
     // A manual layout (layoutTarget inner) places the plot rectangle itself, so the labels go where they fall.
     const grid = layout
         ? { left: layout.x * width, top: layout.y * height, width: layout.w * width, height: layout.h * height, outerBoundsMode: "none", ...plotAreaStyle }
         : {
               left: gridLeft,
               right: gridRight,
-              top: gap + titleBand + (chart.showLegend && chart.legendPosition === "t" ? legendBand : 0) + (horizontal ? 0 : valueLabelPx / 2) + topLegendBand,
+              top: gridTop,
               bottom: gridBottom,
               outerBoundsMode: table ? "none" : "auto",
               outerBounds: { left: labelBound + leftLegendShift, right: Math.max(labelBound, rightLegendBand), top: 0, bottom: 0 },
               ...plotAreaStyle,
           };
+    // An automatic value axis (no valAxisMajorUnit) takes the steps its target fits along the drawn axis (stepRoom, #585):
+    // at most the plot's length over the room per step, in label heights or the first scale's widest label widths.
+    // shortcut: ECharts may still narrow the plot for its labels (outerBounds), so a horizontal axis's length can be
+    // long: 18pt labels on 0.3..0.9 step by 0.2 on an axis LibreOffice draws 110 to 120pt long, where it steps by 0.5.
+    // Take the laid-out length (a second layout pass, as LibreOffice's) when a deck needs it (#585).
+    const valueAxisLength = horizontal ? (layout ? layout.w * width : width - gridLeft - gridRight) : layout ? layout.h * height : height - gridTop - gridBottom;
+    const scaledValueAxes: NormalizedChartValueAxis[] = [];
+
+    for (const [index, axis] of chart.valueAxes.entries()) {
+        const automatic = axis.automaticScale;
+        const room = automatic?.stepRoom;
+        // A percent-stacked axis runs 0 to 100 whatever its data.
+        const percent = chart.series.some(series => series.stack === "percentStacked" && series.valueAxisIndex === index);
+
+        if (!automatic || !room || percent) {
+            scaledValueAxes.push(axis);
+            continue;
+        }
+
+        const labelPx = pointsToPixels(axis.labelFontSize);
+        let labelSize = 0;
+
+        if (room.label === "height") {
+            const font = builtInFontMetrics(axis.labelFontFace);
+
+            labelSize = labelPx * (font.kind === "metrics" ? (font.metrics.winAscent + font.metrics.winDescent) / font.metrics.unitsPerEm : PPTX_DEFAULTS.text.singleLineEm);
+        } else {
+            const interval = axis.majorUnit ?? automaticAxisInterval(axis.minimum, axis.maximum);
+
+            for (let step = 0; axis.minimum + step * interval <= axis.maximum + interval / 2; step++) {
+                const value = Number((axis.minimum + step * interval).toPrecision(12));
+                const label = formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode);
+
+                labelSize = Math.max(labelSize, format.getTextRect(label, `${labelPx}px ${axis.labelFontFace}`).width);
+            }
+        }
+
+        const maxIncrements = Math.max(2, Math.min(room.maxIncrements, Math.floor(valueAxisLength / (room.perStep * Math.max(1, labelSize)) + room.rounding)));
+        const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
+        const scale = automaticAxisScale(automatic.low, automatic.high, fixed, true, maxIncrements);
+
+        scaledValueAxes.push({ ...axis, minimum: automatic.fixedMinimum ? axis.minimum : scale.minimum, maximum: automatic.fixedMaximum ? axis.maximum : scale.maximum, majorUnit: scale.interval });
+    }
+
     // The category axis's labels and title (a scatter or bubble chart's x axis takes them too, as PptxGenJS writes its
     // c:valAx from the catAxis* options).
     const categoryLabelFormat = categoryAxisModel.labelFormatCode;
@@ -1118,7 +1164,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
                 splitLine: gridLineOption(categoryAxisModel),
             },
-            yAxis: firstAxis ? valueAxisOption(firstAxis, 0, firstAxis.minimum, firstAxis.maximum, { kind: "default" }) : { type: "value", ...axisStyle, splitLine: { show: false } },
+            yAxis: scaledValueAxes[0] ? valueAxisOption(scaledValueAxes[0], 0, scaledValueAxes[0].minimum, scaledValueAxes[0].maximum, { kind: "default" }) : { type: "value", ...axisStyle, splitLine: { show: false } },
             series: scatter,
         };
     } else {
@@ -1127,7 +1173,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // The value range each axis draws: a percent-stacked axis 0 to 100.
         const ranges: [number, number][] = [];
 
-        for (const [index, axis] of chart.valueAxes.entries()) {
+        for (const [index, axis] of scaledValueAxes.entries()) {
             const percent = chart.series.some(series => series.stack === "percentStacked" && series.valueAxisIndex === index);
 
             ranges.push(percent ? [0, 100] : [axis.minimum, axis.maximum]);

@@ -875,6 +875,32 @@ describe("chart normalization and rendering", () => {
         expect(ticks("powerpoint", { valAxisMajorUnit: 1 })).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
     });
 
+    test("steps a 2D value axis by the room its labels have on the target (valueAxisStepRoom, #585, #589)", () => {
+        const scale = (target: "libreoffice" | "powerpoint", type: "bar" | "line", values: number[], options: PptxGenJS.IChartOpts): string => {
+            const presentation = new PuppeteerGen(undefined, { target });
+
+            presentation.addSlide().addChart(type, [{ name: "Lorem", labels: ["A", "B", "C", "D"], values }], { x: 0.3, y: 0.7, w: 6, valAxisLabelFontFace: "Arial", valAxisLabelFontSize: 10, ...options });
+            const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const anchor = options.barDir === "bar" ? "middle" : "end";
+            const labels = Array.from(svg?.querySelectorAll(`text[text-anchor='${anchor}']`) ?? [], text => text.textContent ?? "").filter(text => /^-?[\d.]+$/.test(text));
+
+            return `${labels[0]}..${labels.at(-1)} (${labels.length})`;
+        };
+
+        expect(normalizeChart("bar", [{ name: "Lorem", labels: ["A"], values: [3] }]).valueAxes[0]?.automaticScale).toEqual({ low: 3, high: 3, fixedMinimum: false, fixedMaximum: false });
+        expect(normalizeChart("bar", [{ name: "Lorem", labels: ["A"], values: [3] }], { valAxisMajorUnit: 1 }).valueAxes[0]?.automaticScale).toBeUndefined();
+        // LibreOffice 26.2: 3, 5, 4, 7 at 10pt runs 0..8 by 2 on a 73pt axis and by 1 on an 86.5pt one.
+        expect(scale("libreoffice", "bar", [3, 5, 4, 7], { h: 1.4 })).toBe("0..8 (5)");
+        expect(scale("libreoffice", "bar", [3, 5, 4, 7], { h: 1.7 })).toBe("0..8 (9)");
+        // PowerPoint's PDF export: 3, -2, 4, 7 runs -3..8 by 1 on a 181pt axis, -5..10 by 5 on a 66pt one, as a line too.
+        expect(scale("powerpoint", "bar", [3, -2, 4, 7], { h: 3 })).toBe("-3..8 (12)");
+        expect(scale("powerpoint", "bar", [3, -2, 4, 7], { h: 1.4 })).toBe("-5..10 (4)");
+        expect(scale("powerpoint", "line", [3, -2, 4, 7], { h: 4.4 })).toBe("-3..8 (12)");
+        // A horizontal axis: 3, 9, 16, 12 on a 4in chart runs 0..18 by 2 in LibreOffice, 0..20 by 5 in PowerPoint.
+        expect(scale("libreoffice", "bar", [3, 9, 16, 12], { h: 4.4, w: 4, barDir: "bar" })).toBe("0..18 (10)");
+        expect(scale("powerpoint", "bar", [3, 9, 16, 12], { h: 4.4, w: 4, barDir: "bar" })).toBe("0..20 (5)");
+    });
+
     test("steps a bar3D value axis as LibreOffice does, by valAxisMajorUnit when set (#541)", () => {
         const one: PptxGenJS.OptsChartData[] = [{ name: "Lorem", labels: ["A", "B", "C", "D"], values: [3, 5, 4, 7] }];
         const ticks = (options: PptxGenJS.IChartOpts, h = 4.8): string[] => {

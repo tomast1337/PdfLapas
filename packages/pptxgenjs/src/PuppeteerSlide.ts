@@ -264,9 +264,23 @@ export class PuppeteerSlide implements PptxSlide {
             // shortcut: a bar chart whose <c:dPt>s are filled (varyColors) keeps the series entry, and a combo chart's
             // single-series bar group too; neither is measured against PowerPoint (#552).
             ...(target.chartLegendListsUnfilledPoints && normalized.series.length === 1 && normalized.series[0]?.automaticPointFill ? { legendListsPoints: true } : {}),
-            // A bar3D value axis's step needs the target's label heights of drawn axis (bar3DLabelHeightsPerStep), and
+            // An automatic value axis's step needs the target's room along the drawn axis: on a bar3D chart its label
+            // heights (bar3DLabelHeightsPerStep), on a 2D chart its rule for the axis's direction (valueAxisStepRoom);
             // the target may name a single series at the depth axis (bar3DNamesSingleSeries).
-            valueAxes: normalized.valueAxes.map(axis => (axis.automaticScale ? { ...axis, automaticScale: { ...axis.automaticScale, labelHeightsPerStep: target.bar3DLabelHeightsPerStep } } : axis)),
+            valueAxes: normalized.valueAxes.map(axis => {
+                if (!axis.automaticScale) {
+                    return axis;
+                }
+
+                if (normalized.type === "bar3D") {
+                    return { ...axis, automaticScale: { ...axis.automaticScale, labelHeightsPerStep: target.bar3DLabelHeightsPerStep } };
+                }
+
+                const room = target.valueAxisStepRoom;
+                const direction = normalized.type === "bar" && normalized.barDirection === "bar" ? room.horizontal : room.vertical;
+
+                return { ...axis, automaticScale: { ...axis.automaticScale, stepRoom: { ...direction, maxIncrements: room.maxIncrements } } };
+            }),
             ...(target.bar3DNamesSingleSeries && normalized.type === "bar3D" ? { namesSingleDepthSlot: true } : {}),
             // A bubble's value label prints its y value or, on some targets, its size (bubbleValueLabelShowsSize).
             ...(target.bubbleValueLabelShowsSize && normalized.type === "bubble" ? { dataLabels: { ...normalized.dataLabels, valueIsBubbleSize: true } } : {}),

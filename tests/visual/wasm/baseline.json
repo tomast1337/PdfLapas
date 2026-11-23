@@ -637,5 +637,11 @@
   "chartPieBestFit": {
     "p1-Chart0": 0.0345,
     "p1-Chart1": 0.063
+  },
+  "chartAutomaticScale": {
+    "p1-Chart0": 0.1111,
+    "p1-Chart1": 0.126,
+    "p1-Chart2": 0.1378,
+    "p1-Chart3": 0.1531
   }
 }

@@ -2289,6 +2289,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartCategoryOptionFixture(presentation);
     populateChartDataTableFixture(presentation);
     populateChartPieBestFitFixture(presentation);
+    populateChartAutomaticScaleFixture(presentation);
 }
 
 /**
@@ -3522,4 +3523,39 @@ export function populateChartPieBestFitFixture(presentation: Presentation): void
 
     slide.addChart("pie", data, { ...shared, x: 0.4 });
     slide.addChart("pie", data, { ...shared, x: 5.2, showLabel: true });
+}
+
+/**
+ * Automatic value-axis scales (#585, #548): LibreOffice limits a value axis's steps to about as many as its labels fit
+ * along it, so 3, 5, 4, 7 keeps 0..8 by 1, 14pt labels on 3..16 take 0..20 by 5, and stacked
+ * horizontal bars with totals up to 16 keep 0..18 by 2 along their width (PowerPoint 0..20 by 5); a bubble chart's x
+ * axis takes the scatter scale (1..4 gives 0.5..4.5 by 0.5) whatever the bubble sizes. A parity slide after the others (no page number moves)
+ * and the WASM chartAutomaticScale deck, which crops each chart.
+ */
+export function populateChartAutomaticScaleFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Automatic value-axis scales", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    // Light fills, as on the bar3D axis slide: the page scores the axes, not the bubble sizes or bar offsets.
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valAxisLabelFontFace: "Arial", catAxisLabelFontFace: "Arial", chartColors: ["BDD7EE", "F8CBAD"] };
+
+    slide.addChart("bar", [{ name: "Lorem", labels, values: [3, 5, 4, 7] }], { ...shared, x: 0.4, y: 0.8 });
+    slide.addChart("bar", [{ name: "Lorem", labels, values: [3, 9, 16, 12] }], { ...shared, x: 5.2, y: 0.8, valAxisLabelFontSize: 14 });
+    slide.addChart(
+        "bar",
+        [
+            { name: "Lorem", labels, values: [3, 5, 9, 7] },
+            { name: "Ipsum", labels, values: [4, 6, 7, 5] },
+        ],
+        { ...shared, x: 0.4, y: 3.2, barDir: "bar", barGrouping: "stacked" },
+    );
+    slide.addChart(
+        "bubble",
+        [
+            { name: "X", values: [1, 2, 3, 4] },
+            { name: "Lorem", values: [3, 5, 4, 7], sizes: [4, 9, 2, 6] },
+        ],
+        { ...shared, x: 5.2, y: 3.2 },
+    );
 }

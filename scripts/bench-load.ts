@@ -46,6 +46,7 @@ const PID_NAME = /^\d+$/;
 const KB_PER_MB = 1024;
 const BYTES_PER_MB = 1024 * 1024;
 const MS_PER_S = 1000;
+const US_PER_MS = 1000;
 // Longer than IDLE_CLOSE_MS in packages/puppeteer/src/browser.ts, so the shared browser has closed when the after-load sample runs.
 const SETTLE_MS = 3000;
 // A PNG cut after its IHDR chunk: its header passes checkImagePixels, so the render fails inside the renderer (in
@@ -145,6 +146,8 @@ if (import.meta.main) {
             let request = 0;
             let expectedFailures = 0;
             const errors = new Map<string, number>();
+            // This thread's CPU time, which bounds the requests one event loop can build (#609); workers' time is not in it.
+            const mainThreadStart = process.threadCpuUsage();
             const start = performance.now();
             const deadline = start + config.seconds * MS_PER_S;
             let windowStart = start;
@@ -199,8 +202,12 @@ if (import.meta.main) {
             await Promise.all(workers);
             clearInterval(sampler);
             const elapsed = (performance.now() - start) / MS_PER_S;
+            const mainThread = process.threadCpuUsage(mainThreadStart);
+            const mainThreadMs = (mainThread.user + mainThread.system) / US_PER_MS / Math.max(1, request);
 
-            console.log(`${engine} x${concurrency} total: ${latencyLine(all, elapsed)}, ${expectedFailures} broken-image requests failed as expected, ${errors.size === 0 ? "no other errors" : "other errors:"}`);
+            console.log(
+                `${engine} x${concurrency} total: ${latencyLine(all, elapsed)}, main thread ${mainThreadMs.toFixed(1)} ms CPU per request, ${expectedFailures} broken-image requests failed as expected, ${errors.size === 0 ? "no other errors" : "other errors:"}`,
+            );
             for (const [message, count] of errors) {
                 console.log(`  ${count} x ${message}`);
             }

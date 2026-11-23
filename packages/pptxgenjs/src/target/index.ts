@@ -178,6 +178,11 @@ export type RenderingTargetProfile = {
     readonly eastAsianFallback: { readonly byFace: Readonly<Record<string, readonly string[]>>; readonly otherFaces: readonly string[] };
     /** The face an emoji (Extended_Pictographic) the run's face lacks is drawn in, ahead of `fallbackFaces`; undefined: none. */
     readonly emojiFace: string | undefined;
+    /**
+     * Whether a keycap with U+FE0F ("1️⃣") is drawn in text presentation, its U+FE0F written as U+FE0E in the run
+     * text so each renderer draws the outline glyph in the text colour, not a colour emoji.
+     */
+    readonly keycapTextPresentation: boolean;
     /** The faces after `fallbackFaces` by the run face's generic family and the run's language; undefined: none. */
     readonly genericFallback: GenericFallback | undefined;
     /**

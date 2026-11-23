@@ -287,7 +287,11 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * face where it has them (Arial, Times New Roman, Courier New) and of Segoe UI Symbol where it lacks them (☺ ♥ ♠ in
  * Calibri), and drawn black, as is a keycap with U+FE0F ("1️⃣ #️⃣ *️⃣", Segoe UI Emoji's outline); "2⃣", without
  * it, keeps 2 in the face and draws U+20E3 in Segoe UI Symbol. Its PDF export draws Segoe UI Emoji without its colour
- * layers.
+ * layers. So a keycap with U+FE0F is drawn in text presentation (`keycapTextPresentation`): its U+FE0F is written as
+ * U+FE0E, and Chromium and pdf-core then draw the outlined keycap from a text font in the run's colour, where with
+ * U+FE0F both drew a colour emoji (#588).
+ * shortcut: only black keycaps were measured, so a keycap takes the run's colour; 😀, ⭐ and flags keep their colour
+ * emoji. The ptext-emoji probe deck (black and red text) settles both (#588).
  * shortcut: faces other than those measured take the Times New Roman faces; measure another face when a deck needs it.
  * It draws U+2011 NON-BREAKING HYPHEN with the face's U+002D glyph (`nonBreakingHyphen`), even in Times New Roman,
  * which has a U+2011 glyph of its own: in the same export it is glyph 16 in Arial and Times New Roman, the one
@@ -334,6 +338,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     fallbackFaces: FALLBACK_FACES,
     eastAsianFallback: EAST_ASIAN_FALLBACK,
     emojiFace: EMOJI_FACE,
+    keycapTextPresentation: true,
     genericFallback: undefined,
     nonBreakingHyphen: "hyphen-minus",
     drawsPictureInnerShadow: true,

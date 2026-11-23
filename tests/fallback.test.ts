@@ -146,6 +146,18 @@ describe("the PowerPoint target's fallback faces", () => {
         expect(fallbackSegments("x1\uFE0F\u20E3x", "Arial", false, false, "en-US", "powerpoint", FONTS)).toEqual([{ text: "x1\uFE0F\u20E3x", fallbackFaces: fallbackChain("Arial", "en-US", "powerpoint") }]);
     });
 
+    // Its PDF export draws the keycap as Segoe UI Emoji's outline, without colour layers (#588): U+FE0E asks every
+    // renderer for that text presentation. LibreOffice was not measured and keeps U+FE0F.
+    test("writes a keycap's U+FE0F as U+FE0E on the PowerPoint target only", () => {
+        const texts = (target: "powerpoint" | "libreoffice") =>
+            normalizeText([{ text: "x1️⃣x #️⃣ 2⃣ ❤️" }], { fontFace: "Arial", fontSize: 14 }, target, FONTS)
+                .paragraphs.flatMap(paragraph => paragraph.runs.map(run => run.text))
+                .join("");
+
+        expect(texts("powerpoint")).toBe("x1︎⃣x #︎⃣ 2⃣ ❤️");
+        expect(texts("libreoffice")).toBe("x1️⃣x #️⃣ 2⃣ ❤️");
+    });
+
     test("leaves the text whole when a face's characters are unknown, and on the LibreOffice target", () => {
         const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: () => UNKNOWN });
 

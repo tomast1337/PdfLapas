@@ -22,6 +22,10 @@ export type TextInput = string | number | PptxGenJS.TextProps[];
 const WORD_JOINER = "⁠";
 /** The point between a closing bracket or "%" and an opening bracket (RENDERING_TARGETS.joinsOpeningBracket). */
 const BEFORE_OPENING_BRACKET = /(?<=[)\]}%])(?=[([{])/gu;
+/** A keycap's U+FE0F VARIATION SELECTOR-16 (RENDERING_TARGETS.keycapTextPresentation), before U+20E3. */
+const KEYCAP_EMOJI_SELECTOR = /(?<=[0-9#*])\uFE0F(?=\u20E3)/gu;
+/** U+FE0E VARIATION SELECTOR-15: text presentation. */
+const TEXT_PRESENTATION = "\uFE0E";
 /** U+2011 NON-BREAKING HYPHEN (RENDERING_TARGETS.nonBreakingHyphen). */
 const NON_BREAKING_HYPHEN = "‑";
 const UNDERLINE_TYPE_NAMES: ReadonlySet<string> = new Set(UNDERLINE_TYPES);
@@ -800,6 +804,19 @@ export function normalizeText(
 
                 joinedRuns.push(text === run.text ? run : { ...run, text });
             }
+        }
+
+        if (RENDERING_TARGETS[target].keycapTextPresentation) {
+            // One character for another, so the advance grid's spacing, counted per character, stays as it is.
+            const presented: NormalizedTextRun[] = [];
+
+            for (const run of joinedRuns) {
+                const text = run.text.replace(KEYCAP_EMOJI_SELECTOR, TEXT_PRESENTATION);
+
+                presented.push(text === run.text ? run : { ...run, text });
+            }
+
+            joinedRuns = presented;
         }
 
         let runs = joinedRuns;

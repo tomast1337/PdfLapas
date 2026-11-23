@@ -224,6 +224,8 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     fallbackFaces: [],
     eastAsianFallback: { byFace: {}, otherFaces: [] },
     emojiFace: undefined,
+    // Its keycaps were not measured: a keycap keeps the renderer's emoji presentation, as before the flag.
+    keycapTextPresentation: false,
     genericFallback: GENERIC_FALLBACK,
     nonBreakingHyphen: "hyphen",
     drawsPictureInnerShadow: false,

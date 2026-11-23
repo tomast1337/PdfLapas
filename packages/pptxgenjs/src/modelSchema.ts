@@ -110,7 +110,7 @@ const textRun = z
         verticalAlign: z.enum(["baseline", "sub", "super"]),
         baselineOffset: finite,
         characterSpacing: finite,
-        wordCharacterSpacing: z.array(finite).optional(),
+        wordCharacterSpacing: z.array(z.union([finite, z.array(z.strictObject({ characters: z.number().int().positive(), spacing: finite })).min(1)])).optional(),
         spaceCharacterSpacing: z.array(finite).optional(),
         kerning: z.literal(false).optional(),
         syntheticBold: nonNegative.optional(),
@@ -128,6 +128,30 @@ const textRun = z
         error: "wordCharacterSpacing must hold one value per word of text (the stretches between spaces and tabs)",
         path: ["wordCharacterSpacing"],
     })
+    .refine(
+        run => {
+            const words = runPieces(run.text).filter(isWord);
+
+            for (const [index, spacing] of (run.wordCharacterSpacing ?? []).entries()) {
+                if (typeof spacing === "number") {
+                    continue;
+                }
+
+                let characters = 0;
+
+                for (const piece of spacing) {
+                    characters += piece.characters;
+                }
+
+                if (characters !== [...(words[index] ?? "")].length) {
+                    return false;
+                }
+            }
+
+            return true;
+        },
+        { error: "a word's pieces in wordCharacterSpacing must cover the word: their characters (code points) add up to its length", path: ["wordCharacterSpacing"] },
+    )
     .refine(run => run.spaceCharacterSpacing === undefined || (run.wordCharacterSpacing !== undefined && run.spaceCharacterSpacing.length === runPieces(run.text).filter(isSpaces).length), {
         error: "spaceCharacterSpacing must hold one value per stretch of spaces in text (a tab ends one), and comes with wordCharacterSpacing",
         path: ["spaceCharacterSpacing"],

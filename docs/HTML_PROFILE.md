@@ -26,7 +26,7 @@ keeping its own copy (#154); the WASM reader requires them, and
 [completion](#completion) fills them in a hand-written document. The PowerPoint target's
 rounding of glyph advances to the 0.125pt grid moved in place from one `letter-spacing` per run to one per
 word: a run's words are each in a [word span](#text) of their own `letter-spacing`, so a line breaks where
-PowerPoint's does. An underlined or struck run gained, in place, its decoration geometry ([Text](#text)):
+PowerPoint's does, and a kerned word is cut into word spans side by side at its kern pairs (#577). An underlined or struck run gained, in place, its decoration geometry ([Text](#text)):
 the underline's band in em (or `from-font`) with `text-decoration-skip-ink: none`, and `data-underline`,
 `data-underline-line-band`, `data-strike` and `data-strike-band`, so every renderer
 draws the same underline and strike (#396, #397, #489); `data-underline-heavy` went with them.
@@ -322,7 +322,10 @@ in reading order, except a stretch of spaces with a `letter-spacing` of its own 
 on the PowerPoint target, the spaces a kern pair such as Arial's " T" starts on, or that end off its grid), which is a span of the
 same form whose text is those spaces. A span's `letter-spacing` replaces the run's for its characters; the
 run's applies to its bare text. A run with word spans has one per word (`wordCharacterSpacing`, the run's
-text split at spaces and tabs) and is never `data-empty`; a reader rejects any other element in a run.
+text split at spaces and tabs) and is never `data-empty`; a reader rejects any other element in a run. A word
+may be several word spans side by side, one per piece (on the PowerPoint target, each kern pair's left
+character is a piece of its own, so the pair moves only the glyphs after it): nothing separates them, so they
+add no line break opportunity, and a reader lays them out as one word.
 
 The rendering target (`PuppeteerGenPowerPoint`, `PuppeteerGenLibreOffice`, or the `target` option) is not
 written as a document-level value: each difference is on the element it changes, so a reader of the HTML
@@ -915,7 +918,9 @@ object-valued field covers the field's presence; its own fields have their own r
 | `NormalizedTextRun.verticalAlign`               | profile | `data-vertical-align="sub                                                                                                   | super"`, omitted at `baseline`. |
 | `NormalizedTextRun.baselineOffset`              | profile | `position: relative; top: <-offset>px`, omitted at 0; it moves the glyphs only, the line box is the paragraph's.            |
 | `NormalizedTextRun.characterSpacing`            | profile | `letter-spacing`, omitted at 0.                                                                                             |
-| `NormalizedTextRun.wordCharacterSpacing`        | profile | Each word in a word span of its own `letter-spacing` (PowerPoint target), omitted when the run has none.                    |
+| `NormalizedTextRun.wordCharacterSpacing`        | profile | Each word, or each piece of one cut at its kern pairs, in a word span of its own `letter-spacing` (PowerPoint target).      |
+| `NormalizedWordPiece.characters`                | profile | The text in one word span: a piece of a word, so a word may be several word spans side by side.                             |
+| `NormalizedWordPiece.spacing`                   | profile | That word span's `letter-spacing`.                                                                                          |
 | `NormalizedTextRun.spaceCharacterSpacing`       | profile | A stretch of spaces in a span of its own `letter-spacing` where it differs from the run's, omitted when none does.          |
 | `NormalizedTextRun.kerning`                     | profile | `font-kerning: none` when `false` (PowerPoint target), omitted when kerned.                                                 |
 | `NormalizedTextRun.syntheticBold`               | profile | `data-synthetic-bold` on a bold run (LibreOffice target), omitted for the renderer's own synthetic bold.                    |

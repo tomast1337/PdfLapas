@@ -1184,6 +1184,13 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartCatAxis.labelPosition`                           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.labelRotate`                             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.labelSkip`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.dateSlots`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.dateSlots.labels`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.dateSlots.categorySlots`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale.minimum`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale.maximum`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale.majorUnit`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.labelFormatCode`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.reversed`                                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.lineColor`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

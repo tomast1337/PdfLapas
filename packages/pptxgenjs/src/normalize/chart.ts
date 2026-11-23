@@ -1,7 +1,8 @@
 import type PptxGenJS from "pptxgenjs";
 import { automaticAxisScale, bar3DAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
+import { type ChartTimeUnit, DATE_AXIS_SLOT_LIMIT, dateAxisLayout, formatChartDate, isSupportedChartDateFormat } from "#src/chart/dateAxis";
 import { UnsupportedChartError } from "#src/chart/errors";
-import { isSupportedChartNumberFormat } from "#src/chart/format";
+import { formatChartNumber, isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget, type RenderingTargetProfile } from "#src/target/index";
 import type { CssColor, NormalizedChart, NormalizedChartDataLabels, NormalizedChartSeries, NormalizedChartType, NormalizedChartValueAxis } from "@pdflapas/model";
@@ -13,6 +14,7 @@ const SUPPORTED_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "b
 const MIXED_CHART_TYPES = new Set<PptxGenJS.CHART_NAME>(["area", "bar", "line"]);
 
 export const CATEGORY_AXIS_OPTIONS = [
+    "catAxisBaseTimeUnit",
     "catAxisCrossesAt",
     "catAxisHidden",
     "catAxisLabelColor",
@@ -28,7 +30,14 @@ export const CATEGORY_AXIS_OPTIONS = [
     "catAxisLineSize",
     "catAxisLineStyle",
     "catAxisMajorTickMark",
+    "catAxisMajorTimeUnit",
+    "catAxisMajorUnit",
+    "catAxisMaxVal",
     "catAxisMinorTickMark",
+    "catAxisMinorTimeUnit",
+    "catAxisMinorUnit",
+    "catAxisMinVal",
+    "catAxisMultiLevelLabels",
     "catAxisOrientation",
     "catAxisTitle",
     "catAxisTitleColor",
@@ -254,6 +263,10 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
 ]);
 // Where the axes cross: drawn on a 2D category axis only.
 const AXIS_CROSSING_OPTIONS = ["catAxisCrossesAt", "valAxisCrossesAt"] as const;
+// A date axis's time line (#580): drawn on line, column, bar, area and combo charts, not measured on radar or bar3D ones.
+const DATE_AXIS_OPTIONS = ["catAxisBaseTimeUnit", "catAxisMajorTimeUnit", "catAxisMinorTimeUnit", "catAxisMajorUnit", "catAxisMinorUnit", "catAxisMinVal", "catAxisMaxVal"] as const;
+const DATE_AXIS_TYPES = new Set<NormalizedChartType>(["area", "bar", "line", "mixed"]);
+const TIME_UNITS = new Set(["days", "months", "years"]);
 // The category-axis options a chart type does not draw (#566, #582). A radar chart's category axis is its spokes:
 // LibreOffice 26.2.6 draws its labels in catAxisLabel* (none for catAxisHidden or catAxisLabelPos none), runs them
 // counterclockwise for catAxisOrientation maxMin and numbers the value axis on the spoke a numeric catAxisCrossesAt
@@ -262,6 +275,7 @@ const AXIS_CROSSING_OPTIONS = ["catAxisCrossesAt", "valAxisCrossesAt"] as const;
 // catAxis* options) do not place their axes elsewhere (#591).
 const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
     radar: new Set<string>([
+        ...DATE_AXIS_OPTIONS,
         "catAxisLabelFrequency",
         "catLabelFormatCode",
         "valAxisCrossesAt",
@@ -274,7 +288,7 @@ const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType
         "catAxisMajorTickMark",
         "catAxisMinorTickMark",
     ]),
-    bar3D: new Set<string>(AXIS_CROSSING_OPTIONS),
+    bar3D: new Set<string>([...AXIS_CROSSING_OPTIONS, ...DATE_AXIS_OPTIONS]),
     scatter: new Set<string>(AXIS_CROSSING_OPTIONS),
     bubble: new Set<string>(AXIS_CROSSING_OPTIONS),
 });
@@ -1082,11 +1096,103 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     // A scatter or bubble chart's x axis keeps its General numbers in LibreOffice 26.2.6 whatever catLabelFormatCode says.
-    const labelFormatCode = XY_TYPES.has(normalizedType) ? undefined : options.catLabelFormatCode;
+    const requestedFormatCode = XY_TYPES.has(normalizedType) ? undefined : options.catLabelFormatCode;
+    const timeUnits: Partial<Record<"catAxisBaseTimeUnit" | "catAxisMajorTimeUnit" | "catAxisMinorTimeUnit", ChartTimeUnit>> = {};
+    const axisNumbers: Partial<Record<"catAxisMajorUnit" | "catAxisMinorUnit" | "catAxisMinVal" | "catAxisMaxVal", number>> = {};
 
-    if (labelFormatCode !== undefined && !isSupportedChartNumberFormat(labelFormatCode)) {
+    for (const key of ["catAxisBaseTimeUnit", "catAxisMajorTimeUnit", "catAxisMinorTimeUnit"] as const) {
+        const unit: unknown = options[key];
+
+        if (unit !== undefined && !TIME_UNITS.has(String(unit))) {
+            throw new TypeError(`${key} must be "days", "months" or "years"; got ${JSON.stringify(unit)}`);
+        }
+
+        if (unit !== undefined) {
+            // TIME_UNITS holds exactly the ChartTimeUnit names.
+            timeUnits[key] = unit as ChartTimeUnit;
+        }
+    }
+
+    for (const key of ["catAxisMajorUnit", "catAxisMinorUnit", "catAxisMinVal", "catAxisMaxVal"] as const) {
+        const value: unknown = options[key];
+
+        if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || (key.endsWith("Unit") && value <= 0))) {
+            throw new TypeError(`${key} must be a finite${key.endsWith("Unit") ? " positive" : ""} number; got ${JSON.stringify(value)}`);
+        }
+
+        if (typeof value === "number") {
+            axisNumbers[key] = value;
+        }
+    }
+
+    // PptxGenJS 4.0.1 writes a `<c:dateAx>` for catLabelFormatCode, its categories as numbers. LibreOffice 26.2.6 lays
+    // date serials out on a time line (dateAxisLayout); the time units and catAxisMajorUnit and catAxisMinorUnit are
+    // written with catLabelFormatCode only. catAxisMinVal and catAxisMaxVal on a text axis, and catAxisMultiLevelLabels on
+    // single-level labels (`<c:noMultiLvlLbl>`), change nothing there. shortcut: catAxisMinorUnit and
+    // catAxisMinorTimeUnit draw no minor ticks between the slots yet; draw them when a fixture shows them.
+    const serials = (series[0]?.labels ?? []).map(label => (label.trim() === "" ? NaN : Number(label)));
+    const dateAxis = requestedFormatCode !== undefined && DATE_AXIS_TYPES.has(normalizedType) && serials.length > 0 && serials.every(serial => Number.isFinite(serial) && serial >= 1);
+    const dateFormat = requestedFormatCode !== undefined && isSupportedChartDateFormat(requestedFormatCode);
+
+    if (requestedFormatCode !== undefined && !isSupportedChartNumberFormat(requestedFormatCode) && !(dateAxis && dateFormat)) {
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["catLabelFormatCode[format]"] });
     }
+
+    if (dateAxis && axisNumbers.catAxisMajorUnit !== undefined && !Number.isInteger(axisNumbers.catAxisMajorUnit)) {
+        throw new TypeError(`catAxisMajorUnit must be a whole number of time units on a date axis; got ${axisNumbers.catAxisMajorUnit}`);
+    }
+
+    let dateSlots: NormalizedChart["categoryAxis"]["dateSlots"];
+
+    // Consecutive whole serials with nothing else set are a slot each, the categories as they are.
+    const consecutive = serials.every((serial, index) => Number.isInteger(serial) && (index === 0 || serial === (serials[index - 1] ?? 0) + 1));
+    const timeLine = dateFormat || !consecutive || Object.keys(timeUnits).length > 0 || axisNumbers.catAxisMajorUnit !== undefined || axisNumbers.catAxisMinVal !== undefined || axisNumbers.catAxisMaxVal !== undefined;
+
+    if (dateAxis && requestedFormatCode !== undefined && timeLine) {
+        const layout = dateAxisLayout({
+            serials,
+            ...(timeUnits.catAxisBaseTimeUnit ? { baseUnit: timeUnits.catAxisBaseTimeUnit } : {}),
+            ...(axisNumbers.catAxisMajorUnit !== undefined ? { majorUnit: axisNumbers.catAxisMajorUnit } : {}),
+            ...(timeUnits.catAxisMajorTimeUnit ? { majorTimeUnit: timeUnits.catAxisMajorTimeUnit } : {}),
+            ...(axisNumbers.catAxisMinVal !== undefined ? { minimum: axisNumbers.catAxisMinVal } : {}),
+            ...(axisNumbers.catAxisMaxVal !== undefined ? { maximum: axisNumbers.catAxisMaxVal } : {}),
+        });
+
+        // LibreOffice 26.2.6 draws the points of one slot (daily dates on a months base unit) at one x (#593).
+        if (layout.kind === "shared-slot") {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catAxisBaseTimeUnit[several dates in one ${layout.unit.slice(0, -1)}]`] });
+        }
+
+        if (layout.kind === "too-many-slots") {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catLabelFormatCode[time line of ${layout.count} slots, at most ${DATE_AXIS_SLOT_LIMIT}]`] });
+        }
+
+        if (layout.labelSerials.length === 0) {
+            throw new TypeError("catAxisMinVal must not be after catAxisMaxVal on a date axis");
+        }
+
+        // shortcut: a data table on a time line is not measured against LibreOffice; measure it when a deck needs one.
+        if (options.showDataTable) {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[date axis]"] });
+        }
+
+        dateSlots = {
+            labels: layout.labelSerials.map(serial => (serial === null ? "" : dateFormat ? formatChartDate(serial, requestedFormatCode) : formatChartNumber(serial, requestedFormatCode))),
+            categorySlots: layout.categorySlots,
+        };
+    }
+
+    // A time line's labels are formatted already.
+    const labelFormatCode = dateSlots ? undefined : requestedFormatCode;
+    // A scatter or bubble chart's x axis takes catAxisMinVal, catAxisMaxVal and catAxisMajorUnit as a value axis's bounds
+    // and step (PptxGenJS writes them on its c:valAx); shortcut: catAxisMinorUnit draws no minor ticks there yet.
+    const xScale = XY_TYPES.has(normalizedType)
+        ? {
+              ...(axisNumbers.catAxisMinVal !== undefined ? { minimum: axisNumbers.catAxisMinVal } : {}),
+              ...(axisNumbers.catAxisMaxVal !== undefined ? { maximum: axisNumbers.catAxisMaxVal } : {}),
+              ...(axisNumbers.catAxisMajorUnit !== undefined ? { majorUnit: axisNumbers.catAxisMajorUnit } : {}),
+          }
+        : {};
 
     const orientation: string | undefined = options.catAxisOrientation;
 
@@ -1112,6 +1218,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         labelRotate: finiteNumber(options.catAxisLabelRotate, "catAxisLabelRotate", catDefaults.labelRotate),
         ...(labelSkip ? { labelSkip } : {}),
         ...(labelFormatCode !== undefined ? { labelFormatCode } : {}),
+        ...(dateSlots ? { dateSlots } : {}),
+        ...(Object.keys(xScale).length > 0 ? { xScale } : {}),
         ...(orientation === "maxMin" ? { reversed: true } : {}),
         lineColor: normalizeColor(options.catAxisLineColor || catDefaults.lineColor),
         lineWidth: positiveNumber(options.catAxisLineSize || undefined, "catAxisLineSize", catDefaults.lineWidthPt),

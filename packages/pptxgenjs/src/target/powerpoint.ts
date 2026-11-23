@@ -33,8 +33,10 @@ const HANGING_MARKS = Object.freeze({ zh: "）》」”，、。：？！；』�
 
 /** Its zigzag's line, one step of its 1/600 in device grid tall, in px. */
 const WAVE_LINE_PX = PPTX_DEFAULTS.units.cssDpi / BASELINE_GRID_PER_INCH;
-/** `wavyHeavy`'s zigzag line, in those steps. */
+/** `wavyHeavy`'s zigzag line, in those steps, where the run's face is not known: T/2 at 20pt Arial. */
 const HEAVY_WAVE_LINES = 6;
+/** `wavyHeavy`'s zigzag line, in the band's thickness T. */
+const HEAVY_WAVE_LINE = 0.5;
 const line = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: 0, height: 1, ...(dashes ? { dashes } : {}) }] });
 /** A heavy type's line: 1.5T from P - T, as `heavy`, with the light type's dash pattern. */
 const heavyLine = (dashes?: readonly number[]): UnderlineShape => ({ pieces: [{ kind: "line", top: -1, height: 1.5, ...(dashes ? { dashes } : {}) }] });
@@ -74,9 +76,19 @@ const DOT_DOT_DASHES = [3, 2, 1, 2, 1, 2];
  * two lines of its thickness S, one right above the band and one right below it, the band itself left empty (24pt
  * Arial 1.20pt lines from 7.49 and 5.09pt above the baseline, S 1.196 from 6.217; 32pt 1.56 from 9.86 and 6.74, S
  * 1.597 from 8.298).
- * shortcut: `wavyHeavy`'s line is measured at 20pt only, so it is taken as six grid steps whatever the size, and a
- * zigzag starts again with each run where PowerPoint's runs on across a line's runs; measure larger sizes when a deck
- * needs them (#569).
+ * Measured again in its PDF export of a synthetic deck (#569: every type in Arial and Times New Roman at 12, 24 and
+ * 48pt, regular and bold; a strike and a double strike in Arial, Times New Roman, Calibri and Courier New at 10, 18, 36
+ * and 60pt, regular and bold), every rule above holds at each size, face and weight, within one grid step: the dash
+ * patterns are 3T/2T, 7T/4T, T/T and their mixes of the line's own T (12pt Arial 2.52/1.68 at T 0.84, bold 3.6/2.4 at
+ * T 1.2, 48pt 10.44/6.96 at T 3.48, Times 12pt at T 0.6), each heavy type 1.5T from P - T (12pt Arial 1.2 to 1.32,
+ * 48pt 5.16 to 5.28 at T 3.48), `wavy` a one-step line filling 2T, `wavyDbl` two one-step lines each filling T, and the
+ * strike the OS/2 band (60pt Arial 3.00pt from 15.58pt above the baseline, OS/2 2.99 from 15.53; Calibri Bold 60pt 5.40
+ * from 15.10, 5.45 from 15.00), the bold face's when bold. `wavyHeavy`'s line is T/2, not six grid steps
+ * (`zigzagLine`): 0.48pt at 12pt Arial (T 0.84), 0.96 at 24pt (T 1.8), 1.80 at 48pt (T 3.48), 2.52 at 48pt bold
+ * (T 5.04), 0.36 at 12pt Times New Roman (T 0.6) and 2.28 at 48pt Times bold (T 4.56), each T/2 rounded to the grid;
+ * 20pt Arial's 0.72 is T/2 of its 1.44.
+ * shortcut: a zigzag starts again with each run where PowerPoint's runs on across a line's runs, and `wavyHeavy`'s line
+ * is the run's own T/2, not that of its line's shared band; measure a line of mixed sizes when a deck needs it (#569).
  */
 const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
     bands: Object.freeze({ kind: "font" as const }),
@@ -100,7 +112,7 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
         dotDotDash: line(DOT_DOT_DASHES),
         dotDotDashHeavy: heavyLine(DOT_DOT_DASHES),
         wavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: WAVE_LINE_PX }] },
-        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: HEAVY_WAVE_LINES * WAVE_LINE_PX }] },
+        wavyHeavy: { pieces: [{ kind: "zigzag", top: -0.5, height: 2, thickness: HEAVY_WAVE_LINES * WAVE_LINE_PX }], zigzagLine: HEAVY_WAVE_LINE },
         wavyDbl: {
             pieces: [
                 { kind: "zigzag", top: -1, height: 1, thickness: WAVE_LINE_PX },

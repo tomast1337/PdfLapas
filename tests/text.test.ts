@@ -887,14 +887,15 @@ describe("text DOM rendering", () => {
             "line(-0.46 0.64) line(1.46 0.64)",
         ]);
         // As PowerPoint's PDF export draws them (target/powerpoint.ts): one dash pattern in T for the light and the heavy
-        // line, `words` unbroken under the spaces, the double strike two lines of the strike's thickness around its band.
+        // line, `wavyHeavy`'s zigzag line T/2 (18pt Arial: post 150/2048 em of 24px, 1.758px), `words` unbroken under the
+        // spaces, the double strike two lines of the strike's thickness around its band.
         expect(pieces("powerpoint")).toEqual([
             "line(0 1 1 1)",
             "line(-1 1.5 3 2)",
             "line(-1 1.5 7 4)",
             "line(0 1 3 2 1 2 1 2)",
             "zigzag(-0.5 2 0.16px)",
-            "zigzag(-0.5 2 0.96px)",
+            "zigzag(-0.5 2 0.878906px)",
             "zigzag(-1 1 0.16px) zigzag(0 1 0.16px)",
             "line(0 1)",
             "line(-1 1) line(1 1)",

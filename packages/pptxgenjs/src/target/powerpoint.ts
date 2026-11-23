@@ -382,22 +382,36 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // (#552).
     chartLegendListsPoints: true,
     topRightLegend: { kind: "above" as const, firstKeyCenterEm: 1.55, pitchEm: 1.725, bandBelowEm: 0.98 },
-    // PowerPoint's PDF export of a synthetic deck (the chartBar3DAxis fixture slide, 12pt Arial value labels, 17.9px
-    // tall) steps 3, 5, 4, 7 0..10 by 5 on a value axis about 83px long, and 12, 30, 48, 25 with valAxisMajorUnit 20
-    // 0..60. Its projection is flatter than ours (#541): it keeps 41.5px steps and drops 20.75px ones (1.16 to 2.32
-    // label heights), and the same scale on our 153px axis needs 2.14 to 4.29; 2.25 sits in both.
-    // shortcut: fitted to that one automatic chart; measure more lengths and sizes when a deck steps differently (#541).
-    bar3DLabelHeightsPerStep: 2.25,
-    // PowerPoint's PDF export of a synthetic deck (40 charts, #589, #527) needs more room per step than LibreOffice
-    // and allows 11 steps. Column, line and area axes in 10pt Arial (11.2pt labels): 3, -2, 4, 7 runs -3..8 by 1 on
-    // 282 and 181pt axes, -4..8 by 2 on 109pt and -5..10 by 5 on 66pt; 3, 9, 16, 12 runs 0..18 by 2 on 181pt and 0..20
-    // by 5 on 109pt; 3, 5, 4, 7 runs 0..8 by 2 on 101.5pt, and by 1 at 8pt on 141.5pt but by 2 at 14pt on 129.5pt and
-    // at 18pt on 120pt; 3, 9, 16, 12 at 14pt runs 0..18 by 2 on 173pt. A step needs more than 1.14 and at most 1.23
-    // label heights; 1.18 fits all, on its lengths and on ours. Horizontal bar axes at 10pt: 3, 9, 16, 12 runs 0..18 by 2 on 393pt and 0..20 by 5 on 249 and 177pt, a stack
-    // totalling 16 0..18 by 2 on 609pt, 3, -2, 4, 7 -4..8 by 2 on 403pt: more than 3.28 and at most 3.89 label heights.
-    // shortcut: 11 steps is the least the deck shows (0..17 by 1 on 282pt is refused, so at most 16), and the
-    // horizontal room is fitted at one font size, height or width alike; measure more when a deck steps otherwise (#589).
-    valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1.18, rounding: 0 }, horizontal: { label: "height" as const, perStep: 3.6, rounding: 0 }, maxIncrements: 11 },
+    // PowerPoint's PDF export of 18 synthetic bar3D charts (#589, 10pt Arial, 3 to 4.5in tall) steps them by the padded
+    // scale below with no padding: 3, 5, 4, 7 and 2, 4, 6, 3 0..7 by 1 on 4.5in, 3, 9, 16, 12 0..20 by 5 on 3in, 950..1000
+    // 920..1000 by 10, 3, -2, 4, 7 -2..7 by 1. A step needs 1.25 label heights along this projection's axis: the value
+    // that matches 17 of the 18 charts (D01, 3, 5, 4, 7 0..8 by 2 on a 3in chart, takes 0..7 by 1), where 1.3 to 2.25
+    // miss 4 to 9.
+    // shortcut: this projection is longer than PowerPoint's on short charts and shorter on tall ones (#541), so the room
+    // is fitted to ours, not to PowerPoint's lengths (1.18 there); refit with the projection.
+    bar3DLabelHeightsPerStep: 1.25,
+    // PowerPoint's PDF export of 200 synthetic chart axes (#589, #616, #619: column, bar, line, area, scatter, bubble and
+    // secondary value axes, 8 to 18pt Arial, 1.3 to 8in) and the 78 measured earlier (#527, #565, #602) takes one step
+    // when it has room for it: 1.22 label heights a step along a vertical axis, counted between the rounded bounds, and
+    // 4.15 along a horizontal one (horizontal bar and scatter x), counted over the padded range. Fitted on PdfLapas's
+    // plot lengths, which run longer than PowerPoint's on short plots (66 vs 59pt): on PowerPoint's own lengths 1.18 and
+    // 3.9 match 276 of 277. 1.18 to 1.3 vertical and 4.0 to 4.2 horizontal keep within 2 of the best.
+    // shortcut: the room is the plot's length before its labels are laid out, so R28 (0..20 by 10 on 1.3in) and R31 (a
+    // 1.6in wide bar, 0..20 by 10) step by 5 here; measure the label band first when a deck needs it.
+    valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1.22, rounding: 0 }, horizontal: { label: "height" as const, perStep: 4.15, rounding: 0 }, maxIncrements: 11 },
+    // The same 277 axes follow Excel's automatic scale: a minimum under 5/6 of the maximum (or its mirror below 0)
+    // drops to 0 (6..10 0..12 by 2, 83..100 0..120 by 20); else a value axis moves it half the range toward 0 with no
+    // padding (83.4..100 75..105 by 5, 950..1000 920..1010 by 10), while scatter and bubble axes keep it (950..1000
+    // 940..1010 by 10, 95..100 94..102 by 2). Each automatic bound that is not 0 then moves 5% of the range out (0..10
+    // 0..12 by 2, 0..9.5 0..10 by 1), in at most 10 steps of 1, 2 or 5 (0..19 0..20 by 2, 0..19.1 0..25 by 5). A bubble
+    // chart widens its data by 1/8 of the range on each side first (x 0..100 -20..120 by 20, y 3..8 0..10 by 1), and a
+    // bar3D does not pad. 276 of the 277 axes match on PowerPoint's lengths.
+    // shortcut: a bubble chart with y -8..7 is -12..10 by 2 in PowerPoint and -15..10 by 5 here (B11, #616); find the
+    // rule for bubbles across 0 when a deck needs it.
+    automaticScale: { kind: "padded" as const, ratio: 0.05, bar3DRatio: 0, maxSteps: 10, bubbleRoom: 0.125, count: { vertical: "bounds" as const, horizontal: "range" as const } },
+    // The same export draws a bubble chart's y axis at x 0.5, 1.5, 2.5 and 19.5 for catAxisCrossesAt 1, 2, 3 and 20, a
+    // scatter chart's at 1, 2 and 3, and a bubble's x axis at y 50 for valAxisCrossesAt 50 (#591).
+    bubbleCategoryCrossingShift: -0.5,
     // The same export prints "Lorem" at the depth axis of both single-series charts, where LibreOffice prints none.
     // shortcut: a stacked bar3D's depth label is not measured on PowerPoint and keeps LibreOffice's none (#541).
     bar3DNamesSingleSeries: true,
@@ -427,16 +441,10 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     drawsBar3DValueAxisLine: true,
     // Its PDF export of a scatter and a bubble chart with `showDataTable` draws no table, as on a pie (#592).
     drawsScatterDataTable: false,
-    // Its PDF export of synthetic PptxGenJS 4.0.1 scatter charts (4.4 x 4.1in, 12pt labels) numbers x values 1..5
-    // 0..6 by 2, 10..40 0..50 by 10, 1000..4000 0..5000 by 1000, 95..100 94..102 by 2, -5..5 -10..10 by 5, 0..100
-    // 0..150 by 50 and 3..9 0..10 by 2, and on an 8.8in wide chart 1..5 0..6 by 1 and 10..40 0..45 by 5: a value
-    // axis's scale in at most 5 steps along the 4.4in chart's 389px plot and 9 to 11 along the 8.8in one's 777px, which
-    // 4.2 label heights a step gives (#616). A bubble chart's x axis takes it too (1..4 is 0..5 by 1, 10..40 0..50 by 10).
-    // shortcut: 95..100 starts at 94 where the value-axis rule moves it half the range down to 92; find PowerPoint's
-    // rule for a minimum kept above 0 when a deck needs it (#616).
-    // shortcut: PowerPoint also widens a bubble chart's axes for the bubbles (x 0..100 is -50..150, y 3..8 0..10 where a
-    // value axis takes 0..9); model the bubbles' room when a deck needs it (#616).
-    scatterXAxisScale: { kind: "valueAxis" as const, label: "height" as const, perStep: 4.2, rounding: 0 },
+    // Its PDF export of synthetic scatter and bubble charts scales the x axis as a horizontal value axis, by the room
+    // and padded scale above (#616): 95..100 94..102 by 2, 0..100 0..150 by 50 and 1..5 0..6 by 2 on 4.4in charts,
+    // 1..5 0..6 by 1 and 10..40 0..45 by 5 on 8.8in ones; 40 x axes measured, all match.
+    scatterXAxisScale: { kind: "valueAxis" as const },
     // PowerPoint's PDF export of a synthetic deck (#558: a 4.4 x 4.1in pie, 40/25/20/15, 12pt Arial values, no
     // dataLabelPosition) puts each label 162 to 168px from the center of a 182px ring, as LibreOffice's bestFit rule
     // gives (PPTX_DEFAULTS.chart.pieLabel.bestFitRimRatio: 166, 167, 165 and 168px), and keeps "Lorem" / "40%" of an

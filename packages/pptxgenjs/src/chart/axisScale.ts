@@ -1,3 +1,4 @@
+import type { NormalizedChartAxisPadding } from "@pdflapas/model";
 import { PPTX_DEFAULTS } from "#src/defaults";
 
 /** A value axis's bounds and the step between its labels and gridlines. */
@@ -169,6 +170,93 @@ export function bar3DAxisScale(low: number, high: number, fixed: FixedAxisScale,
         }
 
         interval = automaticAxisInterval(minimum, maximum, maxIncrements);
+    }
+
+    return scale;
+}
+
+/**
+ * PowerPoint's automatic scale of an axis whose data runs from low to high, as its PDF export numbers column, bar, line,
+ * area, bar3D, scatter, bubble and secondary value axes (#589, #616, #619):
+ * 1. A bubble chart's data widens by bubbleRoom of its range on each side.
+ * 2. Data at or above 0 (or, negated, at or below it) starts at 0 when its minimum is under 5/6 of its maximum (or the
+ *    two are equal); otherwise a value axis (dropsHalfRange) drops it half the range toward 0, and a scatter axis keeps it.
+ * 3. Each automatic bound that is not 0 and was not dropped moves out by `ratio` of the range.
+ * 4. The step is the smallest 1, 2 or 5 x 10^k that splits the padded range into at most maxSteps steps and leaves at
+ *    most roomSteps steps (counted between the rounded bounds, or over the padded range); the bounds round out to it,
+ *    counted from a fixed bound (from 0 when none is fixed). A fixed step (valAxisMajorUnit) is the step.
+ */
+export function paddedAxisScale(low: number, high: number, fixed: FixedAxisBound, padding: NormalizedChartAxisPadding, step: { kind: "room"; steps: number } | { kind: "fixed"; interval: number }): AxisScale {
+    const { wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
+    let autoMinimum = fixed.kind !== "minimum";
+    let autoMaximum = fixed.kind !== "maximum";
+    const bubble = padding.bubbleRoom * (high - low);
+    let minimum = fixed.kind === "minimum" ? fixed.value : low - bubble;
+    let maximum = fixed.kind === "maximum" ? fixed.value : high + bubble;
+
+    if (minimum > maximum) {
+        if (autoMaximum) {
+            maximum = minimum;
+        } else {
+            minimum = maximum;
+        }
+    }
+
+    const negate = minimum < 0 && maximum <= 0;
+
+    if (negate) {
+        [minimum, maximum] = [-maximum, -minimum];
+        [autoMinimum, autoMaximum] = [autoMaximum, autoMinimum];
+    }
+
+    let padMinimum = autoMinimum && minimum !== 0;
+
+    if (autoMinimum && minimum > 0) {
+        if (minimum === maximum || minimum < maximum * wideRatio) {
+            minimum = 0;
+            padMinimum = false;
+        } else if (padding.dropsHalfRange) {
+            minimum -= (maximum - minimum) / 2;
+            padMinimum = false;
+        }
+    }
+
+    if (minimum === maximum) {
+        if (autoMaximum) {
+            maximum = maximum === 0 ? 1 : maximum * 2;
+        } else {
+            minimum = minimum === 0 ? -1 : minimum / 2;
+        }
+    }
+
+    const range = maximum - minimum;
+    const paddedMinimum = padMinimum ? minimum - padding.ratio * range : minimum;
+    const paddedMaximum = autoMaximum && maximum !== 0 ? maximum + padding.ratio * range : maximum;
+    // The intervals count from the fixed bound, so a fixed minimum of 7 draws 7, 12, 17 and not 10, 15.
+    const base = !autoMinimum ? minimum : !autoMaximum ? maximum : 0;
+    let interval = step.kind === "fixed" ? step.interval : automaticAxisInterval(paddedMinimum, paddedMaximum, padding.maxSteps);
+    let scale: AxisScale = { minimum: low, maximum: high, interval };
+
+    // Each pass at least doubles the interval, so ten passes reach one that fits any room of a step or more.
+    for (let pass = 0; pass < 10; pass++) {
+        const roundedMinimum = autoMinimum ? decimal(base + Math.floor((paddedMinimum - base) / interval + STEP_EPSILON) * interval) : minimum;
+        const roundedMaximum = autoMaximum ? decimal(base + Math.ceil((paddedMaximum - base) / interval - STEP_EPSILON) * interval) : maximum;
+
+        // `+ 0` turns a negated 0 into 0, so no label reads -0.
+        scale = negate ? { minimum: -roundedMaximum + 0, maximum: -roundedMinimum + 0, interval } : { minimum: roundedMinimum, maximum: roundedMaximum, interval };
+
+        if (step.kind === "fixed") {
+            return scale;
+        }
+
+        const steps = padding.count === "bounds" ? (roundedMaximum - roundedMinimum) / interval : (paddedMaximum - paddedMinimum) / interval;
+
+        if (steps <= Math.max(1, step.steps) + STEP_EPSILON) {
+            return scale;
+        }
+
+        // The next of 1, 2 and 5 x 10^k.
+        interval = decimal(interval * (interval.toExponential(0).startsWith("2") ? 2.5 : 2));
     }
 
     return scale;

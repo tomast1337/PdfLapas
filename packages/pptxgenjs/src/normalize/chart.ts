@@ -394,7 +394,7 @@ function normalizeSeries(type: NormalizedChartType, data: readonly PptxGenJS.Opt
 }
 
 /** The lowest and highest values a value axis shows: each value, or each stack's totals or shares (0 to 0 with none). */
-function valueAxisDataRange(type: NormalizedChartType, series: readonly NormalizedChartSeries[]): [number, number] {
+export function valueAxisDataRange(type: NormalizedChartType, series: readonly NormalizedChartSeries[]): [number, number] {
     const values: number[] = [];
     // The stacked series by type: each type stacks apart from the others.
     const stacks = new Map<NormalizedChartType, NormalizedChartSeries[]>();

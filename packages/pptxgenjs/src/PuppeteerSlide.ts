@@ -4,7 +4,7 @@ import type { ChartExtensionInput, ChartExtensionOptions } from "./chart/types";
 import { normalizeComponent } from "./components/normalize";
 import type { ComponentInput, ComponentOptions } from "./components/types";
 import { PPTX_DEFAULTS } from "./defaults";
-import { normalizeChart } from "./normalize/chart";
+import { normalizeChart, valueAxisDataRange } from "./normalize/chart";
 import { normalizeImage } from "./normalize/image";
 import { slideMarginInches } from "./normalize/margin";
 import { normalizeObjectStyle } from "./normalize/object";
@@ -270,30 +270,67 @@ export class PuppeteerSlide implements PptxSlide {
                 : {}),
             // An automatic value axis's step needs the target's room along the drawn axis: on a bar3D chart its label
             // heights (bar3DLabelHeightsPerStep), on a 2D chart its rule for the axis's direction (valueAxisStepRoom);
-            // the target may name a single series at the depth axis (bar3DNamesSingleSeries).
+            // the target may name a single series at the depth axis (bar3DNamesSingleSeries). A target may pad the scale
+            // (automaticScale): a bar3D axis by bar3DRatio over its own data, 0 not included; a scatter or bubble axis
+            // keeps a minimum far from 0, and a bubble chart's data widens for the bubbles.
             valueAxes: normalized.valueAxes.map(axis => {
                 if (!axis.automaticScale) {
                     return axis;
                 }
 
+                const rule = target.automaticScale;
+                const xy = normalized.type === "scatter" || normalized.type === "bubble";
+                const horizontal = normalized.type === "bar" && normalized.barDirection === "bar";
+                const padding =
+                    rule.kind === "padded"
+                        ? {
+                              ratio: normalized.type === "bar3D" ? rule.bar3DRatio : rule.ratio,
+                              maxSteps: rule.maxSteps,
+                              dropsHalfRange: !xy,
+                              bubbleRoom: normalized.type === "bubble" ? rule.bubbleRoom : 0,
+                              count: horizontal ? rule.count.horizontal : rule.count.vertical,
+                          }
+                        : undefined;
+
                 if (normalized.type === "bar3D") {
-                    return { ...axis, automaticScale: { ...axis.automaticScale, labelHeightsPerStep: target.bar3DLabelHeightsPerStep } };
+                    const [low, high] = padding ? valueAxisDataRange(normalized.type, normalized.series) : [axis.automaticScale.low, axis.automaticScale.high];
+
+                    return { ...axis, automaticScale: { ...axis.automaticScale, low, high, labelHeightsPerStep: target.bar3DLabelHeightsPerStep, ...(padding ? { padding } : {}) } };
                 }
 
                 const room = target.valueAxisStepRoom;
-                const direction = normalized.type === "bar" && normalized.barDirection === "bar" ? room.horizontal : room.vertical;
+                const direction = horizontal ? room.horizontal : room.vertical;
 
-                return { ...axis, automaticScale: { ...axis.automaticScale, stepRoom: { ...direction, maxIncrements: room.maxIncrements } } };
+                return { ...axis, automaticScale: { ...axis.automaticScale, stepRoom: { ...direction, maxIncrements: room.maxIncrements }, ...(padding ? { padding } : {}) } };
             }),
-            // A scatter or bubble chart's automatic x axis may scale as a value axis (scatterXAxisScale, #616).
-            ...(target.scatterXAxisScale.kind === "valueAxis" && (normalized.type === "scatter" || normalized.type === "bubble") && normalized.categoryAxis.xScale?.majorUnit === undefined
+            // A scatter or bubble chart's automatic x axis may scale as a horizontal value axis (scatterXAxisScale,
+            // #616), and a bubble chart's y axis may cross it off the catAxisCrossesAt value (bubbleCategoryCrossingShift).
+            ...((normalized.type === "scatter" || normalized.type === "bubble") && (target.scatterXAxisScale.kind === "valueAxis" || target.bubbleCategoryCrossingShift !== 0)
                 ? {
                       categoryAxis: {
                           ...normalized.categoryAxis,
-                          xScale: {
-                              ...normalized.categoryAxis.xScale,
-                              stepRoom: { label: target.scatterXAxisScale.label, perStep: target.scatterXAxisScale.perStep, rounding: target.scatterXAxisScale.rounding, maxIncrements: target.valueAxisStepRoom.maxIncrements },
-                          },
+                          ...(target.scatterXAxisScale.kind === "valueAxis" && normalized.categoryAxis.xScale?.majorUnit === undefined
+                              ? {
+                                    xScale: {
+                                        ...normalized.categoryAxis.xScale,
+                                        stepRoom: { ...target.valueAxisStepRoom.horizontal, maxIncrements: target.valueAxisStepRoom.maxIncrements },
+                                        ...(target.automaticScale.kind === "padded"
+                                            ? {
+                                                  padding: {
+                                                      ratio: target.automaticScale.ratio,
+                                                      maxSteps: target.automaticScale.maxSteps,
+                                                      dropsHalfRange: false,
+                                                      bubbleRoom: normalized.type === "bubble" ? target.automaticScale.bubbleRoom : 0,
+                                                      count: target.automaticScale.count.horizontal,
+                                                  },
+                                              }
+                                            : {}),
+                                    },
+                                }
+                              : {}),
+                          ...(normalized.type === "bubble" && normalized.categoryAxis.valueAxisCrossing?.kind === "value"
+                              ? { valueAxisCrossing: { kind: "value" as const, value: normalized.categoryAxis.valueAxisCrossing.value + target.bubbleCategoryCrossingShift } }
+                              : {}),
                       },
                   }
                 : {}),

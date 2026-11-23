@@ -1088,18 +1088,39 @@ describe("chart normalization and rendering", () => {
     });
 
     test("steps a bar3D value axis by the target's label heights per step (bar3DLabelHeightsPerStep, #541)", () => {
-        const ticks = (target: "libreoffice" | "powerpoint", options: PptxGenJS.IChartOpts = {}): string[] => {
+        const ticks = (target: "libreoffice" | "powerpoint", options: PptxGenJS.IChartOpts = {}, series: number[][] = [[3, 5, 4, 7]]): string[] => {
             const presentation = new PuppeteerGen(undefined, { target });
+            const data = series.map((values, index) => ({ name: `S${index + 1}`, labels: ["Q1", "Q2", "Q3", "Q4"], values }));
 
-            presentation.addSlide().addChart("bar3D", [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [3, 5, 4, 7] }], { x: 1, y: 1.3, w: 3.2, h: 3, showLegend: true, legendPos: "b", ...options });
+            presentation.addSlide().addChart("bar3D", data, { x: 1, y: 1.3, w: 3.2, h: 3, showLegend: true, legendPos: "b", ...options });
             const svg = renderedPage(presentation).querySelector(".slide-chart svg");
 
             return Array.from(svg?.querySelectorAll("text[text-anchor='end']") ?? [], text => text.textContent ?? "");
         };
+        const arial = { w: 4.2, showLegend: false, valAxisLabelFontFace: "Arial", valAxisLabelFontSize: 10, catAxisLabelFontFace: "Arial", catAxisLabelFontSize: 10 };
 
-        // The chartBar3DAxis fixture's first chart: LibreOffice 26.2.6 steps 0..7 by 1, PowerPoint's PDF export 0..10 by 5.
+        // The chartBar3DAxis fixture's first chart: LibreOffice 26.2.6 steps 0..7 by 1.
         expect(ticks("libreoffice")).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
-        expect(ticks("powerpoint")).toEqual(["0", "5", "10"]);
+        // PowerPoint's PDF export of synthetic 4.2in wide bar3D charts (#589): a padded scale with no padding, 3, 5, 4, 7
+        // and 2, 4, 6, 3 0..7 by 1 on a 4.5in chart, 3, 9, 16, 12 and 5, 7, 10, 4 0..20 by 5 on a 3in one, 950..1000
+        // 920..1000 by 10 (the minimum dropped half the range) and 3, -2, 4, 7 -2..7 by 1 on 4.5in.
+        expect(
+            ticks("powerpoint", { ...arial, h: 4.5, barGrouping: "standard" }, [
+                [3, 5, 4, 7],
+                [2, 4, 6, 3],
+            ]),
+        ).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+        expect(
+            ticks("powerpoint", { ...arial, h: 3, barGrouping: "standard" }, [
+                [3, 9, 16, 12],
+                [5, 7, 10, 4],
+            ]),
+        ).toEqual(["0", "5", "10", "15", "20"]);
+        expect(ticks("powerpoint", { ...arial, h: 3 }, [[950, 970, 1000, 985]])).toEqual(["920", "930", "940", "950", "960", "970", "980", "990", "1000"]);
+        expect(ticks("powerpoint", { ...arial, h: 4.5 }, [[3, -2, 4, 7]])).toEqual(["-2", "-1", "0", "1", "2", "3", "4", "5", "6", "7"]);
+        // shortcut: this projection is longer than PowerPoint's on short charts (#541), so the fixture's chart, which
+        // PowerPoint's export steps 0..10 by 5 on an 83px axis, steps 0..8 by 2 here; fix with the projection.
+        expect(ticks("powerpoint")).toEqual(["0", "2", "4", "6", "8"]);
         // valAxisMajorUnit sets the step whatever the target.
         expect(ticks("powerpoint", { valAxisMajorUnit: 1 })).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
     });
@@ -2450,6 +2471,21 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
 
         expect(crossed.categoryAxis.valueAxisCrossing).toEqual({ kind: "value", value: 3 });
         expect(crossed.valueAxes[0]?.categoryAxisCrossing).toEqual({ kind: "value", value: 20 });
+        // PowerPoint's PDF export draws a bubble chart's y axis at x 0.5, 1.5, 2.5 and 19.5 for catAxisCrossesAt 1, 2, 3
+        // and 20 (bubbleCategoryCrossingShift), LibreOffice at that x value.
+        const bubbleCrossing = (target: "libreoffice" | "powerpoint", type: "bubble" | "scatter"): unknown => {
+            const presentation = new PuppeteerGen(undefined, { target });
+            const data = type === "bubble" ? [xy[0], { ...xy[1], sizes: [4, 9, 6, 12, 5, 7] }] : xy;
+
+            presentation.addSlide().addChart(type, data, { x: 1, y: 1, w: 4, h: 3, catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
+            const chart = presentation.getModel().slides[0]?.objects[0];
+
+            return chart?.kind === "chart" ? chart.chart.categoryAxis.valueAxisCrossing : undefined;
+        };
+
+        expect(bubbleCrossing("powerpoint", "bubble")).toEqual({ kind: "value", value: 1.5 });
+        expect(bubbleCrossing("powerpoint", "scatter")).toEqual({ kind: "value", value: 2 });
+        expect(bubbleCrossing("libreoffice", "bubble")).toEqual({ kind: "value", value: 2 });
         expect(() => normalizeChart("scatter", xy, { catAxisCrossesAt: Number.NaN } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt");
         expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "in" } as unknown as PptxGenJS.IChartOpts)).toThrow(TypeError);
         // A date format needs date serials: text categories are not a time line.

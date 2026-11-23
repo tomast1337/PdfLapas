@@ -375,6 +375,14 @@ export type NormalizedChartSeriesStyle = {
     lineSize: number;
 };
 
+/**
+ * PowerPoint's padded automatic scale of an axis (`paddedAxisScale` in `@pdflapas/pptxgenjs`): `ratio` of the data's
+ * range pads each automatic bound that is not 0, the padded range takes at most `maxSteps` steps, a value axis far from
+ * 0 drops its minimum half the range toward it (`dropsHalfRange`), a bubble chart's data widens by `bubbleRoom` of its
+ * range on each side, and the steps the labels have room for count between the rounded bounds or over the padded range.
+ */
+export type NormalizedChartAxisPadding = { ratio: number; maxSteps: number; dropsHalfRange: boolean; bubbleRoom: number; count: "bounds" | "range" };
+
 export type NormalizedChartValueAxis = {
     minimum: number;
     maximum: number;
@@ -408,7 +416,9 @@ export type NormalizedChartValueAxis = {
      * `minimum` to `maximum` as they are. `minimum` and `maximum` then hold the scale before that choice. On a bar3D
      * chart `labelHeightsPerStep` is how many label heights of drawn axis each step needs; absent: one. On a 2D chart
      * `stepRoom` sets the most steps, `floor(length / (perStep × label) + rounding)` between 2 and `maxIncrements`, where
-     * `label` is the labels' height or the widest label's width; absent: the scale before that choice.
+     * `label` is the labels' height or the widest label's width; absent: the scale before that choice. `padding`: the
+     * scale is PowerPoint's padded one over `low` to `high` (then the data's own ends, 0 not included), in the steps the
+     * room fits, `length / (perStep × label)` or `length / (labelHeightsPerStep × label)`; absent: LibreOffice's.
      */
     automaticScale?: {
         low: number;
@@ -417,6 +427,7 @@ export type NormalizedChartValueAxis = {
         fixedMaximum: boolean;
         labelHeightsPerStep?: number;
         stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number };
+        padding?: NormalizedChartAxisPadding;
     };
     logScaleBase?: number;
     /**
@@ -513,9 +524,10 @@ export type NormalizedChartCatAxis = {
     /**
      * A scatter or bubble chart's x-axis bounds and step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`).
      * `stepRoom`: the axis scales as a value axis, 0 included, in the steps that fit along it (as
-     * `NormalizedChartValueAxis.automaticScale.stepRoom`); absent: to its x values, not toward 0.
+     * `NormalizedChartValueAxis.automaticScale.stepRoom`); absent: to its x values, not toward 0. `padding`: by PowerPoint's
+     * padded scale, as `NormalizedChartValueAxis.automaticScale.padding`.
      */
-    xScale?: { minimum?: number; maximum?: number; majorUnit?: number; stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number } };
+    xScale?: { minimum?: number; maximum?: number; majorUnit?: number; stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number }; padding?: NormalizedChartAxisPadding };
     /** Whether the categories run from the last (`<c:orientation val="maxMin"/>`); absent: from the first. */
     reversed?: boolean;
     lineColor: CssColor;

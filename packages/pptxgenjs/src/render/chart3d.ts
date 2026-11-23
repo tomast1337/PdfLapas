@@ -1,7 +1,7 @@
 import { format } from "echarts/core";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { builtInFontMetrics } from "#src/fontMetrics";
-import { automaticAxisInterval, type AxisScale, bar3DAxisScale } from "#src/chart/axisScale";
+import { automaticAxisInterval, type AxisScale, bar3DAxisScale, paddedAxisScale } from "#src/chart/axisScale";
 import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import type { NormalizedChart } from "@pdflapas/model";
@@ -190,9 +190,16 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     if (chart.grouping === "percentStacked") {
         scale = { minimum: 0, maximum: 100, interval: axis?.majorUnit ?? automaticAxisInterval(0, 100, maxIncrements) };
     } else if (axis?.automaticScale) {
-        const { low, high, fixedMinimum, fixedMaximum } = axis.automaticScale;
+        const { low, high, fixedMinimum, fixedMaximum, padding } = axis.automaticScale;
+        const fixed = fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
 
-        scale = bar3DAxisScale(low, high, { minimum: fixedMinimum ? axis.minimum : undefined, maximum: fixedMaximum ? axis.maximum : undefined, majorUnit: axis.majorUnit }, maxIncrements);
+        // A padded scale fixes one bound at a time, so a second fixed bound replaces its automatic one.
+        scale = padding
+            ? {
+                  ...paddedAxisScale(low, high, fixed, padding, axis.majorUnit !== undefined ? { kind: "fixed", interval: axis.majorUnit } : { kind: "room", steps: axisLength / stepHeight }),
+                  ...(fixedMinimum && fixedMaximum ? { maximum: axis.maximum } : {}),
+              }
+            : bar3DAxisScale(low, high, { minimum: fixedMinimum ? axis.minimum : undefined, maximum: fixedMaximum ? axis.maximum : undefined, majorUnit: axis.majorUnit }, maxIncrements);
     } else {
         scale = { minimum: chart.valueAxisMinimum, maximum: chart.valueAxisMaximum, interval: axis?.majorUnit ?? automaticAxisInterval(chart.valueAxisMinimum, chart.valueAxisMaximum, maxIncrements) };
     }

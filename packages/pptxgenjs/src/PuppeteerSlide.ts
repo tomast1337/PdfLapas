@@ -20,7 +20,7 @@ import type { PptxSlide } from "./pptx";
 import { chartSize, renderChartExtension, renderChartExtensionSvg } from "./render/chart";
 import { renderComponent } from "./render/component";
 import { objectIdScope } from "./render/slide";
-import type { SlideContext } from "./slideContext";
+import type { MasterPlaceholder, PlaceholderBody, SlideContext } from "./slideContext";
 import { RENDERING_TARGETS } from "./target";
 import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
 
@@ -60,8 +60,11 @@ export class PuppeteerSlide implements PptxSlide {
     private backgroundImage: NormalizedImage | undefined;
     newAutoPagedSlides: PptxGenJS.PresSlide[];
     private objectCounts: Record<string, number> = {};
-    /** Title placeholder text in the theme's head font, by its index in `model.objects`, and how to draw it in another. */
-    private headFontTexts: Array<{ index: number; fontFace: string; draw: (fontFace: string) => NormalizedSlideObject }> = [];
+    /**
+     * Text filling a master placeholder, by its index in `model.objects`: the font (a title's head font) and shared
+     * `_bodyProp` it was drawn with, and how to draw it with others, as PptxGenJS resolves both when it writes the file.
+     */
+    private placeholderTexts: Array<{ index: number; headFont: boolean; fontFace: string; placeholder: MasterPlaceholder; body: PlaceholderBody; draw: (fontFace: string, body: PlaceholderBody) => NormalizedSlideObject }> = [];
     /** Normalized, JSON-serializable record of this slide; toHtml() renders the slide from it alone. */
     readonly model: NormalizedSlide = {
         background: normalizeColor(PPTX_DEFAULTS.slide.backgroundColor),
@@ -153,11 +156,15 @@ export class PuppeteerSlide implements PptxSlide {
         const headFontFace = this.context.headFontFace();
 
         // PptxGenJS 4.0.1 writes a title placeholder's font as the master's +mj-lt, resolved from theme1.xml when it
-        // writes the file, so text added before pres.theme set its headFontFace is drawn again in the new one.
-        for (const text of this.headFontTexts) {
-            if (text.fontFace !== headFontFace) {
-                this.model.objects[text.index] = text.draw(headFontFace);
-                text.fontFace = headFontFace;
+        // writes the file, so text added before pres.theme set its headFontFace is drawn again in the new one. Each
+        // fill's <a:bodyPr> is written from the placeholder's shared `_bodyProp`, which a later fill may have changed.
+        for (const text of this.placeholderTexts) {
+            const fontFace = text.headFont ? headFontFace : text.fontFace;
+
+            if (fontFace !== text.fontFace || text.placeholder.body !== text.body) {
+                this.model.objects[text.index] = text.draw(fontFace, text.placeholder.body);
+                text.fontFace = fontFace;
+                text.body = text.placeholder.body;
             }
         }
 
@@ -461,9 +468,9 @@ export class PuppeteerSlide implements PptxSlide {
 
     addText(text: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
         let textOptions = options ?? {};
-        let fillsPlaceholder = false;
         let placeholderSpaceBefore = {};
         let headFont = false;
+        let filled: MasterPlaceholder | undefined;
 
         // PptxGenJS 4.0.1 addTextDefinition (A.3): text that names one of its master's placeholders takes the
         // placeholder's options over its own, and slideObjectToXml writes it with no anchor and, for a string, no
@@ -475,8 +482,18 @@ export class PuppeteerSlide implements PptxSlide {
                 this.context.warn(unknownPlaceholderWarning("addText", textOptions.placeholder, this.context.master !== null));
             }
 
-            fillsPlaceholder = placeholder !== undefined;
+            filled = placeholder;
             const merged = { ...textOptions, ...placeholder?.options };
+
+            // addTextDefinition (cleanOpts D, E, 2) on the placeholder's shared `_bodyProp`: anchor, vert, wrap and
+            // autoFit are always written, the inset only when given (slideObjectToXml then writes each fill's `margin`).
+            // shortcut: slideObjectToXml writes a fill's `margin` onto the shared object too, so a later slide's fill
+            // without one takes it over the inset; reproduce that write order if a deck mixes margins on one placeholder (#628).
+            if (placeholder) {
+                const inset = typeof merged.inset === "number" && !Number.isNaN(merged.inset) ? merged.inset : placeholder.body.inset;
+
+                placeholder.body = { valign: merged.valign, vert: merged.vert, wrap: merged.wrap, autoFit: merged.autoFit, ...(inset === undefined ? {} : { inset }) };
+            }
 
             // The titleStyle's +mj-lt; not a box option, as PptxGenJS writes no typeface onto the runs (RunWriting).
             headFont = placeholder?.title === true && !merged.fontFace;
@@ -522,8 +539,9 @@ export class PuppeteerSlide implements PptxSlide {
         // (toModel).
         // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
         // says; normalize at write time if a deck needs both.
-        const draw = (fontFace: string): NormalizedSlideObject => {
-            const normalizedText = normalizeText(text, { color, ...textOptions, fontFace: textOptions.fontFace ?? fontFace }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
+        const draw = (fontFace: string, body: PlaceholderBody): NormalizedSlideObject => {
+            const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset } : {};
+            const normalizedText = normalizeText(text, { color, ...textOptions, ...bodyOptions, fontFace: textOptions.fontFace ?? fontFace }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
                 box,
                 shared: this.context.sharedRunOptions,
                 ...placeholderSpaceBefore,
@@ -531,7 +549,7 @@ export class PuppeteerSlide implements PptxSlide {
             // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph
             // only in plain text boxes (EEControlBits::ULSPACEFIRSTPARA), and PowerPoint in none (spacesFirstParagraph).
             const [firstParagraph, ...laterParagraphs] = normalizedText.paragraphs;
-            const placedText = fillsPlaceholder && firstParagraph ? { ...normalizedText, paragraphs: [{ ...firstParagraph, spaceBefore: 0 }, ...laterParagraphs] } : normalizedText;
+            const placedText = filled && firstParagraph ? { ...normalizedText, paragraphs: [{ ...firstParagraph, spaceBefore: 0 }, ...laterParagraphs] } : normalizedText;
             const height = textStyle.geometry.height ?? 0;
             const width = textStyle.geometry.width ?? 0;
 
@@ -546,11 +564,12 @@ export class PuppeteerSlide implements PptxSlide {
             return { kind: "text", style: textStyle, text: collapseTextMargins(floorTextWrapWidth(normalizeShapeTextBox(placedText, shape), width, this.context.target), height), shape };
         };
         const fontFace = headFont ? this.context.headFontFace() : this.context.bodyFontFace();
+        const body = filled ? filled.body : {};
 
-        if (headFont) {
-            this.headFontTexts.push({ index: this.model.objects.length, fontFace, draw });
+        if (filled) {
+            this.placeholderTexts.push({ index: this.model.objects.length, headFont, fontFace, placeholder: filled, body, draw });
         }
 
-        return this.addObject(draw(fontFace));
+        return this.addObject(draw(fontFace, body));
     }
 }

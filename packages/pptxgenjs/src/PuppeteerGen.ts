@@ -606,6 +606,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
                             lineSpacing: style.lineSpacing || undefined,
                             lineSpacingMultiple: style.lineSpacingMultiple || undefined,
                         },
+                        body: {},
                     });
                 }
             } else {

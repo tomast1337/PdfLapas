@@ -389,6 +389,63 @@ describe("addText and addImage({ placeholder })", () => {
         expect(slides[0]?.objects[1]).toMatchObject({ text: { paragraphs: [{ runs: [{ fontFace: "Georgia" }, { fontFace: "Arial" }] }] } });
     });
 
+    test("every fill of a placeholder takes the anchor, vert, wrap and autoFit of its last fill, as PptxGenJS shares one _bodyProp", async () => {
+        const fills: PptxGenJS.TextPropsOptions[] = [{ placeholder: "side" }, { placeholder: "side", valign: "bottom", vert: "vert", wrap: true }, { placeholder: "side", valign: "middle", wrap: false, autoFit: true }];
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+
+        for (const options of fills) {
+            reference.addSlide({ masterName: "PH" }).addText("Side", structuredClone(options));
+        }
+
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+
+        for (const index of [1, 2, 3]) {
+            const slideXml = (await zip.file(`ppt/slides/slide${index}.xml`)?.async("string")) ?? "";
+
+            expect(slideXml).toContain('<a:bodyPr wrap="none" rtlCol="0" anchor="ctr"><a:spAutoFit/></a:bodyPr>');
+        }
+
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(PLACEHOLDER_MASTER);
+        // Another placeholder's fill keeps its own.
+        pres.addSlide({ masterName: "PH" }).addText("Body", { placeholder: "body", valign: "bottom" });
+
+        for (const options of fills) {
+            pres.addSlide({ masterName: "PH" }).addText("Side", options);
+        }
+
+        const boxes = (slides: NormalizedSlide[]) => slides.map(slide => (slide.objects[1]?.kind === "text" ? slide.objects[1].text : undefined));
+        const last = { verticalAlign: "middle", wrap: false, fit: "resize", direction: "horizontal" };
+        const html = (await pres.toHtml()).html;
+
+        expect(boxes(pres.getModel().slides)).toMatchObject([{ verticalAlign: "bottom", wrap: true }, last, last, last]);
+        expect((await pres.toHtml()).html).toBe(html);
+
+        // The state when the file is written counts: a later fill without options sets them back for every slide.
+        pres.addSlide({ masterName: "PH" }).addText("Side", { placeholder: "side" });
+
+        const top = { verticalAlign: "top", wrap: true, fit: "none", direction: "horizontal" };
+
+        expect(boxes(pres.getModel().slides)).toMatchObject([{ verticalAlign: "bottom" }, top, top, top, top]);
+    });
+
+    test("a placeholder's later fills keep an inset an earlier fill gave, as PptxGenJS writes it onto the shared _bodyProp only when given", () => {
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(PLACEHOLDER_MASTER);
+        pres.addSlide({ masterName: "PH" }).addText("Side", { placeholder: "side", inset: 0.5 });
+        pres.addSlide({ masterName: "PH" }).addText("Side", { placeholder: "side" });
+
+        const margins = pres.getModel().slides.map(slide => (slide.objects[1]?.kind === "text" ? slide.objects[1].text.margin : undefined));
+
+        expect(margins).toEqual([margins[0], margins[0]]);
+        expect(margins[0]?.[0]).toBeCloseTo(inchesToPixels(0.5));
+    });
+
     test("a body placeholder without a size takes the bodyStyle's 32pt with 20% space before after its first paragraph; a run array keeps each run's color", () => {
         const runs: PptxGenJS.TextProps[] = [
             { text: "A", options: { breakLine: true } },

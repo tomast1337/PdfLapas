@@ -643,5 +643,18 @@
     "p1-Chart1": 0.126,
     "p1-Chart2": 0.1378,
     "p1-Chart3": 0.1531
+  },
+  "chartDateAxis": {
+    "p1-Chart0": 0.1006,
+    "p1-Chart1": 0.1685,
+    "p1-Chart2": 0.1149,
+    "p1-Chart3": 0.0977
+  },
+  "chartTypeOptions": {
+    "p1-Chart0": 0.1113,
+    "p1-Chart1": 0.1801,
+    "p1-Chart2": 0.1132,
+    "p1-Chart3": 0.1073,
+    "p1-Chart4": 0.1515
   }
 }

@@ -2290,6 +2290,8 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartDataTableFixture(presentation);
     populateChartPieBestFitFixture(presentation);
     populateChartAutomaticScaleFixture(presentation);
+    populateChartDateAxisFixture(presentation);
+    populateChartTypeOptionFixture(presentation);
 }
 
 /**
@@ -3558,4 +3560,86 @@ export function populateChartAutomaticScaleFixture(presentation: Presentation): 
         ],
         { ...shared, x: 5.2, y: 3.2 },
     );
+}
+
+/**
+ * Date category axes (#580): monthly serials labelled every two months, daily serials with empty days between them,
+ * a time line trimmed by catAxisMinVal and catAxisMaxVal (no point outside it, as PdfLapas draws no line to one, #593),
+ * and a scatter x axis with its own bounds and step. A parity slide after the others (no page number moves) and the
+ * WASM chartDateAxis deck, which crops each chart.
+ */
+export function populateChartDateAxisFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Date category axes", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    // Excel serials: 45292 is 1 January 2024, 45323 1 February.
+    const months = ["45292", "45323", "45352", "45383", "45413", "45444"];
+    const days = ["45292", "45295", "45297", "45301"];
+    const series = (labels: string[]) => [
+        { name: "Lorem", labels, values: [3, 5, 4, 7, 6, 5].slice(0, labels.length) },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4, 3, 5].slice(0, labels.length) },
+    ];
+    // As on the category options slide: no gridlines and a fixed unit.
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, valAxisMajorUnit: 2 };
+
+    slide.addChart("line", series(months), { ...shared, x: 0.4, y: 0.8, catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 2, catAxisMajorTimeUnit: "months" });
+    slide.addChart("bar", series(days), { ...shared, x: 5.2, y: 0.8, catLabelFormatCode: "d-mmm" });
+    slide.addChart("line", series(months.slice(1, 5)), { ...shared, x: 0.4, y: 3.2, catLabelFormatCode: "yyyy-mm", catAxisMinVal: 45292, catAxisMaxVal: 45444 });
+    slide.addChart(
+        "scatter",
+        [
+            { name: "X", values: [1, 2, 3, 4, 5] },
+            { name: "Lorem", values: [3, 5, 4, 7, 6] },
+        ],
+        { ...shared, x: 5.2, y: 3.2, catAxisMinVal: 0, catAxisMaxVal: 8, catAxisMajorUnit: 2, catGridLine: { style: "none" } },
+    );
+}
+
+/**
+ * Per-type and per-chart-type axis options (#590, #581, #582, #583): a combo whose bar type stacks in its own colors
+ * under a thick square-marked line type, a combo with a secondary axis and its category axis crossed at 3, a
+ * radar chart running counterclockwise with its values on the second spoke, a horizontal bar chart with a data table
+ * and cross ticks, and a bar3D chart with series gridlines. A parity slide after the others (no page number moves) and
+ * the WASM chartTypeOptions deck, which crops each chart.
+ */
+export function populateChartTypeOptionFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Combo types, secondary axes, radar, tables and depth gridlines", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 20, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const pair = [
+        { name: "Lorem", labels, values: [3, 5, 4, 7] },
+        { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+    ];
+    const line = [{ name: "Dolor", labels, values: [9, 12, 11, 14] }];
+    // Light colors, as on the bar3D axis slide: a pixel of offset on a dark line or bar costs more than the option it scores.
+    const shared: PptxGenJS.IChartOpts = { w: 2.95, h: 2.3, valGridLine: { style: "none" }, chartColors: ["9DC3E6", "F4B183", "A9D18E"] };
+
+    (slide.addChart as Function)(
+        [
+            { type: "bar", data: pair, options: { barGrouping: "stacked", chartColors: ["F4B183", "A9D18E"] } },
+            { type: "line", data: line, options: { chartColors: ["9DC3E6"], lineSize: 4, lineDataSymbol: "square" } },
+        ],
+        { ...shared, x: 0.3, y: 0.8, valAxisMajorUnit: 4 },
+    );
+    (slide.addChart as Function)(
+        [
+            { type: "bar", data: pair, options: {} },
+            { type: "line", data: [{ name: "Dolor", labels, values: [100, 300, 200, 400] }], options: { secondaryValAxis: true, secondaryCatAxis: false } },
+        ],
+        { ...shared, x: 3.5, y: 0.8, valAxisCrossesAt: 3, valAxes: [{ valGridLine: { style: "none" } }, { valGridLine: { style: "none" } }] },
+    );
+    slide.addChart("radar", pair, { ...shared, x: 6.7, y: 0.8, catAxisOrientation: "maxMin", catAxisCrossesAt: 2 } as unknown as PptxGenJS.IChartOpts);
+    slide.addChart("bar", pair, { ...shared, x: 0.3, y: 3.2, w: 4.4, barDir: "bar", valAxisMajorUnit: 2, showDataTable: true, catAxisMajorTickMark: "cross", valAxisMajorTickMark: "cross" });
+    slide.addChart("bar3D", pair, {
+        ...shared,
+        // Light boxes, as on the bar3D axis slide: the projection still differs from LibreOffice's (#541).
+        x: 5.6,
+        y: 3.2,
+        w: 3.45,
+        valAxisMajorUnit: 5,
+        chartColors: ["BDD7EE", "F8CBAD"],
+        barGrouping: "standard",
+        serGridLine: { color: "C00000", size: 1 },
+    });
 }

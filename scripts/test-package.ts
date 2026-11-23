@@ -322,14 +322,21 @@ console.log("html entry package consumer passed");
     // The ./wasm entry: its browser condition must stay browser-safe, and it renders under Node and Bun.
     const wasmConsumerSource = `
 import PuppeteerGen, { PAGE_SIZES } from "${names.main}";
-import { createWasmRenderer, loadSystemFonts } from "${names.wasm}";
+import { createWasmRenderer, createWasmRendererPool, loadSystemFonts } from "${names.wasm}";
 
-const renderer = await createWasmRenderer({ fonts: await loadSystemFonts() });
+const fonts = await loadSystemFonts();
+const renderer = await createWasmRenderer({ fonts });
 const presentation = new PuppeteerGen(PAGE_SIZES.SCREEN_16X9.landscape, { renderer });
 presentation.addSlide().addText("WASM package consumer", { x: 1, y: 1, w: 4, h: 1, fontFace: "Calibri" });
 presentation.addSlide().addShape("roundRect", { x: 1, y: 1, w: 2, h: 1, fill: { color: "0088CC" } });
-const pdf = new TextDecoder("latin1").decode(await presentation.toPdf());
+const bytes = await presentation.toPdf();
+const pdf = new TextDecoder("latin1").decode(bytes);
 if (!pdf.startsWith("%PDF-") || pdf.match(/\\/Type\\s*\\/Page\\b(?!s)/g)?.length !== 2) throw new Error("WASM entry did not render a two-page PDF");
+// The pool's worker is a separate file in dist/: it must start from the package and render the same bytes.
+const pool = await createWasmRendererPool({ fonts, workers: 1 });
+const pooled = await pool.render(await presentation.toHtml());
+await pool.close();
+if (pooled.length !== bytes.length || pooled.some((byte, index) => byte !== bytes[index])) throw new Error("createWasmRendererPool() rendered other bytes than createWasmRenderer()");
 console.log(\`WASM package consumer generated a PDF under \${"Bun" in globalThis ? "Bun" : "Node.js"}\`);
 `;
     const wasmConsumerPath = join(consumerDirectory, "wasm-consumer.ts");

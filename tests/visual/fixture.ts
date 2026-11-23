@@ -3419,9 +3419,10 @@ export function populateChartComboAreaPieLabelFixture(presentation: Presentation
  */
 export function populateFallbackFaceFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
-    // Symbols and emoji only under en-US: under an East Asian lang LibreOffice 26.2 lays out ⇒ ① ✓ ★ and the emoji
-    // with the run's Asian font settings, overlapping them (zh-HK, ko-KR) or closing their spaces (zh-TW), a layout
-    // the profile does not state.
+    // Symbols and emoji only under en-US, though the lang is not what moves them (#575): LibreOffice 26.2 can draw
+    // ⇒ ① ✓ over each other in an Arial box under en-US, no lang or zh-HK alike when emoji follow them in the paragraph
+    // (one emoji overlaps ⇒ ①, three ⇒ ① ✓; without the emoji it does not), and whether it does depends on the
+    // document's earlier slides. Measured on synthetic decks; no rule the profile could state yet.
     const cases = [
         ["Arial", "en-US", "Lorem ⇒ ① ✓ ★ ↉ ₹ ⠁ non‑breaking ❤ ✔ ⚠ 这是 骨 あ 한"],
         ["Times New Roman", "en-US", "Lorem ⇒ ① ✓ ★ ↉ ₹ ⠁ non‑breaking ❤ ✔ ⚠ 这是 骨 あ 한"],

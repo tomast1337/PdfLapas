@@ -13,6 +13,7 @@ const ALLOWED: Record<string, string[]> = {
     pdfkit: ["@pdflapas/model"],
     pptxgenjs: ["@pdflapas/model", "@pdflapas/puppeteer"],
     react: ["@pdflapas/pptxgenjs"],
+    native: ["@pdflapas/model"],
 };
 const NODE_ONLY: Record<string, string[]> = { "@pdflapas/puppeteer": ["pptxgenjs/src/index.ts", "pptxgenjs/src/node.ts"] };
 

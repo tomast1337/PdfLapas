@@ -36,6 +36,13 @@
       "name": "@pdflapas/model",
       "version": "0.2.0",
     },
+    "packages/native": {
+      "name": "@pdflapas/native",
+      "version": "0.2.0",
+      "dependencies": {
+        "@pdflapas/model": "workspace:*",
+      },
+    },
     "packages/pdfkit": {
       "name": "@pdflapas/pdfkit",
       "version": "0.2.0",
@@ -147,6 +154,8 @@
     "@pdflapas/examples": ["@pdflapas/examples@workspace:examples"],
 
     "@pdflapas/model": ["@pdflapas/model@workspace:packages/model"],
+
+    "@pdflapas/native": ["@pdflapas/native@workspace:packages/native"],
 
     "@pdflapas/pdfkit": ["@pdflapas/pdfkit@workspace:packages/pdfkit"],
 

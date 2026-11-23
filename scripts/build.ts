@@ -16,7 +16,12 @@ const PACKAGES = [
     { name: "wasm", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "pdfkit", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "react", entrypoints: ["index"] },
-] as { name: string; entrypoints: string[] }[];
+    // bun.ts imports bun:ffi, so its declarations build with Bun's types.
+    { name: "native", entrypoints: ["index", "bun"], types: ["node", "bun"] },
+] as { name: string; entrypoints: string[]; types?: string[] }[];
+
+/** Bundles only the "bun" export condition loads: they may import bun:* modules. */
+const BUN_ONLY = ["native/dist/bun.js"];
 
 const RELATIVE_SPECIFIER = /(\bfrom\s*|\bimport\(\s*)(["'])(\.{1,2}\/[^"']*)\2/g;
 
@@ -39,7 +44,7 @@ async function declarationFiles(directory: string): Promise<string[]> {
 const configDirectory = await mkdtemp(join(tmpdir(), "pdflapas-build-"));
 
 try {
-    for (const { name, entrypoints } of PACKAGES) {
+    for (const { name, entrypoints, types } of PACKAGES) {
         const packageDirectory = resolve(packagesDirectory, name);
         const outputDirectory = resolve(packageDirectory, "dist");
 
@@ -56,8 +61,8 @@ try {
             format: "esm",
             // Dependencies, including the other @pdflapas packages, stay imports.
             packages: "external",
-            // The root tsconfig maps @pdflapas/* to sources for development; never inline them.
-            external: ["@pdflapas/*"],
+            // The root tsconfig maps @pdflapas/* to sources for development; never inline them. bun:* is the runtime's own.
+            external: ["@pdflapas/*", "bun:*"],
             // `packages: "external"` also keeps "#src/..." subpath imports external (Bun 1.4.4); resolve them through
             // the package's imports map, to its own sources, so they are inlined.
             plugins: [
@@ -88,7 +93,7 @@ try {
             config,
             JSON.stringify({
                 extends: resolve(projectRoot, "tsconfig.build.json"),
-                compilerOptions: { paths: {}, outDir: outputDirectory, rootDir: resolve(packageDirectory, "src"), typeRoots: [resolve(projectRoot, "node_modules/@types")] },
+                compilerOptions: { ...(types ? { types } : {}), paths: {}, outDir: outputDirectory, rootDir: resolve(packageDirectory, "src"), typeRoots: [resolve(projectRoot, "node_modules/@types")] },
                 include: [resolve(packageDirectory, "src/**/*.ts")],
             }),
         );
@@ -155,7 +160,9 @@ for (const { name, entrypoints } of PACKAGES) {
         // Every bare import must be a declared dependency, so consumers install it (and workspace packages were not inlined).
         const { dependencies = {}, peerDependencies = {} } = (await Bun.file(resolve(packagesDirectory, name, "package.json")).json()) as Record<string, Record<string, string> | undefined>;
         const imported = [...source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"'./][^"']*)["']/g)].map(match => match[1]!.match(/^(?:@[^/]+\/)?[^/]+/)![0]);
-        const undeclared = [...new Set(imported)].filter(specifier => !specifier.startsWith("node:") && !(specifier in dependencies) && !(specifier in peerDependencies));
+        // Only an entry the package maps to the "bun" condition may import a bun:* module (@pdflapas/native's bun:ffi).
+        const runtime = BUN_ONLY.includes(`${name}/dist/${entry}.js`) ? /^(node|bun):/ : /^node:/;
+        const undeclared = [...new Set(imported)].filter(specifier => !runtime.test(specifier) && !(specifier in dependencies) && !(specifier in peerDependencies));
 
         if (undeclared.length) {
             throw new Error(`packages/${name}/dist/${entry}.js imports undeclared dependencies: ${undeclared.join(", ")}`);
@@ -178,6 +185,14 @@ if (await Bun.file(wasmBinary).exists()) {
     await copyFile(wasmBinary, resolve(packagesDirectory, "wasm/dist/pdf_wasm_bg.wasm"));
 } else {
     console.warn("packages/wasm/src/pdf_wasm_bg.wasm is not built (bun run build:wasm); @pdflapas/wasm will not work");
+}
+
+// The native loader resolves its library next to itself (dist/) too. A prototype built by hand (bun run build:native);
+// the package is private, so a host-only binary in dist/ is never published.
+const nativeLibrary = resolve(packagesDirectory, "native/src/pdflapas_native.linux-x64.so");
+
+if (await Bun.file(nativeLibrary).exists()) {
+    await copyFile(nativeLibrary, resolve(packagesDirectory, "native/dist/pdflapas_native.linux-x64.so"));
 }
 
 for (const { name } of PACKAGES) {

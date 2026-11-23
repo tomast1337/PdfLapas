@@ -6,7 +6,7 @@ import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import type { NormalizedChart } from "@pdflapas/model";
 import { pointsToPixels } from "@pdflapas/model";
-import { TICK_LENGTH } from "./chart";
+import { LEGEND_TEXT_GAP, TICK_LENGTH } from "./chart";
 import { type Attribute, element, escapeText, type Html } from "./markup";
 
 type Point = {
@@ -119,8 +119,17 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const categoryLabelPx = pointsToPixels(categoryAxisModel.labelFontSize);
     const categoryTitlePx = pointsToPixels(categoryAxisModel.titleFontSize);
     const categoryTitleBand = categoryAxisModel.showTitle ? categoryTitlePx * lineEm + gap : 0;
-    const top = gap + (chart.showTitle ? pointsToPixels(chart.titleFontSize) * lineEm + gap : 0) + (chart.showLegend && chart.legendPosition === "t" ? legendPx * lineEm + gap : 0);
-    const bottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendPx * lineEm + gap : 0) + categoryLabelPx * lineEm + categoryTitleBand;
+    // A data table (#592) takes the category labels' band below the box: a row of category names, then one per series.
+    const table = chart.dataTable;
+    const tablePx = table ? pointsToPixels(table.fontSize) : 0;
+    const tableRowPx = tablePx * PPTX_DEFAULTS.chart.dataTable.rowEm;
+    const tableBand = table ? (chart.series.length + 1) * tableRowPx + gap : 0;
+    // catAxisLabelPos high puts the category labels along the back walls' top edge, as LibreOffice 26.2.6 and PowerPoint
+    // draw them (#591).
+    const labelsHigh = categoryAxisModel.labelPosition === "high";
+    const categoryLabelBand = table ? 0 : categoryLabelPx * lineEm;
+    const top = gap + (chart.showTitle ? pointsToPixels(chart.titleFontSize) * lineEm + gap : 0) + (chart.showLegend && chart.legendPosition === "t" ? legendPx * lineEm + gap : 0) + (labelsHigh ? categoryLabelBand : 0);
+    const bottom = gap + (chart.showLegend && chart.legendPosition === "b" ? legendPx * lineEm + gap : 0) + (labelsHigh ? 0 : categoryLabelBand) + categoryTitleBand + tableBand;
     const side = width * PPTX_DEFAULTS.chart.bar3DSideMarginRatio;
     const leftBand = chart.showLegend && chart.legendPosition === "l" ? legendColumnWidth : 0;
     const rightBand = sideLegend && chart.legendPosition !== "l" ? legendColumnWidth : 0;
@@ -130,7 +139,8 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     // A manual layout (layoutTarget inner) is the plot area itself.
     const layout = chart.plotLayout;
     const area = layout ? { x: layout.x * width, y: layout.y * height, width: layout.w * width, height: layout.h * height } : { x: side + leftBand, y: top, width: width - 2 * side - leftBand - rightBand, height: height - top - bottom };
-    const aspect = area.width / Math.max(1e-9, area.height);
+    // The box keeps the shape it has without a data table, smaller above it, as PowerPoint draws it (#592).
+    const aspect = area.width / Math.max(1e-9, area.height + (layout ? 0 : tableBand));
     // The box's screen aspect falls as it grows taller: bisect the height on a log scale.
     let low = Math.log(0.02);
     let high = Math.log(50);
@@ -216,7 +226,11 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const drawsValueGrid = axis?.gridLineStyle !== "none";
     // valAxisHidden and valAxisLabelPos none draw no labels; high puts them at the far edge of the back wall.
     const drawsValueLabels = axis !== undefined && !axis.hidden && axis.labelPosition !== "none";
-    const labelX0 = axis?.labelPosition === "high" ? 1 - sideX : sideX;
+    // catAxisCrossesAt puts the value axis before a category (a reversed axis counts from the right) or after the last,
+    // as LibreOffice 26.2.6 and PowerPoint draw it (#591); valAxisLabelPos high at the far edge.
+    const valueCrossing = categoryAxisModel.valueAxisCrossing;
+    const crossingX = valueCrossing?.kind === "category" ? valueCrossing.index / categoryCount : valueCrossing?.kind === "max" ? 1 : undefined;
+    const labelX0 = crossingX !== undefined ? (categoryAxisModel.reversed ? 1 - crossingX : crossingX) : axis?.labelPosition === "high" ? 1 - sideX : sideX;
     const labelDepth = axis?.labelPosition === "high" ? backDepth : frontDepth;
     // The value labels take the value axis's font.
     const labelStyle: Attribute[] = [
@@ -241,7 +255,9 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const grid: Html[] = [];
     const tickCount = Math.floor(Number((range / scale.interval).toPrecision(12)));
 
-    let labelEdge = labelX0 === 0 ? Infinity : -Infinity;
+    // Value labels at a catAxisCrossesAt crossing stand in front of the bars, as both applications draw them (#591).
+    const crossingLabels: Html[] = [];
+    let labelEdge = labelX0 < 1 ? Infinity : -Infinity;
 
     for (let index = 0; index <= tickCount; index++) {
         const value = Number((minimum + index * scale.interval).toPrecision(12));
@@ -254,14 +270,14 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
 
         if (drawsValueLabels) {
             const label = project(labelX0, labelDepth, value);
-            const x = labelX0 === 0 ? label.x - 8 : label.x + 8;
+            const x = labelX0 < 1 ? label.x - 8 : label.x + 8;
             const y = label.y + labelFontSize / 4;
             const rotate: Attribute[] = axis.labelRotate ? [["transform", `rotate(${n(axis.labelRotate)} ${n(x)} ${n(y)})`]] : [];
             const tickLabel = formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode);
             const labelWidth = format.getTextRect(tickLabel, `${labelFontSize}px ${labelFontFace}`).width;
 
-            labelEdge = labelX0 === 0 ? Math.min(labelEdge, x - labelWidth) : Math.max(labelEdge, x + labelWidth);
-            grid.push(element("text", [["x", n(x)], ...(labelX0 === 0 ? [["text-anchor", "end"] as Attribute] : []), ["y", n(y)], ...rotate, ...labelStyle], escapeText(tickLabel)));
+            labelEdge = labelX0 < 1 ? Math.min(labelEdge, x - labelWidth) : Math.max(labelEdge, x + labelWidth);
+            (crossingX === undefined ? grid : crossingLabels).push(element("text", [["x", n(x)], ...(labelX0 < 1 ? [["text-anchor", "end"] as Attribute] : []), ["y", n(y)], ...rotate, ...labelStyle], escapeText(tickLabel)));
         }
     }
 
@@ -274,7 +290,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             ["stroke-width", n(pointsToPixels(axis.lineWidth))],
             ["stroke-dasharray", axis.lineStyle === "dash" ? n(pointsToPixels(axis.lineWidth) * 4) : axis.lineStyle === "dot" ? n(pointsToPixels(axis.lineWidth)) : undefined],
         ];
-        const outward = labelX0 === 0 ? -1 : 1;
+        const outward = labelX0 < 1 ? -1 : 1;
 
         if (axis.lineVisible) {
             const start = project(labelX0, labelDepth, minimum);
@@ -305,7 +321,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         // Office prints it whole, so where the labels leave too little side margin it stays inside the chart's edge, beside
         // the middle steps' labels, which are narrower than the widest one (#568).
         const halfLine = (titlePx * lineEm) / 2;
-        const x = labelX0 === 0 ? Math.max(halfLine, edge - gap - titlePx / 2) : Math.min(width - halfLine, edge + gap + titlePx / 2);
+        const x = labelX0 < 1 ? Math.max(halfLine, edge - gap - titlePx / 2) : Math.min(width - halfLine, edge + gap + titlePx / 2);
         const rotation = axis.titleRotate ?? -90;
 
         grid.push(
@@ -443,9 +459,14 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             }
         }
     } else {
+        // valAxisCrossesAt: unstacked bars grow from the crossing (the axis's minimum, maximum or a value inside it), as
+        // LibreOffice 26.2.6 and PowerPoint draw them (#591).
+        const crossing = axis?.categoryAxisCrossing;
+        const base = crossing === undefined ? 0 : crossing.kind === "min" ? minimum : crossing.kind === "max" ? maximum : Math.max(minimum, Math.min(maximum, crossing.value));
+
         for (let series = seriesCount - 1; series >= 0; series--) {
             for (let category = 0; category < categoryCount; category++) {
-                bars.push({ category, series, base: 0, value: chart.series[series]?.values[category] ?? 0 });
+                bars.push({ category, series, base, value: chart.series[series]?.values[category] ?? 0 });
             }
         }
     }
@@ -617,15 +638,19 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const categoryLabels: Html[] = [];
 
     // A deleted axis (catAxisHidden) draws no labels or title, `none` no labels; catAxisLabelRotate turns each label
-    // clockwise about its anchor.
-    for (let index = 0; !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && index < categoryCount; index++) {
+    // clockwise about its anchor. A data table's header row names the categories instead, as LibreOffice 26.2.6 draws it.
+    // shortcut: PowerPoint keeps the labels on the floor's edge above its table too (#592); add a target flag when a
+    // PowerPoint deck needs them twice.
+    for (let index = 0; !table && !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && index < categoryCount; index++) {
         // catAxisLabelFrequency (where the target reads it) labels every nth category; catLabelFormatCode formats a
         // numeric one.
         if (categoryAxisModel.labelSkip && index % categoryAxisModel.labelSkip !== 0) {
             continue;
         }
 
-        const point = project((categorySlot(index) + 0.5) / categoryCount, frontDepth, minimum);
+        const edge = project((categorySlot(index) + 0.5) / categoryCount, labelsHigh ? backDepth : frontDepth, labelsHigh ? maximum : minimum);
+        // A high label sits above the edge: its anchor 20px lower is the same distance below a low label's.
+        const point = labelsHigh ? { ...edge, y: edge.y - 20 - categoryLabelPx * 0.6 } : edge;
         const text = labels[index] ?? String(index + 1);
         const number = Number(text);
         const label = categoryAxisModel.labelFormatCode && text.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryAxisModel.labelFormatCode) : text;
@@ -747,6 +772,98 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         }
     }
 
+    // The data table under the box (#592): the category names, then each series' name (after its key) and values in its
+    // data labels' format, one column per category across the chart, with the borders the model asks for.
+    const tableSvg: Html[] = [];
+
+    if (table) {
+        const keyPx = tablePx * PPTX_DEFAULTS.chart.dataTable.keyEm;
+        let widestName = 0;
+
+        for (const series of chart.series) {
+            widestName = Math.max(widestName, format.getTextRect(series.name, `${tablePx}px ${table.fontFace}`).width);
+        }
+
+        const tableLeft = side;
+        const tableRight = width - side;
+        const columnsLeft = tableLeft + 3 * LEGEND_TEXT_GAP + (table.keys ? keyPx + LEGEND_TEXT_GAP : 0) + widestName;
+        const tableTop = area.y + area.height + gap;
+        const tableBottom = tableTop + (chart.series.length + 1) * tableRowPx;
+        const column = (tableRight - columnsLeft) / categoryCount;
+        const textStyle: Attribute[] = [
+            ["font-family", table.fontFace],
+            ["font-size", n(tablePx)],
+            ["fill", table.color],
+            ["dominant-baseline", "central"],
+        ];
+        const rule = (x1: number, y1: number, x2: number, y2: number): Html =>
+            element("line", [
+                ["class", "bar3d-table-rule"],
+                ["x1", n(x1)],
+                ["y1", n(y1)],
+                ["x2", n(x2)],
+                ["y2", n(y2)],
+                ["stroke", table.borderColor],
+                ["stroke-width", n(pointsToPixels(table.borderWidth))],
+            ]);
+
+        for (let index = 0; index < categoryCount; index++) {
+            const text = labels[index] ?? String(index + 1);
+            const number = Number(text);
+            const label = categoryAxisModel.labelFormatCode && text.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryAxisModel.labelFormatCode) : text;
+
+            tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnsLeft + (categorySlot(index) + 0.5) * column)], ["y", n(tableTop + tableRowPx / 2)], ["text-anchor", "middle"], ...textStyle], escapeText(label)));
+        }
+
+        for (const [row, series] of chart.series.entries()) {
+            const y = tableTop + (row + 1.5) * tableRowPx;
+            const nameX = tableLeft + 2 * LEGEND_TEXT_GAP;
+            const valueFormat = table.valueFormatCode ?? (series.dataLabels ?? chart.dataLabels).valueFormat;
+
+            if (table.keys) {
+                tableSvg.push(
+                    element("rect", [
+                        ["x", n(nameX)],
+                        ["y", n(y - keyPx / 2)],
+                        ["width", n(keyPx)],
+                        ["height", n(keyPx)],
+                        ["fill", chart.colors[series.colorIndex % chart.colors.length]],
+                    ]),
+                );
+            }
+
+            tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(nameX + (table.keys ? keyPx + LEGEND_TEXT_GAP : 0))], ["y", n(y)], ...textStyle], escapeText(series.name)));
+
+            for (const [index, value] of series.values.entries()) {
+                tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnsLeft + (categorySlot(index) + 0.5) * column)], ["y", n(y)], ["text-anchor", "middle"], ...textStyle], escapeText(formatChartNumber(value, valueFormat))));
+            }
+        }
+
+        // The horizontal rules between rows, the vertical ones between columns (the names' first), the outline.
+        for (let row = 1; table.horizontalBorder && row <= chart.series.length; row++) {
+            tableSvg.push(rule(tableLeft, tableTop + row * tableRowPx, tableRight, tableTop + row * tableRowPx));
+        }
+
+        for (let index = 0; table.verticalBorder && index < categoryCount; index++) {
+            tableSvg.push(rule(columnsLeft + index * column, index === 0 ? tableTop + tableRowPx : tableTop, columnsLeft + index * column, tableBottom));
+        }
+
+        if (table.outline) {
+            tableSvg.push(
+                element("rect", [
+                    ["class", "bar3d-table-rule"],
+                    ["x", n(tableLeft)],
+                    ["y", n(tableTop + tableRowPx)],
+                    ["width", n(tableRight - tableLeft)],
+                    ["height", n(tableBottom - tableTop - tableRowPx)],
+                    ["fill", "none"],
+                    ["stroke", table.borderColor],
+                    ["stroke-width", n(pointsToPixels(table.borderWidth))],
+                ]),
+            );
+        }
+    }
+
     // The plot area's fill and border behind the box, its labels and the walls (normalizeChart keeps them only where the
     // target draws them, drawsPlotAreaOnEveryType, #565).
     const plotArea = chart.plotArea;
@@ -804,7 +921,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
                 ["font-size", n(pointsToPixels(chart.fontSize))],
                 ["fill", "#000000"],
             ],
-            [gradients, ...plotAreaBox, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...dataLabelSvg, ...categoryLabels, ...seriesLabels, ...legend],
+            [gradients, ...plotAreaBox, ...title, ...wall, floor, ...frame, ...grid, ...barSvg, ...crossingLabels, ...dataLabelSvg, ...categoryLabels, ...seriesLabels, ...tableSvg, ...legend],
         ),
     );
 }

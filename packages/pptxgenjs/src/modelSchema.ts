@@ -313,6 +313,7 @@ const chart = z.strictObject({
             colorIndex: integerFrom(0),
             varyColors: z.boolean(),
             valueAxisIndex: z.union([z.literal(0), z.literal(1)]),
+            onSecondaryCategoryAxis: z.boolean().optional(),
             stack: z.enum(["stacked", "percentStacked", "shareStacked"]).optional(),
             automaticPointFill: cssColor.optional(),
             pointLineColors: z.array(cssColor).optional(),
@@ -368,6 +369,25 @@ const chart = z.strictObject({
     valueAxisMinimum: finite,
     valueAxisMaximum: finite,
     valueAxes: z.array(valueAxis),
+    secondaryCategoryAxis: z
+        .strictObject({
+            showTitle: z.boolean(),
+            title: z.string(),
+            titleColor: cssColor,
+            titleFontFace: fontFace,
+            titleFontSize: nonNegative,
+            titleRotate: finite.optional(),
+            labelColor: cssColor,
+            labelFontFace: fontFace,
+            labelFontSize: nonNegative,
+            labelBold: z.boolean(),
+            labelItalic: z.boolean(),
+            hidden: z.boolean(),
+            labelPosition: z.enum(["none", "low", "high", "nextTo"]),
+            reversed: z.boolean().optional(),
+            placement: z.enum(["row", "overlay"]),
+        })
+        .optional(),
     categoryAxis: z.strictObject({
         showTitle: z.boolean(),
         title: z.string(),
@@ -386,7 +406,14 @@ const chart = z.strictObject({
         labelSkip: integerFrom(1).optional(),
         labelFormatCode: z.string().optional(),
         dateSlots: z.strictObject({ labels: z.array(z.string()), categorySlots: z.array(integerFrom(0).nullable()) }).optional(),
-        xScale: z.strictObject({ minimum: finite.optional(), maximum: finite.optional(), majorUnit: z.number().positive().optional() }).optional(),
+        xScale: z
+            .strictObject({
+                minimum: finite.optional(),
+                maximum: finite.optional(),
+                majorUnit: z.number().positive().optional(),
+                stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
+            })
+            .optional(),
         reversed: z.boolean().optional(),
         lineColor: cssColor,
         lineWidth: nonNegative,

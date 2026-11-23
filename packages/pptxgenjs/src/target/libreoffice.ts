@@ -268,6 +268,8 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // Its PDF export of a scatter or bubble chart with `showDataTable` draws a single malformed row ("Series1" over the
     // first x value), which the renderers do not draw (#592).
     drawsScatterDataTable: true,
+    // Its x axis takes the scatter scale over the x values, not toward 0 (#548).
+    scatterXAxisScale: { kind: "xValues" as const },
     pieUnsetLabelPosition: "ctr",
     comboLegendListsAreasFirst: true,
     barComboKeepsCategoriesBetweenTicks: true,
@@ -283,9 +285,10 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // Its PDF export of combo charts with a bar type and two line types (#594): `lineSmooth` on the first line type
     // smooths both lines, on the second one neither.
     comboLineSmoothFromFirstLineType: true,
-    // Its PDF export of a bar and line combo whose line type has `secondaryCatAxis`, with `catAxes: [{}, {}]`, draws the
-    // one category axis at the bottom and the secondary value axis on the right, nothing more (#594).
-    drawsSecondaryCategoryAxis: false,
+    // Its PDF export of a bar and line combo whose line type has `secondaryCatAxis` draws catAxes[1]'s labels over the
+    // primary ones, in their own color, size and order (#594, #603): `maxMin` reverses the labels and not the line
+    // series; `high` moves them above the plot; its title stands above the plot area.
+    secondaryCategoryAxis: { placement: "overlay" as const, seriesFollowAxis: false },
     // Its PDF export of column charts with `valAxisDisplayUnit: "thousands"` and `valAxisDisplayUnitLabel` (values
     // 3000 to 7000) and `"hundreds"` (300 to 700) numbers the axes 0..8000 and 0..800, with no unit name (#566).
     readsValueAxisDisplayUnits: false,

@@ -89,6 +89,18 @@ impl Effect {
         })
     }
 
+    /// The effect with its offset turned from the box's own space into the slide's: rotated by
+    /// `rotation` (degrees, clockwise) after the box's flips, as draw_body places the box.
+    pub(crate) fn in_box_space(self, rotation: f32, flip_h: bool, flip_v: bool) -> Self {
+        let (x, y) = (if flip_h { -self.dx } else { self.dx }, if flip_v { -self.dy } else { self.dy });
+        let (sin, cos) = rotation.to_radians().sin_cos();
+        Effect {
+            dx: x * cos - y * sin,
+            dy: x * sin + y * cos,
+            ..self
+        }
+    }
+
     /// A run's glow (its `blur` is the glow radius).
     pub(crate) fn glow(glow: &Shadow) -> Option<Self> {
         let radius = glow.blur.max(0.0);
@@ -520,6 +532,25 @@ mod tests {
             panic!("a mask")
         };
         assert!(at.width() > 7e16 && at.height() > 1e17 - 1e10, "{at:?}");
+    }
+
+    #[test]
+    fn turns_an_offset_with_the_box_after_its_flips() {
+        let shadow = crate::model::Shadow {
+            offset_y: 0.0,
+            ..crate::model::build::shadow("#000000", 4.0, 4.0, ShadowKind::Inner)
+        };
+        let Some(Ok(effect)) = Effect::shadow(&shadow) else {
+            panic!("an inner shadow")
+        };
+        let at = |e: Effect| ((e.dx * 1e3).round() / 1e3, (e.dy * 1e3).round() / 1e3);
+        // Clockwise, as draw_body rotates the box: right turns to down at 90, to left at 180.
+        assert_eq!(at(effect.in_box_space(90.0, false, false)), (0.0, 4.0));
+        assert_eq!(at(effect.in_box_space(180.0, false, false)), (-4.0, 0.0));
+        assert_eq!(at(effect.in_box_space(0.0, true, false)), (-4.0, 0.0));
+        // Flipped first, then rotated: a flipped box turned 90 points its right edge up.
+        assert_eq!(at(effect.in_box_space(90.0, true, false)), (0.0, -4.0));
+        assert_eq!(at(effect.in_box_space(0.0, false, true)), (4.0, 0.0));
     }
 
     #[test]

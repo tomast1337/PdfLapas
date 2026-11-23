@@ -248,6 +248,10 @@ impl Renderer {
                 self.warn("inner shadow not rendered");
                 None
             }
+            // An inner shadow turns with its picture, flips included, as CSS's inset box-shadow does: measured
+            // against PowerPoint's PDF export of a synthetic deck (#345), angle 180 lands on the picture's own left
+            // edge at 30, 90 and 180 degrees and on its right with flipH.
+            Some(Ok(effect)) if effect.inner => Some(effect.in_box_space(style.transform.rotation, style.transform.flip_h, style.transform.flip_v)),
             Some(Ok(effect)) => Some(effect),
             Some(Err(skipped)) => {
                 self.warn(skipped);
@@ -255,7 +259,7 @@ impl Renderer {
             }
             None => None,
         };
-        // The shadow is cast in slide space: PptxGenJS writes rotWithShape="0".
+        // An outer shadow is cast in slide space: PptxGenJS writes rotWithShape="0".
         let body = |r: &mut Self, surface: &mut Surface| r.draw_body(surface, object, &layout, &cells, x, y, w, h);
         let drawn = match shadow {
             Some(effect) => self.under_effect(surface, &effect, EffectSource::Everything, body),

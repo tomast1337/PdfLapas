@@ -4,14 +4,17 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PdfkitRenderer } from "../packages/pdfkit/src/node";
+import type { NativeRenderer } from "../packages/native/src/bun";
 import type { WasmRenderer } from "../packages/wasm/src/node";
 import { benchRuns } from "./benchConfig";
 
-const ENGINES = ["puppeteer", "wasm", "pdfkit"] as const;
+// native: @pdflapas/native, Bun only, after `bun run build:native`; BENCH_RENDERERS picks a subset.
+const ALL_ENGINES = ["puppeteer", "wasm", "pdfkit", "native"] as const;
+const ENGINES = process.env.BENCH_RENDERERS ? ALL_ENGINES.filter(engine => process.env.BENCH_RENDERERS?.split(",").includes(engine)) : ALL_ENGINES;
 
-type Engine = (typeof ENGINES)[number];
+type Engine = (typeof ALL_ENGINES)[number];
 /** The renderer each engine hands PuppeteerGen: the Node entry's Puppeteer default, or a WASM or PDFKit renderer. */
-type Backend = { readonly kind: "puppeteer" } | { readonly kind: "wasm"; readonly renderer: WasmRenderer } | { readonly kind: "pdfkit"; readonly renderer: PdfkitRenderer };
+type Backend = { readonly kind: "puppeteer" } | { readonly kind: "wasm"; readonly renderer: WasmRenderer } | { readonly kind: "pdfkit"; readonly renderer: PdfkitRenderer } | { readonly kind: "native"; readonly renderer: NativeRenderer };
 const median = (values: number[]) => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)]!;
 
 async function deckPdf(backend: Backend): Promise<Uint8Array> {
@@ -30,6 +33,12 @@ async function setup(engine: Engine): Promise<Backend> {
         const { createRenderer } = await import("../tests/visual/wasm/backend");
 
         return { kind: "wasm", renderer: await createRenderer() };
+    }
+
+    if (engine === "native") {
+        const [{ createNativeRenderer }, { loadSystemFonts }] = await Promise.all([import("../packages/native/src/bun"), import("../packages/wasm/src/node")]);
+
+        return { kind: "native", renderer: await createNativeRenderer({ fonts: await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") }), onUnsupported: "warn" }) };
     }
 
     // Like the WASM backend: system fonts once per process, unsupported objects reported, not thrown.

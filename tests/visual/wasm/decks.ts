@@ -10,6 +10,8 @@ import {
     populateChartDataTableFixture,
     populateChartPieBestFitFixture,
     populateChartAutomaticScaleFixture,
+    populateChartDateAxisFixture,
+    populateChartTypeOptionFixture,
     populateChartBarColorFixture,
     populateChartBarOrderFixture,
     populateChartDataLabelFixture,
@@ -389,6 +391,27 @@ export const DECKS: Record<string, { populate: Populate; pages: number; crop: (o
     chartAutomaticScale: {
         populate: presentation => {
             populateChartAutomaticScaleFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartDateAxis: the shared fixture's date category axis slide (#580); every chart gets a crop.
+    chartDateAxis: {
+        populate: presentation => {
+            populateChartDateAxisFixture(presentation);
+
+            return presentation;
+        },
+        pages: 1,
+        crop: object => object.kind === "chart",
+    },
+    // chartTypeOptions: the shared fixture's combo type, secondary axis, radar, data table and depth gridline slide
+    // (#590, #581, #582, #583); every chart gets a crop.
+    chartTypeOptions: {
+        populate: presentation => {
+            populateChartTypeOptionFixture(presentation);
 
             return presentation;
         },

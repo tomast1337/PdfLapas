@@ -478,6 +478,13 @@ export type NormalizedChartSeriesAxis = {
     hidden: boolean;
     /** Whether the first series is at the back (`<c:orientation val="maxMin"/>`). */
     reversed: boolean;
+    /** Name every nth series only (`serAxisLabelFrequency`); absent: every series. */
+    labelSkip?: number;
+    /** The gridlines at the series slots' edges across the floor and up the side wall (`serGridLine`). */
+    gridLineColor: CssColor;
+    gridLineWidth: number;
+    gridLineStyle: "solid" | "dash" | "dot" | "none";
+    gridLineCap: "flat" | "round" | "square";
     labelColor: CssColor;
     labelFontFace: string;
     labelFontSize: number;
@@ -496,6 +503,8 @@ export type NormalizedChartSeriesAxis = {
  * name and its values in its data labels' format.
  */
 export type NormalizedChartDataTable = {
+    /** The values' number format (`dataTableFormatCode`); absent: each series' data-label format. */
+    valueFormatCode?: string;
     horizontalBorder: boolean;
     verticalBorder: boolean;
     outline: boolean;

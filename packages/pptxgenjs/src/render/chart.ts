@@ -49,7 +49,10 @@ function lineType(style: "solid" | "dash" | "dot"): "solid" | "dashed" | "dotted
     return "solid";
 }
 
-/** Tick length in px; a cross tick spans both sides of the axis. */
+/**
+ * Tick length in px. shortcut: a cross tick (LibreOffice 26.2.6 draws it across the axis line) is drawn outside at
+ * twice the length, as ECharts draws ticks on one side only; overlay an inside-tick axis if a fixture needs it.
+ */
 const TICK_LENGTH = 5;
 /** ECharts' default axisLabel.margin, the px between a tick and its label. */
 const AXIS_LABEL_MARGIN = 8;
@@ -580,7 +583,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // A column chart whose category labels are not below it (deleted, `none` or `high`) gives their band to the plot, as
     // LibreOffice 26.2 does.
     const noBottomLabels = !horizontal && chart.type !== "scatter" && chart.type !== "bubble" && (categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (categoryAxisModel.labelPosition === "high" && !firstAxis?.reversed));
-    const categoryBand = table ? (chart.series.length + 1) * tableRowPx : noBottomLabels ? 0 : bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2;
+    const bottomLabelBand = bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2;
+    // A horizontal bar chart's data table goes below its value labels, as LibreOffice 26.2.6 draws it (#583).
+    const tableOffset = table && horizontal ? bottomLabelBand : 0;
+    const categoryBand = table ? (chart.series.length + 1) * tableRowPx + tableOffset : noBottomLabels ? 0 : bottomLabelBand;
     // A column chart's value axis on the right (catAxisCrossesAt max, or a reversed category axis) takes the gutter there.
     const valueAxisRight =
         !horizontal && !table && chart.valueAxes.length === 1 && chart.type !== "scatter" && chart.type !== "bubble" && chart.type !== "radar" && (categoryAxisModel.valueAxisCrossing?.kind === "max") !== (categoryAxisModel.reversed === true);
@@ -652,8 +658,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     const categoryLabelFormat = categoryAxisModel.labelFormatCode;
     const categoryAxisText = {
         axisLabel: {
-            // A deleted axis, `none` and a data table (whose first row names the categories) print no labels.
-            ...(categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || chart.dataTable ? { show: false } : {}),
+            // A deleted axis, `none` and a column chart's data table (whose first row names the categories) print no
+            // labels; a horizontal bar chart keeps them left of the plot, as LibreOffice 26.2.6 does (#583).
+            ...(categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (chart.dataTable && !horizontal) ? { show: false } : {}),
             // catAxisLabelRotate turns clockwise, ECharts' rotate counterclockwise.
             ...(categoryAxisModel.labelRotate ? { rotate: -categoryAxisModel.labelRotate } : {}),
             ...(categoryAxisModel.labelSkip ? { interval: categoryAxisModel.labelSkip - 1 } : {}),
@@ -1035,13 +1042,16 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             fontSize: pointsToPixels(axis.labelFontSize),
             fontWeight: axis.labelBold ? "bold" : "normal",
             fontStyle: axis.labelItalic ? "italic" : "normal",
-            formatter: (value: number) => formatChartNumber(value, axis.labelFormatCode),
+            // valAxisDisplayUnit divides the ring labels where the target reads display units.
+            formatter: (value: number) => formatChartNumber(axis.displayUnit ? value / axis.displayUnit.divisor : value, axis.labelFormatCode),
         };
+        // LibreOffice 26.2.6 numbers the spoke a numeric catAxisCrossesAt names (the first by default, and for `max`).
+        const valueSpoke = categoryAxisModel.valueAxisCrossing?.kind === "category" ? categoryAxisModel.valueAxisCrossing.index : 0;
         const indicators = Array.from({ length: categoryCount }, (_, index) => ({
             name: chart.series[0]?.labels[index] ?? String(index + 1),
             min: axis.minimum,
             max: axis.maximum,
-            ...(index === 0 ? { axisLabel: valueLabel } : {}),
+            ...(index === valueSpoke ? { axisLabel: valueLabel } : {}),
         }));
         const labels = chart.dataLabels;
         const label = showsPointLabel(labels)
@@ -1063,11 +1073,13 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(graphics.length ? { graphic: graphics } : {}),
             radar: {
                 indicator: indicators,
-                // Office draws the categories clockwise from the top.
-                clockwise: true,
+                // Office draws the categories clockwise from the top, counterclockwise for catAxisOrientation maxMin.
+                clockwise: categoryAxisModel.reversed !== true,
                 splitNumber: Math.max(1, Math.round((axis.maximum - axis.minimum) / interval)),
                 ...(layout ? { center: [(layout.x + layout.w / 2) * width, (layout.y + layout.h / 2) * height], radius: Math.min(layout.w * width, layout.h * height) / 2 } : {}),
                 axisName: {
+                    // A deleted category axis and catAxisLabelPos none name no spoke; low and high name them as nextTo.
+                    show: !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none",
                     color: categoryAxisModel.labelColor,
                     fontFamily: categoryAxisModel.labelFontFace,
                     fontSize: categoryLabelPx,
@@ -1162,6 +1174,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 ...axisStyle,
                 ...categoryAxisText,
                 ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
+                // catAxisOrientation maxMin runs x right to left; a bubble chart's catAxisLabelPos high puts the x labels at
+                // the top (shortcut: ECharts moves the axis line and ticks there too, LibreOffice keeps them at the bottom).
+                inverse: categoryAxisModel.reversed === true,
+                ...(chart.type === "bubble" && categoryAxisModel.labelPosition === "high" ? { position: "top" } : {}),
                 splitLine: gridLineOption(categoryAxisModel),
             },
             yAxis: scaledValueAxes[0] ? valueAxisOption(scaledValueAxes[0], 0, scaledValueAxes[0].minimum, scaledValueAxes[0].maximum, { kind: "default" }) : { type: "value", ...axisStyle, splitLine: { show: false } },
@@ -1257,7 +1273,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(valueCrossing?.kind === "category" ? { axisLine: { ...valueAxis.axisLine, onZero: true, onZeroAxisIndex: categoryAxes.length - 1 } } : valueAtEnd ? { position: horizontal ? ("top" as const) : ("right" as const) } : {}),
             ...(crossing !== undefined && !stackedBars ? { startValue: crossValue } : {}),
         };
-        const valueAxisList: Record<string, unknown>[] = [primaryValueAxis, ...valueAxes.slice(1)];
+        // A secondary axis takes the side the primary one leaves: LibreOffice 26.2.6 draws a maxMin category axis's
+        // primary value axis on the right and the secondary one on the left (#582).
+        const secondaryValueAxes = valueAtEnd && !horizontal ? valueAxes.slice(1).map(axis => ({ ...axis, position: "left" as const })) : valueAxes.slice(1);
+        const valueAxisList: Record<string, unknown>[] = [primaryValueAxis, ...secondaryValueAxes];
 
         if (shifted) {
             valueAxisList.push({ type: "value", show: false, min: low - crossValue, max: high - crossValue, inverse: firstAxis.reversed === true, splitLine: { show: false } });
@@ -1404,7 +1423,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         if (table) {
             const plotLeft = layout ? layout.x * width : gridLeft;
             const plotRight = layout ? (layout.x + layout.w) * width : width - gridRight;
-            const tableTop = layout ? (layout.y + layout.h) * height : height - gridBottom;
+            const tableTop = (layout ? (layout.y + layout.h) * height : height - gridBottom) + tableOffset;
             const tableLeft = plotLeft - tableNameColumn;
             const tableBottom = tableTop + (chart.series.length + 1) * tableRowPx;
             const column = (plotRight - plotLeft) / Math.max(1, categories.length);
@@ -1432,7 +1451,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 graphics.push(text(series.name, nameX + (table.keys ? tableKeyPx + LEGEND_TEXT_GAP : 0), row + 1, "left"));
 
                 for (const [index, value] of series.values.entries()) {
-                    graphics.push(text(formatChartNumber(value, labels.valueFormat), plotLeft + (index + 0.5) * column, row + 1, "center"));
+                    graphics.push(text(formatChartNumber(value, table.valueFormatCode ?? labels.valueFormat), plotLeft + (index + 0.5) * column, row + 1, "center"));
                 }
             }
 

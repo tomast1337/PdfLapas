@@ -40,15 +40,33 @@ export const CATEGORY_AXIS_OPTIONS = [
     "showCatAxisTitle",
 ] as const;
 
-/** The bar3D depth-axis options drawn: the series names on the depth axis and its title (#567). */
+/**
+ * The bar3D depth-axis options: the series names on the depth axis, its title and its gridlines (#567, #581). The
+ * others draw nothing in LibreOffice 26.2.6 (its PDF export of synthetic PptxGenJS 4.0.1 bar3D charts, four series):
+ * serAxisLineShow and serAxisLineColor (it draws no depth-axis line), serAxisLabelPos (PptxGenJS writes `low` on a
+ * column chart whatever it says), serLabelFormatCode (the series names are text), serAxisMajorUnit and
+ * serAxisMinorUnit (written with serLabelFormatCode only), and the serAxis*TimeUnit options (PptxGenJS checks the
+ * option's name, not its value, so it never writes them).
+ */
 const SERIES_AXIS_OPTIONS = [
+    "serAxisBaseTimeUnit",
     "serAxisHidden",
     "serAxisLabelColor",
     "serAxisLabelFontBold",
     "serAxisLabelFontFace",
     "serAxisLabelFontItalic",
     "serAxisLabelFontSize",
+    "serAxisLabelFrequency",
+    "serAxisLabelPos",
+    "serAxisLineColor",
+    "serAxisLineShow",
+    "serAxisMajorTimeUnit",
+    "serAxisMajorUnit",
+    "serAxisMinorTimeUnit",
+    "serAxisMinorUnit",
     "serAxisOrientation",
+    "serGridLine",
+    "serLabelFormatCode",
     "serAxisTitle",
     "serAxisTitleColor",
     "serAxisTitleFontFace",
@@ -97,6 +115,7 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "showDataTableOutline",
     "showDataTableVertBorder",
     "dataTableFontSize",
+    "dataTableFormatCode",
     "v3DPerspective",
     "v3DRAngAx",
     "v3DRotX",
@@ -233,19 +252,20 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "valAxisTitleRotate",
     "valGridLine",
 ]);
-// Where the axes cross, a reversed category axis, a label skip and a number format: drawn on a 2D category axis only.
-const CATEGORY_AXIS_PLACEMENT_OPTIONS = ["catAxisCrossesAt", "catAxisLabelFrequency", "catAxisOrientation", "catLabelFormatCode", "valAxisCrossesAt"] as const;
-// The category-axis options a chart type does not draw (#566). A radar chart's category axis is its spokes:
-// LibreOffice 26.2.6 draws its labels in catAxisLabel* and neither a catAxisTitle nor the catGridLine (#479), and the
-// line, tick, position, rotation and placement options are not measured there. bar3D draws its category labels along
-// the floor's front edge, and a scatter or bubble chart's x axis is a value axis, which PptxGenJS writes from the
-// catAxis* options: neither places its axes elsewhere, skips labels or formats categories.
+// Where the axes cross: drawn on a 2D category axis only.
+const AXIS_CROSSING_OPTIONS = ["catAxisCrossesAt", "valAxisCrossesAt"] as const;
+// The category-axis options a chart type does not draw (#566, #582). A radar chart's category axis is its spokes:
+// LibreOffice 26.2.6 draws its labels in catAxisLabel* (none for catAxisHidden or catAxisLabelPos none), runs them
+// counterclockwise for catAxisOrientation maxMin and numbers the value axis on the spoke a numeric catAxisCrossesAt
+// names, and draws neither a catAxisTitle nor the catGridLine (#479); the line, tick, rotation, skip and format options
+// are not measured there. bar3D and scatter or bubble charts (whose x axis is a value axis PptxGenJS writes from the
+// catAxis* options) do not place their axes elsewhere (#591).
 const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
     radar: new Set<string>([
-        ...CATEGORY_AXIS_PLACEMENT_OPTIONS,
+        "catAxisLabelFrequency",
+        "catLabelFormatCode",
+        "valAxisCrossesAt",
         "catGridLine",
-        "catAxisHidden",
-        "catAxisLabelPos",
         "catAxisLabelRotate",
         "catAxisLineColor",
         "catAxisLineShow",
@@ -254,13 +274,16 @@ const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType
         "catAxisMajorTickMark",
         "catAxisMinorTickMark",
     ]),
-    bar3D: new Set<string>(CATEGORY_AXIS_PLACEMENT_OPTIONS),
-    scatter: new Set<string>(CATEGORY_AXIS_PLACEMENT_OPTIONS),
-    bubble: new Set<string>(CATEGORY_AXIS_PLACEMENT_OPTIONS),
+    bar3D: new Set<string>(AXIS_CROSSING_OPTIONS),
+    scatter: new Set<string>(AXIS_CROSSING_OPTIONS),
+    bubble: new Set<string>(AXIS_CROSSING_OPTIONS),
 });
-// The chart types whose data table is drawn: a vertical category axis's columns hold it. LibreOffice 26.2 draws a
-// horizontal bar chart's data table out of line with its categories (#567).
-const DATA_TABLE_TYPES = new Set<NormalizedChartType>(["area", "bar", "line", "mixed"]);
+// PptxGenJS 4.0.1 writes `<c:dTable>` on every chart type with showDataTable. LibreOffice 26.2.6 draws none on a pie,
+// doughnut or radar chart (#583); it draws a scatter or bubble chart's as one malformed row and a bar3D chart's under
+// the floor's front edge, which are not drawn yet (#592).
+const DATA_TABLE_UNDRAWN_TYPES = new Set<NormalizedChartType>(["doughnut", "pie", "radar"]);
+const DATA_TABLE_REJECTED_TYPES = new Set<NormalizedChartType>(["bar3D", "bubble", "scatter"]);
+const XY_TYPES = new Set<NormalizedChartType>(["scatter", "bubble"]);
 const DATA_BORDER_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "bubble", "doughnut", "mixed", "pie"]);
 const TICK_MARKS = new Set(["none", "inside", "outside", "cross"]);
 // bar3D draws its value axis on a wall, where LibreOffice 26.2.6 draws neither an axis line nor tick marks whatever
@@ -471,12 +494,6 @@ function normalizeValueAxis(
 
     if (logScaleBase !== undefined && minimum <= 0) {
         throw new TypeError("A logarithmic value axis requires a positive minimum");
-    }
-
-    if (axisOptions?.valAxisMajorTickMark === "cross" || axisOptions?.valAxisMinorTickMark === "cross") {
-        const option = axisOptions.valAxisMajorTickMark === "cross" ? "valAxisMajorTickMark" : "valAxisMinorTickMark";
-
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`${path}${option}[cross]`] });
     }
 
     const labelFormatCode = axisOptions?.valAxisLabelFormatCode ?? PPTX_DEFAULTS.chart.valueAxis.labelFormatCode;
@@ -735,6 +752,16 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
+    for (const key of Object.keys(options.serGridLine ?? {})) {
+        if (!SUPPORTED_GRID_LINE_OPTIONS.has(key)) {
+            unsupportedAxisOptions.push(`serGridLine.${key}`);
+        }
+    }
+
+    if (options.showDataTable && !mixed && DATA_TABLE_REJECTED_TYPES.has(type as NormalizedChartType)) {
+        unsupportedAxisOptions.push(`showDataTable[${String(type)}]`);
+    }
+
     // PptxGenJS writes no axes on a pie or doughnut, so the category-axis options draw nothing there. A minMax
     // orientation and an autoZero crossing are the defaults, drawn as they are.
     const undrawnCategoryOptions = mixed ? undefined : CATEGORY_AXIS_UNDRAWN_OPTIONS[type as NormalizedChartType];
@@ -747,33 +774,21 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         }
     }
 
-    // bar3D and bubble charts draw their category or x labels below the plot area, or none.
-    if ((type === "bar3D" || type === "bubble") && options.catAxisLabelPos === "high") {
-        unsupportedAxisOptions.push(`catAxisLabelPos[high][${type}]`);
+    // bar3D draws its category labels along the floor's front edge or none: LibreOffice 26.2.6 moves them and the depth
+    // labels to the back walls' top edges for `high` (#591).
+    if (type === "bar3D" && options.catAxisLabelPos === "high") {
+        unsupportedAxisOptions.push("catAxisLabelPos[high][bar3D]");
     }
 
-    // bar3D draws its data labels without a box, and a radar chart its value labels with a formatter of its own.
+    // bar3D draws its data labels without a box.
     if (type === "bar3D" && options.dataLabelBkgrdColors) {
         unsupportedAxisOptions.push("dataLabelBkgrdColors[bar3D]");
     }
 
-    if (type === "radar" && options.valAxisDisplayUnit !== undefined) {
-        unsupportedAxisOptions.push("valAxisDisplayUnit[radar]");
-    }
-
-    if (options.showDataTable && !mixed && !DATA_TABLE_TYPES.has(type as NormalizedChartType)) {
-        unsupportedAxisOptions.push(`showDataTable[${String(type)}]`);
-    }
-
-    if (options.showDataTable && options.barDir === "bar") {
-        unsupportedAxisOptions.push("showDataTable[barDir bar]");
-    }
-
-    // A secondary value axis has a category axis of its own, which PptxGenJS crosses and orients by the same options.
-    const crossesElsewhere = (options.catAxisCrossesAt ?? "autoZero") !== "autoZero" || (options.valAxisCrossesAt ?? "autoZero") !== "autoZero";
-
-    if (requestedValueAxes.length > 1 && (crossesElsewhere || (options.catAxisOrientation ?? "minMax") !== "minMax")) {
-        unsupportedAxisOptions.push("valAxes[secondary][catAxisCrossesAt, valAxisCrossesAt or catAxisOrientation]");
+    // PptxGenJS writes catAxisCrossesAt on both value axes (makeValAxis), so a secondary one crosses the categories
+    // where the primary one does: LibreOffice 26.2.6 draws both axes, overlapping, at that category.
+    if (requestedValueAxes.length > 1 && (options.catAxisCrossesAt ?? "autoZero") !== "autoZero") {
+        unsupportedAxisOptions.push("valAxes[secondary][catAxisCrossesAt]");
     }
 
     // The value-axis options a chart type does not draw, on the chart or a valAxes entry.
@@ -1006,23 +1021,14 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // when catGridLine or valGridLine is unset.
     const scatterGridLine: PptxGenJS.OptsChartGridLine = { color: PPTX_DEFAULTS.chart.scatterGridLine.color, size: PPTX_DEFAULTS.chart.scatterGridLine.widthPt };
     const catGridLine = options.catGridLine ?? (normalizedType === "scatter" ? scatterGridLine : undefined);
-    // The category axis's tick marks, crossing, label skip and number format (makeCatAxis, #566).
-    const tickMarks: string[] = [];
 
+    // The category axis's tick marks, crossing, label skip and number format (makeCatAxis, #566).
     for (const key of ["catAxisMajorTickMark", "catAxisMinorTickMark"] as const) {
         const mark: unknown = options[key];
 
         if (mark !== undefined && !TICK_MARKS.has(String(mark))) {
             throw new TypeError(`${key} must be "none", "inside", "outside" or "cross"; got ${JSON.stringify(mark)}`);
         }
-
-        if (mark === "cross") {
-            tickMarks.push(`${key}[cross]`);
-        }
-    }
-
-    if (tickMarks.length) {
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: tickMarks });
     }
 
     const categoryCount = series[0]?.labels.length ?? 0;
@@ -1071,10 +1077,12 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             throw new TypeError(`catAxisLabelFrequency must be a whole number of categories from 1; got ${JSON.stringify(options.catAxisLabelFrequency)}`);
         }
 
-        labelSkip = profile.readsCategoryLabelSkip && skip > 1 ? skip : undefined;
+        // LibreOffice 26.2.6 skips no scatter or bubble x label (a value axis) and no radar spoke name.
+        labelSkip = profile.readsCategoryLabelSkip && skip > 1 && !XY_TYPES.has(normalizedType) ? skip : undefined;
     }
 
-    const labelFormatCode = options.catLabelFormatCode;
+    // A scatter or bubble chart's x axis keeps its General numbers in LibreOffice 26.2.6 whatever catLabelFormatCode says.
+    const labelFormatCode = XY_TYPES.has(normalizedType) ? undefined : options.catLabelFormatCode;
 
     if (labelFormatCode !== undefined && !isSupportedChartNumberFormat(labelFormatCode)) {
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["catLabelFormatCode[format]"] });
@@ -1120,8 +1128,9 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, primaryScale, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {}, profile.readsValueAxisDisplayUnits);
     const valueAxes = [categoryAxisCrossing ? { ...primaryAxis, categoryAxisCrossing } : primaryAxis];
 
-    if (normalizedType === "bar3D" && primaryAxis.displayUnit?.label) {
-        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["valAxisDisplayUnitLabel[bar3D]"] });
+    // bar3D and radar charts have no axis band for the display unit's label (set only where the target reads units).
+    if ((normalizedType === "bar3D" || normalizedType === "radar") && primaryAxis.displayUnit?.label) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`valAxisDisplayUnitLabel[${normalizedType}]`] });
     }
 
     // titlePos: PptxGenJS writes the title's `<c:manualLayout>` edge from the position plus the chart's own x or y in
@@ -1160,12 +1169,32 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         throw new TypeError(`serAxisOrientation must be "minMax" or "maxMin"; got ${JSON.stringify(serOrientation)}`);
     }
 
+    // `<c:tickLblSkip val="${serAxisLabelFrequency}"/>`, read by the target or not (readsSeriesLabelSkip).
+    let seriesLabelSkip: number | undefined;
+
+    if (options.serAxisLabelFrequency !== undefined) {
+        const skip = Number(options.serAxisLabelFrequency);
+
+        if (!Number.isInteger(skip) || skip < 1) {
+            throw new TypeError(`serAxisLabelFrequency must be a whole number of series from 1; got ${JSON.stringify(options.serAxisLabelFrequency)}`);
+        }
+
+        seriesLabelSkip = profile.readsSeriesLabelSkip && skip > 1 ? skip : undefined;
+    }
+
+    // PptxGenJS defaults serGridLine to `{ style: "none" }` and replaces it whole, as valGridLine.
+    const serGridLine = options.serGridLine ?? { style: "none" };
     // PptxGenJS writes the depth axis (makeSerAxis) on a bar3D chart only.
     const seriesAxis: NormalizedChart["seriesAxis"] =
         normalizedType === "bar3D"
             ? {
                   hidden: options.serAxisHidden ?? false,
                   reversed: serOrientation === "maxMin",
+                  ...(seriesLabelSkip ? { labelSkip: seriesLabelSkip } : {}),
+                  gridLineColor: normalizeColor(serGridLine.color ?? PPTX_DEFAULTS.chart.gridLine.color),
+                  gridLineWidth: positiveNumber(serGridLine.size, "serGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
+                  gridLineStyle: serGridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style,
+                  gridLineCap: serGridLine.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
                   labelColor: normalizeColor(options.serAxisLabelColor || serDefaults.labelColor),
                   labelFontFace: options.serAxisLabelFontFace || PPTX_DEFAULTS.chart.fontFace,
                   labelFontSize: positiveNumber(options.serAxisLabelFontSize, "serAxisLabelFontSize", serDefaults.labelFontSizePt),
@@ -1182,21 +1211,31 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const tableDefaults = PPTX_DEFAULTS.chart.dataTable;
     // PptxGenJS 4.0.1 writes each `<c:showHorzBorder>`, `<c:showVertBorder>`, `<c:showOutline>` and `<c:showKeys>` 1
     // only when its option is true (its default-setting ternaries keep an unset option unset).
-    const dataTable: NormalizedChart["dataTable"] = options.showDataTable
-        ? {
-              horizontalBorder: profile.drawsDataTableBorders && options.showDataTableHorzBorder === true,
-              verticalBorder: profile.drawsDataTableBorders && options.showDataTableVertBorder === true,
-              outline: profile.drawsDataTableBorders && options.showDataTableOutline === true,
-              keys: profile.drawsDataTableBorders && options.showDataTableKeys === true,
-              // shortcut: the theme's minor font (+mn-lt) is the default theme's; a presentation theme's body face is
-              // not passed to charts yet, pass it when a deck sets one with a data table.
-              fontFace: PPTX_DEFAULTS.theme.bodyFontFace,
-              fontSize: checkedSize(options.dataTableFontSize || tableDefaults.fontSizePt, "dataTableFontSize", PPTX_DEFAULTS.limits.fontSizePt),
-              color: normalizeColor(tableDefaults.color),
-              borderColor: normalizeColor(tableDefaults.borderColor),
-              borderWidth: tableDefaults.borderWidthPt,
-          }
-        : undefined;
+    // dataTableFormatCode is the values' `<c:numCache>` format, after valLabelFormatCode (which PptxGenJS 4.0.1 never
+    // sets), read by the target or not (readsDataTableFormatCode).
+    const tableFormatCode = profile.readsDataTableFormatCode ? options.dataTableFormatCode : undefined;
+
+    if (tableFormatCode !== undefined && !isSupportedChartNumberFormat(tableFormatCode)) {
+        throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["dataTableFormatCode[format]"] });
+    }
+
+    const dataTable: NormalizedChart["dataTable"] =
+        options.showDataTable && !DATA_TABLE_UNDRAWN_TYPES.has(normalizedType)
+            ? {
+                  ...(tableFormatCode !== undefined ? { valueFormatCode: tableFormatCode } : {}),
+                  horizontalBorder: profile.drawsDataTableBorders && options.showDataTableHorzBorder === true,
+                  verticalBorder: profile.drawsDataTableBorders && options.showDataTableVertBorder === true,
+                  outline: profile.drawsDataTableBorders && options.showDataTableOutline === true,
+                  keys: profile.drawsDataTableBorders && options.showDataTableKeys === true,
+                  // shortcut: the theme's minor font (+mn-lt) is the default theme's; a presentation theme's body face is
+                  // not passed to charts yet, pass it when a deck sets one with a data table.
+                  fontFace: PPTX_DEFAULTS.theme.bodyFontFace,
+                  fontSize: checkedSize(options.dataTableFontSize || tableDefaults.fontSizePt, "dataTableFontSize", PPTX_DEFAULTS.limits.fontSizePt),
+                  color: normalizeColor(tableDefaults.color),
+                  borderColor: normalizeColor(tableDefaults.borderColor),
+                  borderWidth: tableDefaults.borderWidthPt,
+              }
+            : undefined;
     // dataBorder: `<a:ln w="${pt || 0.75}">` in its color on bar, bar3D and area series, bubbles and pie slices; a line,
     // radar or scatter series has its own line.
     const dataBorder: NormalizedChart["dataBorder"] =

@@ -261,6 +261,11 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // Its PDF export of a synthetic PptxGenJS 4.0.1 column chart with eight categories and `catAxisLabelFrequency: 2`
     // (`<c:tickLblSkip val="2"/>`) prints all eight labels (#566).
     readsCategoryLabelSkip: false,
+    // Its PDF export of a bar3D chart with four series and `serAxisLabelFrequency: 2` names all four (#581).
+    readsSeriesLabelSkip: false,
+    // Its PDF export of column and line charts with `showDataTable` and `dataTableFormatCode` "0.00" or "$#,##0.0" prints
+    // the table's values as in the data labels' format, 10 and 12, not 10.00 or $12.0 (#583).
+    readsDataTableFormatCode: false,
     // Its PDF export of column charts with `valAxisDisplayUnit: "thousands"` and `valAxisDisplayUnitLabel` (values
     // 3000 to 7000) and `"hundreds"` (300 to 700) numbers the axes 0..8000 and 0..800, with no unit name (#566).
     readsValueAxisDisplayUnits: false,

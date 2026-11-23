@@ -394,6 +394,9 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of synthetic PptxGenJS 4.0.1 decks (6 x 4.4in charts, Arial; #586):
     // A column chart with eight categories A..H and `catAxisLabelFrequency: 2` labels A, C, E and G only (#566).
     readsCategoryLabelSkip: true,
+    // shortcut: not measured on PowerPoint, so LibreOffice's values (#581, #583); measure them with the copt decks.
+    readsSeriesLabelSkip: false,
+    readsDataTableFormatCode: false,
     // Column charts with `valAxisDisplayUnit: "thousands"` (values 3000 to 7000) and `"hundreds"` (300 to 700) number
     // both axes 0..8, and `valAxisDisplayUnitLabel` prints "Thousands" beside the axis (#566).
     // shortcut: the name is drawn level above the axis, where PowerPoint turns it upright left of the axis; turn it when

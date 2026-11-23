@@ -78,6 +78,8 @@ function boxBounds(camera: (x: number, y: number, z: number) => CameraPoint) {
 export function renderBar3DSvg(width: number, height: number, chart: NormalizedChart): Html {
     const labels = chart.series[0]?.labels ?? [];
     const categoryCount = Math.max(1, labels.length, ...chart.series.map(series => series.values.length));
+    // catAxisOrientation maxMin runs the categories right to left.
+    const categorySlot = (category: number): number => (chart.categoryAxis.reversed ? categoryCount - 1 - category : category);
     const seriesCount = Math.max(1, chart.series.length);
     const stacked = chart.grouping === "stacked" || chart.grouping === "percentStacked";
     // The same text bands as the 2D plot area (chart.ts chartGrid): the legend and the category labels below the box.
@@ -308,6 +310,27 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         }
     }
 
+    // The series gridlines (serGridLine) at each series slot's edge: across the floor, then up the side wall, as
+    // LibreOffice 26.2.6 draws them (#581).
+    const seriesGrid = chart.seriesAxis;
+
+    if (seriesGrid && seriesGrid.gridLineStyle !== "none") {
+        const seriesStroke: Attribute[] = [
+            ["fill", "none"],
+            ["stroke", seriesGrid.gridLineColor],
+            ["stroke-width", n(pointsToPixels(seriesGrid.gridLineWidth))],
+            ["stroke-dasharray", seriesGrid.gridLineStyle === "dash" ? n(pointsToPixels(seriesGrid.gridLineWidth) * 4) : seriesGrid.gridLineStyle === "dot" ? n(pointsToPixels(seriesGrid.gridLineWidth)) : undefined],
+        ];
+        const slots = stacked ? 1 : seriesCount;
+
+        for (let index = 0; index <= slots; index++) {
+            const depth = index / slots;
+            const line = [project(otherX, depth, minimum), project(sideX, depth, minimum), project(sideX, depth, maximum)];
+
+            grid.push(element("polyline", [["class", "bar3d-series-grid"], ["points", line.map(p).join(" ")], ...seriesStroke]));
+        }
+    }
+
     const backSideBottom = project(sideX, backDepth, minimum);
     const backSideTop = project(sideX, backDepth, maximum);
     const backOtherBottom = project(otherX, backDepth, minimum);
@@ -401,7 +424,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const depthThickness = depthSlot / (1 + chart.barGapDepthPercent / 100);
     // serAxisOrientation maxMin puts the first series at the back.
     const slotDepth = (series: number): number => (stacked ? 0.5 : ((chart.seriesAxis?.reversed ? seriesCount - 1 - series : series) + 0.5) * depthSlot);
-    const barCenter = (bar: Bar): CameraPoint => project((bar.category + 0.5) / categoryCount, slotDepth(bar.series), (bar.base + bar.value) / 2);
+    const barCenter = (bar: Bar): CameraPoint => project((categorySlot(bar.category) + 0.5) / categoryCount, slotDepth(bar.series), (bar.base + bar.value) / 2);
     // Painter's order: the bar farthest from the camera first.
     const ordered: { bar: Bar; distance: number }[] = [];
 
@@ -414,7 +437,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const barSvg: Html[] = [];
 
     for (const { bar } of ordered) {
-        const cx = (bar.category + 0.5) / categoryCount;
+        const cx = (categorySlot(bar.category) + 0.5) / categoryCount;
         const cz = slotDepth(bar.series);
         const x0 = cx - halfWidth;
         const x1 = cx + halfWidth;
@@ -527,7 +550,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         for (const { bar } of ordered) {
             const series = chart.series[bar.series];
             const value = series?.values[bar.category] ?? 0;
-            const anchor = project((bar.category + 0.5) / categoryCount, slotDepth(bar.series), Math.max(minimum, Math.min(maximum, Math.max(bar.base, bar.value))));
+            const anchor = project((categorySlot(bar.category) + 0.5) / categoryCount, slotDepth(bar.series), Math.max(minimum, Math.min(maximum, Math.max(bar.base, bar.value))));
 
             dataLabelSvg.push(
                 element(
@@ -563,8 +586,16 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     // A deleted axis (catAxisHidden) draws no labels or title, `none` no labels; catAxisLabelRotate turns each label
     // clockwise about its anchor.
     for (let index = 0; !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && index < categoryCount; index++) {
-        const point = project((index + 0.5) / categoryCount, frontDepth, minimum);
-        const label = labels[index] ?? String(index + 1);
+        // catAxisLabelFrequency (where the target reads it) labels every nth category; catLabelFormatCode formats a
+        // numeric one.
+        if (categoryAxisModel.labelSkip && index % categoryAxisModel.labelSkip !== 0) {
+            continue;
+        }
+
+        const point = project((categorySlot(index) + 0.5) / categoryCount, frontDepth, minimum);
+        const text = labels[index] ?? String(index + 1);
+        const number = Number(text);
+        const label = categoryAxisModel.labelFormatCode && text.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryAxisModel.labelFormatCode) : text;
         const rotate: Attribute[] = categoryAxisModel.labelRotate ? [["transform", `rotate(${n(categoryAxisModel.labelRotate)} ${n(point.x)} ${n(point.y + 20)})`]] : [];
 
         categoryBottom = Math.max(categoryBottom, point.y + 20);
@@ -607,11 +638,18 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
               ["font-style", seriesAxis.labelItalic ? "italic" : undefined],
           ]
         : [];
-    const seriesLabels = (namesSlots ? chart.series : []).map((series, index) => {
+    const seriesLabels: Html[] = [];
+
+    for (const [index, series] of (namesSlots ? chart.series : []).entries()) {
+        // serAxisLabelFrequency (where the target reads it) names every nth series.
+        if (seriesAxis?.labelSkip && index % seriesAxis.labelSkip !== 0) {
+            continue;
+        }
+
         const point = project(otherX, slotDepth(index), minimum);
 
-        return element("text", [["class", "bar3d-series-label"], ["x", n(point.x + 7)], ["y", n(point.y + 12)], ...seriesLabelStyle], escapeText(series.name));
-    });
+        seriesLabels.push(element("text", [["class", "bar3d-series-label"], ["x", n(point.x + 7)], ["y", n(point.y + 12)], ...seriesLabelStyle], escapeText(series.name)));
+    }
 
     // showSerAxisTitle: LibreOffice 26.2 prints it below and right of the front slot's name.
     if (seriesAxis?.showTitle && !seriesAxis.hidden) {

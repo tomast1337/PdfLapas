@@ -11,6 +11,7 @@ import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { presentationCSS } from "../packages/pptxgenjs/src/render/slide";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { pointsToPixels } from "@pdflapas/model";
+import type { FontMetricsLookup } from "../packages/pptxgenjs/src/defaults";
 
 describe("text normalization", () => {
     test("accepts numbers and preserves empty hard-line paragraphs", () => {
@@ -887,8 +888,9 @@ describe("text DOM rendering", () => {
             "line(-0.46 0.64) line(1.46 0.64)",
         ]);
         // As PowerPoint's PDF export draws them (target/powerpoint.ts): one dash pattern in T for the light and the heavy
-        // line, `wavyHeavy`'s zigzag line T/2 (18pt Arial: post 150/2048 em of 24px, 1.758px), `words` unbroken under the
-        // spaces, the double strike two lines of the strike's thickness around its band.
+        // line, `wavyHeavy`'s zigzag line T/2 (18pt Arial: post 150/2048 em of 24px, 1.758px, from the font or, where it is
+        // not installed, the fallback band, also Arial's), `words` unbroken under the spaces, the double strike two lines
+        // of the strike's thickness around its band.
         expect(pieces("powerpoint")).toEqual([
             "line(0 1 1 1)",
             "line(-1 1.5 3 2)",
@@ -900,6 +902,20 @@ describe("text DOM rendering", () => {
             "line(0 1)",
             "line(-1 1) line(1 1)",
         ]);
+    });
+
+    test("draws wavyHeavy's zigzag line T/2 of the run's band, or of Arial's where the face is not known (#569)", () => {
+        const UNKNOWN = { kind: "unknown" } as const;
+        // A face whose post underline is 100 of 1000 units per em thick.
+        const known: FontMetricsLookup = Object.assign(() => UNKNOWN, {
+            glyphAdvances: () => ({ kind: "advances", advances: { unitsPerEm: 1000, advances: new Map([[120, 500]]), underline: { position: -200, thickness: 100 } } }) as const,
+        });
+        const unknown: FontMetricsLookup = Object.assign(() => UNKNOWN, { glyphAdvances: () => UNKNOWN });
+        const line = (fonts: FontMetricsLookup) => normalizeText([{ text: "x", options: { underline: { style: "wavyHeavy" } } }], { fontFace: "Lorem", fontSize: 18 }, "powerpoint", fonts).paragraphs[0]?.runs[0]?.decoration.underlineShape?.pieces[0];
+
+        // 18pt is 24px: T/2 of 0.1em is 1.2px; of Arial's 150/2048em, 0.878906px.
+        expect(line(known)).toEqual({ kind: "zigzag", top: -0.5, height: 2, thickness: 0.5 * 0.1 * 24 });
+        expect(line(unknown)).toEqual({ kind: "zigzag", top: -0.5, height: 2, thickness: (0.5 * 150 * 24) / 2048 });
     });
 
     test("rejects an underline style that is not an OOXML one", () => {

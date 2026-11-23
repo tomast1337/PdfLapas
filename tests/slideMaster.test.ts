@@ -4,7 +4,7 @@ import pptxgen from "pptxgenjs";
 import type PptxGenJS from "pptxgenjs";
 import { inchesToPixels, pixelsToPoints, pointsToPixels } from "@pdflapas/model";
 import type { NormalizedSlide, NormalizedSlideObject, NormalizedTextRun } from "../packages/model/src/index";
-import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -441,6 +441,48 @@ describe("addText and addImage({ placeholder })", () => {
 
         // LibreOffice takes the percentage of the paragraph's largest run, not its first or the box's 32pt.
         expect(text?.kind === "text" ? text.text.paragraphs.map(paragraph => Math.round(pixelsToPoints(paragraph.spaceBefore) * 100) / 100) : []).toEqual([0, 8, 2.4, 3]);
+
+        const powerPoint = new PuppeteerGenPowerPoint();
+
+        powerPoint.defineSlideMaster(PLACEHOLDER_MASTER);
+        powerPoint.addSlide({ masterName: "PH" }).addText(runs, { placeholder: "side" });
+        const powerPointText = powerPoint.getModel().slides[0]?.objects[1];
+
+        // PowerPoint takes it of the single line, 1.2x the largest run, unrounded; its own 3pt is rounded as before.
+        expect(powerPointText?.kind === "text" ? powerPointText.text.paragraphs.map(paragraph => Math.round(pixelsToPoints(paragraph.spaceBefore) * 100) / 100) : []).toEqual([0, 9.6, 2.88, 3]);
+    });
+
+    test('PptxGenJS writes a "pic" or "tbl" placeholder untyped, and its text takes the bodyStyle as a body one does', async () => {
+        const master: PptxGenJS.SlideMasterProps = {
+            title: "TYPES",
+            objects: [
+                { placeholder: { options: { name: "pic", type: "pic", x: 0.5, y: 0.5, w: 4, h: 2 } } },
+                { placeholder: { options: { name: "tbl", type: "tbl", x: 5, y: 0.5, w: 4, h: 2 } } },
+                { placeholder: { options: { name: "chart", type: "chart", x: 0.5, y: 3, w: 4, h: 2 } } },
+            ],
+        };
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(master);
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+        const layoutXml = (await zip.file("ppt/slideLayouts/slideLayout2.xml")?.async("string")) ?? "";
+
+        // genXmlPlaceholder looks the type up twice in PLACEHOLDER_TYPES, whose keys are "image" and "table".
+        expect(layoutXml.match(/<p:ph[^>]*>/g)?.map(tag => /type="(\w+)"/.exec(tag)?.[1] ?? "none")).toEqual(["none", "none", "chart"]);
+
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(master);
+        const slide = pres.addSlide({ masterName: "TYPES" });
+
+        for (const name of ["pic", "tbl", "chart"]) {
+            slide.addText("A\nB", { placeholder: name });
+        }
+
+        for (const object of pres.getModel().slides[0]?.objects ?? []) {
+            expect(object).toMatchObject({ kind: "text", text: { paragraphs: [{ align: "left", runs: [{ fontSize: pointsToPixels(32) }] }, { spaceBefore: pointsToPixels(6.4) }] } });
+        }
     });
 
     test("an unknown name draws from the object's own options, top-anchored as PptxGenJS writes it, and adds a warnings() line", () => {

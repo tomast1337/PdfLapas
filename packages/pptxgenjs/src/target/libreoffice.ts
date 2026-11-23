@@ -210,6 +210,7 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     emptyNumberedParagraph: "restarts",
     lineFeedParagraph: "run",
     spacingWholePoints: false,
+    percentSpacingEm: 1,
     escapementSizeRatio: 0.58,
     escapementGrowsLine: true,
     fullSizeMark: false,

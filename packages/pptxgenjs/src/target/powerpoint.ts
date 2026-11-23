@@ -173,6 +173,12 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * synthetic decks (12pt Arial), `paraSpaceAfter` 0.25 and 0.49 add 0pt, 0.5 and 1.25 1pt, 1.5 and 2.4 2pt, 2.5 and
  * 2.6 3pt, 5.5 6pt, `paraSpaceBefore` the same; a space after of 0.5 then a space before of 0.5 add 2pt (1 + 1), and
  * `lineSpacing: 12.5` gives a 13pt pitch. `lineSpacingMultiple` (`<a:spcPct>`) is not rounded.
+ * It takes a percentage space before (`percentSpacingEm`), the master bodyStyle's 20% that text filling a placeholder
+ * inherits, of the single line, 1.2x the paragraph's largest run, and does not round it (#495): measured against its PDF
+ * export of synthetic decks (Arial body placeholders, no paraSpaceBefore), paragraphs of 12, 18, 24, 32 and 40pt are
+ * 17.28, 25.92, 34.56, 46.08 and 57.6pt apart (1.2x plus 20% of 1.2x), where LibreOffice's 20% of the size and
+ * rounding gave 0.88 to 1.6pt less; the space stays 2.88pt at 12pt with `lineSpacingMultiple: 2` (31.68pt pitch),
+ * `lineSpacing: 30` (32.88pt) and `paraSpaceAfter: 6` (23.28pt, added), so it is of the single line, not the spaced one.
  * It draws a superscript or subscript run at 2/3 of its size (`escapementSizeRatio`): measured against its PDF
  * export of synthetic decks, 24pt is drawn at 15.96pt and 12pt at 8.04pt, a 24pt superscript's baseline 7.2pt (0.3
  * of 24) above the line's. The run counts in its line at that size: a 24pt superscript inside a 12pt Arial line puts
@@ -346,6 +352,7 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     emptyNumberedParagraph: "skipped",
     lineFeedParagraph: "paragraph",
     spacingWholePoints: true,
+    percentSpacingEm: PPTX_DEFAULTS.text.singleLineEm,
     escapementSizeRatio: 2 / 3,
     escapementGrowsLine: false,
     fullSizeMark: true,

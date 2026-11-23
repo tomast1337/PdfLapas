@@ -945,10 +945,13 @@ export function normalizeText(
         // takes the master's percentage, which LibreOffice's oox import (TextParagraph::insertAt) takes of the paragraph's
         // largest run: in a synthetic deck (Arial, a 12pt run then a 40pt one, and the reverse), both 40pt lines start
         // where a paragraph of 40pt alone does, 8pt below the 12pt line above.
+        // PowerPoint takes the percentage of the single line instead and does not round it (percentSpacingEm).
         const ownSpaceBefore = first.paraSpaceBefore ?? 0;
-        const spaceBeforePoints = writing.placeholderSpaceBeforeRatio !== undefined && !(ownSpaceBefore > 0) ? pixelsToPoints(largestSize) * writing.placeholderSpaceBeforeRatio : ownSpaceBefore;
-        // shortcut: PowerPoint's dropped first space before was measured on top-anchored text boxes only; middle and
-        // bottom anchors and table cells follow the same rule until a measurement says otherwise.
+        const spaceBeforePoints =
+            writing.placeholderSpaceBeforeRatio !== undefined && !(ownSpaceBefore > 0) ? pixelsToPoints(largestSize) * RENDERING_TARGETS[target].percentSpacingEm * writing.placeholderSpaceBeforeRatio : spacingPoints(ownSpaceBefore, target);
+        // shortcut: PowerPoint's dropped first space before was measured on top-anchored text boxes and on top-, middle-
+        // and bottom-anchored filled placeholders (#495); text boxes at other anchors and table cells follow the same
+        // rule until a measurement says otherwise.
         const firstSpace = index === 0 && !spacesFirstParagraph ? { spaceBefore: 0 } : {};
         // PowerPoint and LibreOffice leave the last paragraph's space after out of the text height, so it does not
         // lift middle- or bottom-anchored text (or grow a table row); the text ends where its last line does.
@@ -960,7 +963,7 @@ export function normalizeText(
             ...(align === "justify" && RENDERING_TARGETS[target].justifiesAtSpaces ? { textJustify: "inter-word" as const } : {}),
             rtl: first.rtlMode ?? PPTX_DEFAULTS.text.rtlMode,
             lineBox: group.endsParagraph ? lineBox : feedLineBox,
-            spaceBefore: pointsToPixels(spacingPoints(spaceBeforePoints, target)),
+            spaceBefore: pointsToPixels(spaceBeforePoints),
             spaceAfter: pointsToPixels(spacingPoints(first.paraSpaceAfter ?? 0, target)),
             tabStops,
             defaultTabStop: inchesToPixels(PPTX_DEFAULTS.text.defaultTabStopIn),

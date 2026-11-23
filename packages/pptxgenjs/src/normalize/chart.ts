@@ -5,7 +5,7 @@ import { UnsupportedChartError } from "#src/chart/errors";
 import { formatChartNumber, isSupportedChartNumberFormat } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget, type RenderingTargetProfile } from "#src/target/index";
-import type { CssColor, NormalizedChart, NormalizedChartDataLabels, NormalizedChartSeries, NormalizedChartType, NormalizedChartValueAxis } from "@pdflapas/model";
+import type { CssColor, NormalizedChart, NormalizedChartDataLabels, NormalizedChartSeries, NormalizedChartSeriesStyle, NormalizedChartType, NormalizedChartValueAxis } from "@pdflapas/model";
 import { checkedSize } from "./size";
 import { normalizeColor, normalizeFill } from "./style";
 
@@ -131,6 +131,8 @@ export const SUPPORTED_CHART_OPTIONS = Object.freeze([
     "v3DRotY",
     "showValAxisTitle",
     "valAxes",
+    // Each entry's category-axis options over the chart's (#594); a second entry is a secondary category axis.
+    "catAxes",
     "valAxisCrossesAt",
     "valAxisDisplayUnit",
     "valAxisDisplayUnitLabel",
@@ -224,12 +226,14 @@ const MIXED_LABEL_OPTIONS = [
     "showSerName",
     "showValue",
 ] as const;
-// A combo chart type's own options that PptxGenJS reads on that type's chart element only: a line type's line and
-// marker, a bar type's gap and overlap. With one value per kind they are drawn chart-wide (#590). Its raw
-// lineDataSymbolLineSize is written in EMU, not points (addChartDefinition converts only the chart's), so it stays out.
-const MIXED_LINE_OPTIONS = ["lineDataSymbol", "lineDataSymbolLineColor", "lineDataSymbolSize", "lineSize", "lineSmooth"] as const;
+// A combo chart type's own fill, outline, line and marker options, which PptxGenJS writes on that type's series only
+// (#590, #594): each series of the type takes them as its style.
+const MIXED_STYLE_OPTIONS = ["chartColorsOpacity", "dataBorder", "lineDataSymbol", "lineDataSymbolLineColor", "lineDataSymbolLineSize", "lineDataSymbolSize", "lineSize", "lineSmooth"] as const;
+// A bar type's gap and overlap, drawn chart-wide with one value per kind (#590).
 const MIXED_BAR_OPTIONS = ["barGapWidthPct", "barOverlapPct"] as const;
-const SUPPORTED_MIXED_SERIES_OPTIONS = new Set<string>(["barGrouping", "chartColors", "secondaryCatAxis", "secondaryValAxis", ...MIXED_LABEL_OPTIONS, ...MIXED_LINE_OPTIONS, ...MIXED_BAR_OPTIONS]);
+const SUPPORTED_MIXED_SERIES_OPTIONS = new Set<string>(["barGrouping", "chartColors", "invertedColors", "secondaryCatAxis", "secondaryValAxis", ...MIXED_LABEL_OPTIONS, ...MIXED_STYLE_OPTIONS, ...MIXED_BAR_OPTIONS]);
+// The options a catAxes entry may set (#594).
+const CATEGORY_AXIS_OPTION_SET = new Set<string>(CATEGORY_AXIS_OPTIONS);
 const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "showValAxisTitle",
     "valAxisDisplayUnit",
@@ -261,7 +265,7 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "valAxisTitleRotate",
     "valGridLine",
 ]);
-// Where the axes cross: drawn on a 2D category axis only.
+// Where the axes cross: drawn on 2D charts.
 const AXIS_CROSSING_OPTIONS = ["catAxisCrossesAt", "valAxisCrossesAt"] as const;
 // A date axis's time line (#580): drawn on line, column, bar, area and combo charts, not measured on radar or bar3D ones.
 const DATE_AXIS_OPTIONS = ["catAxisBaseTimeUnit", "catAxisMajorTimeUnit", "catAxisMinorTimeUnit", "catAxisMajorUnit", "catAxisMinorUnit", "catAxisMinVal", "catAxisMaxVal"] as const;
@@ -271,8 +275,8 @@ const TIME_UNITS = new Set(["days", "months", "years"]);
 // LibreOffice 26.2.6 draws its labels in catAxisLabel* (none for catAxisHidden or catAxisLabelPos none), runs them
 // counterclockwise for catAxisOrientation maxMin and numbers the value axis on the spoke a numeric catAxisCrossesAt
 // names, and draws neither a catAxisTitle nor the catGridLine (#479); the line, tick, rotation, skip and format options
-// are not measured there. bar3D and scatter or bubble charts (whose x axis is a value axis PptxGenJS writes from the
-// catAxis* options) do not place their axes elsewhere (#591).
+// are not measured there. bar3D charts do not place their axes elsewhere (#591): LibreOffice 26.2.6 draws an extra axis
+// floating inside the box.
 const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
     radar: new Set<string>([
         ...DATE_AXIS_OPTIONS,
@@ -289,8 +293,6 @@ const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType
         "catAxisMinorTickMark",
     ]),
     bar3D: new Set<string>([...AXIS_CROSSING_OPTIONS, ...DATE_AXIS_OPTIONS]),
-    scatter: new Set<string>(AXIS_CROSSING_OPTIONS),
-    bubble: new Set<string>(AXIS_CROSSING_OPTIONS),
 });
 // PptxGenJS 4.0.1 writes `<c:dTable>` on every chart type with showDataTable. LibreOffice 26.2.6 draws none on a pie,
 // doughnut or radar chart (#583); it draws a scatter or bubble chart's as one malformed row and a bar3D chart's under
@@ -492,7 +494,9 @@ function normalizeValueAxis(
             ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, PPTX_DEFAULTS.chart.automaticScale.maxIncrements)
             : scaleKind.kind === "radar"
               ? bar3DAxisScale(bar3DLow, bar3DHigh, fixedScale, scaleKind.maxIncrements)
-              : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
+              : majorUnit !== undefined
+                ? automaticAxisScale(dataRange[0], dataRange[1], fixed, true, { kind: "fixed", interval: majorUnit })
+                : automaticAxisScale(dataRange[0], dataRange[1], fixed, true);
     const minimum = fixedMinimum ?? scale.minimum;
     const maximum = fixedMaximum ?? scale.maximum;
 
@@ -589,6 +593,25 @@ function normalizeValueAxis(
 }
 
 /**
+ * A series' fill opacity, outline, line and markers from the chart's options, or a combo chart type's over them.
+ * PptxGenJS writes `<a:alpha>` only for a truthy chartColorsOpacity (in percent), so 0 is opaque;
+ * `lineSymbolLineSize` is in points, already converted by the caller.
+ */
+function normalizeSeriesStyle(options: PptxGenJS.IChartOpts, dataBorder: NormalizedChartSeriesStyle["dataBorder"], lineSymbolLineSize: number, lineSmooth: boolean): NormalizedChartSeriesStyle {
+    return {
+        colorOpacity: Math.max(0, Math.min(1, (options.chartColorsOpacity || 100) / 100)),
+        ...(dataBorder ? { dataBorder } : {}),
+        lineSmooth,
+        lineSymbol: options.lineDataSymbol ?? PPTX_DEFAULTS.chart.lineDataSymbol,
+        lineSymbolSize: checkedSize(options.lineDataSymbolSize ?? PPTX_DEFAULTS.chart.lineDataSymbolSize, "lineDataSymbolSize", PPTX_DEFAULTS.limits.chartMarkerSizePt),
+        // PptxGenJS: `<a:ln w="${lineDataSymbolLineSize}"><a:solidFill>${lineDataSymbolLineColor || seriesColor}`.
+        ...(options.lineDataSymbolLineColor ? { lineSymbolLineColor: normalizeColor(options.lineDataSymbolLineColor) } : {}),
+        lineSymbolLineSize: checkedSize(lineSymbolLineSize, "lineDataSymbolLineSize", PPTX_DEFAULTS.limits.lineWidthPt),
+        lineSize: checkedSize(options.lineSize ?? PPTX_DEFAULTS.chart.lineSizePt, "lineSize", PPTX_DEFAULTS.limits.lineWidthPt),
+    };
+}
+
+/**
  * The data labels PptxGenJS 4.0.1 writes for a chart type (a combo chart's: each of its types) from the label options,
  * as LibreOffice draws them. It writes showCatName and showPercent only on pie and doughnut points and a custom label
  * per point for showLabel on scatter, so on other charts showLabel and showPercent draw nothing, as in PowerPoint; and
@@ -674,15 +697,13 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const profile = RENDERING_TARGETS[target];
     const mixed = Array.isArray(type);
     const chartTypes = mixed ? type.map(chart => chart.type) : [type];
-    // A combo chart's line options as its line type sets them, and its bar options as its bar type does (#590).
+    // A combo chart's bar options as its bar type sets them (#590).
     const typeOptions: Record<string, unknown> = {};
     const typeOptionSetBy = new Map<string, number>();
     const unsupportedTypeOptions: string[] = [];
 
     for (const [index, chart] of (mixed ? type : []).entries()) {
-        const keys: readonly string[] = chart.type === "line" ? MIXED_LINE_OPTIONS : chart.type === "bar" ? MIXED_BAR_OPTIONS : [];
-
-        for (const key of keys) {
+        for (const key of chart.type === "bar" ? MIXED_BAR_OPTIONS : []) {
             const value: unknown = chart.options?.[key as keyof PptxGenJS.IChartOpts];
 
             if (value === undefined) {
@@ -704,8 +725,9 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: unsupportedTypeOptions });
     }
 
-    // Every key comes from MIXED_LINE_OPTIONS or MIXED_BAR_OPTIONS, read from the type's own IChartOpts.
-    const options: PptxGenJS.IChartOpts = { ...requestedOptions, ...(typeOptions as PptxGenJS.IChartOpts) };
+    // PptxGenJS 4.0.1 writes the primary category axis from `Object.assign({}, options, catAxes[0])` (#594). Every
+    // typeOptions key comes from MIXED_BAR_OPTIONS, read from the type's own IChartOpts.
+    const options: PptxGenJS.IChartOpts = { ...requestedOptions, ...requestedOptions.catAxes?.[0], ...(typeOptions as PptxGenJS.IChartOpts) };
 
     // Refuse a chart type, a combination or an option the renderers do not draw.
     if (mixed && (type.length === 0 || type.some(chart => !MIXED_CHART_TYPES.has(chart.type)))) {
@@ -723,9 +745,23 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             for (const key of Object.keys(chart.options ?? {})) {
                 const value: unknown = chart.options[key as keyof PptxGenJS.IChartOpts];
 
-                // A secondary category axis is not drawn; a false one is the default.
-                if (value !== undefined && (!SUPPORTED_MIXED_SERIES_OPTIONS.has(key) || (key === "secondaryCatAxis" && value !== false))) {
+                // A secondary category axis draws nothing on a target that leaves it out; a false one is the default.
+                if (value !== undefined && (!SUPPORTED_MIXED_SERIES_OPTIONS.has(key) || (key === "secondaryCatAxis" && value !== false && profile.drawsSecondaryCategoryAxis))) {
                     unsupported.push(`series[${index}].options.${key}`);
+                }
+
+                // A secondary category axis is written only from catAxes[1], and crosses the secondary value axis (#594).
+                if (key === "secondaryCatAxis" && value === true && (!chart.options.secondaryValAxis || (options.catAxes?.length ?? 0) < 2)) {
+                    unsupported.push(`series[${index}].options.secondaryCatAxis[needs secondaryValAxis and catAxes[1]]`);
+                }
+
+                // PptxGenJS writes a type's own dataBorder as it is, `w="${valToPts(pt)}"` in `color`, unchecked.
+                if (key === "dataBorder" && value !== undefined) {
+                    const border = chart.options.dataBorder;
+
+                    if (!border || typeof border.pt !== "number" || !(border.pt > 0) || !Number.isFinite(border.pt) || typeof border.color !== "string" || border.color === "") {
+                        unsupported.push(`series[${index}].options.dataBorder[needs a positive pt and a color]`);
+                    }
                 }
             }
         }
@@ -737,6 +773,23 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
 
     const requestedValueAxes = options.valAxes ?? [];
     const unsupportedAxisOptions: string[] = [];
+    const requestedCategoryAxes = options.catAxes ?? [];
+
+    // PptxGenJS 4.0.1 throws without as many valAxes as catAxes.
+    if (requestedCategoryAxes.length > 0 && requestedCategoryAxes.length !== requestedValueAxes.length) {
+        throw new TypeError(`catAxes must have as many entries as valAxes; got ${requestedCategoryAxes.length} and ${requestedValueAxes.length}`);
+    }
+
+    for (const [index, axis] of requestedCategoryAxes.entries()) {
+        for (const key of Object.keys(axis)) {
+            // The renderers draw no secondary category axis (LibreOffice 26.2.6 draws a catAxes[1] title above the plot),
+            // so it takes no option. catAxisCrossesAt is read from the value axes and catLabelFormatCode from the chart
+            // (its date axis and its categories' number format would part), so neither is taken from catAxes[0].
+            if (axis[key as keyof typeof axis] !== undefined && (!CATEGORY_AXIS_OPTION_SET.has(key) || index > 0 || key === "catAxisCrossesAt" || key === "catLabelFormatCode")) {
+                unsupportedAxisOptions.push(`catAxes[${index}].${key}`);
+            }
+        }
+    }
 
     for (const [index, axis] of requestedValueAxes.entries()) {
         for (const key of Object.keys(axis)) {
@@ -797,12 +850,6 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // bar3D draws its data labels without a box.
     if (type === "bar3D" && options.dataLabelBkgrdColors) {
         unsupportedAxisOptions.push("dataLabelBkgrdColors[bar3D]");
-    }
-
-    // PptxGenJS writes catAxisCrossesAt on both value axes (makeValAxis), so a secondary one crosses the categories
-    // where the primary one does: LibreOffice 26.2.6 draws both axes, overlapping, at that category.
-    if (requestedValueAxes.length > 1 && (options.catAxisCrossesAt ?? "autoZero") !== "autoZero") {
-        unsupportedAxisOptions.push("valAxes[secondary][catAxisCrossesAt]");
     }
 
     // The value-axis options a chart type does not draw, on the chart or a valAxes entry.
@@ -891,16 +938,17 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // it, a positive one in the palette's entry, #567).
     const invertedColors = options.invertedColors?.length ? options.invertedColors : undefined;
     const pointColors = (options.chartColors && options.chartColors.length > 1) || invertedColors ? palette : undefined;
-    const pointColor = (colors: readonly string[], value: number, index: number): CssColor => {
-        const source = value < 0 && invertedColors ? invertedColors : colors;
+    // A combo chart type's own invertedColors replace the chart's on its series (#594); empty: none.
+    const pointColor = (colors: readonly string[], inverted: readonly string[], value: number, index: number): CssColor => {
+        const source = value < 0 && inverted.length > 0 ? inverted : colors;
 
         return normalizeColor(source[index % source.length] ?? "");
     };
-    const withPointStyle = (item: NormalizedChartSeries, colors: readonly string[]): NormalizedChartSeries => {
+    const withPointStyle = (item: NormalizedChartSeries, colors: readonly string[], inverted: readonly string[]): NormalizedChartSeries => {
         // A bar type reads the chart's lineSize, not a line type's.
         if (item.type === "bar" && requestedOptions.lineSize !== 0) {
             // A combo chart type's own palette is not the chart's, so each point names its fill.
-            return { ...item, varyColors: true, ...(invertedColors || colors !== palette ? { pointFills: item.values.map((value, index) => pointColor(colors, value, index)) } : {}) };
+            return { ...item, varyColors: true, ...(inverted.length > 0 || colors !== palette ? { pointFills: item.values.map((value, index) => pointColor(colors, inverted, value, index)) } : {}) };
         }
 
         // shortcut: the automatic fill of the first series; a single-series bar group after other series in a combo
@@ -908,11 +956,25 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         const automaticPointFill = normalizeColor(PPTX_DEFAULTS.theme.colors.accent1);
 
         if (item.type === "bar3D" && requestedOptions.lineSize !== 0) {
-            return { ...item, automaticPointFill, pointLineColors: item.values.map((value, index) => pointColor(colors, value, index)) };
+            return { ...item, automaticPointFill, pointLineColors: item.values.map((value, index) => pointColor(colors, inverted, value, index)) };
         }
 
         return { ...item, automaticPointFill };
     };
+    // dataBorder: `<a:ln w="${pt || 0.75}">` in its color on bar, bar3D and area series, bubbles and pie slices; a line,
+    // radar or scatter series has its own line.
+    const dataBorder: NormalizedChart["dataBorder"] =
+        options.dataBorder && DATA_BORDER_TYPES.has(normalizedType)
+            ? {
+                  color: normalizeColor(options.dataBorder.color || PPTX_DEFAULTS.chart.dataBorder.color),
+                  width: checkedSize(options.dataBorder.pt || PPTX_DEFAULTS.chart.dataBorder.widthPt, "dataBorder.pt", PPTX_DEFAULTS.limits.lineWidthPt),
+              }
+            : undefined;
+    // A combo chart's lines are smoothed as its first line type says, where the target reads it so (#594).
+    const firstLineType = mixed ? type.find(chart => chart.type === "line") : undefined;
+    const lineSmooth = (profile.comboLineSmoothFromFirstLineType ? firstLineType?.options?.lineSmooth : undefined) ?? options.lineSmooth ?? PPTX_DEFAULTS.chart.lineSmooth;
+    // The chart's own style: `lineDataSymbolLineSize || 0.75` in points (addChartDefinition converts it to EMU).
+    const chartStyle = normalizeSeriesStyle(options, dataBorder, options.lineDataSymbolLineSize || PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt, lineSmooth);
     let series: NormalizedChartSeries[];
     // A combo chart series' chart type options, by series index.
     const seriesOptions: PptxGenJS.IChartOpts[] = [];
@@ -923,7 +985,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         series = normalizeSeries(normalizedType, data);
 
         if ((normalizedType === "bar" || normalizedType === "bar3D") && pointColors && series.length === 1 && series[0]) {
-            series[0] = withPointStyle(series[0], pointColors);
+            series[0] = withPointStyle(series[0], pointColors, invertedColors ?? []);
         }
     } else {
         series = [];
@@ -938,12 +1000,27 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
                 typePalette.push(...ownColors);
             }
 
-            const typePointColors = ownColors ? (ownColors.length > 1 || invertedColors ? ownColors : undefined) : pointColors;
+            const typeInverted = chart.options?.invertedColors?.length ? chart.options.invertedColors : (invertedColors ?? []);
+            const typePointColors = ownColors ? (ownColors.length > 1 || typeInverted.length > 0 ? ownColors : undefined) : chart.options?.invertedColors?.length ? palette : pointColors;
+            // The type's own fill, outline, line and marker options make its series' style (#594). PptxGenJS writes them
+            // unchecked: a lineDataSymbolLineSize as EMU (addChartDefinition converts only the chart's), and the
+            // dataBorder checked above. A target may smooth every line as the first line type says.
+            const ownStyle = MIXED_STYLE_OPTIONS.some(key => chart.options?.[key] !== undefined);
+            const typeBorder = chart.options?.dataBorder;
+            const typeLineSymbolLineSize = chart.options?.lineDataSymbolLineSize;
+            const style = ownStyle
+                ? normalizeSeriesStyle(
+                      { ...options, ...chart.options },
+                      typeBorder ? { color: normalizeColor(typeBorder.color ?? ""), width: checkedSize(typeBorder.pt, "dataBorder.pt", PPTX_DEFAULTS.limits.lineWidthPt) } : chartStyle.dataBorder,
+                      typeLineSymbolLineSize === undefined ? chartStyle.lineSymbolLineSize : typeLineSymbolLineSize / PPTX_DEFAULTS.units.emuPerPoint,
+                      profile.comboLineSmoothFromFirstLineType ? lineSmooth : (chart.options?.lineSmooth ?? options.lineSmooth ?? PPTX_DEFAULTS.chart.lineSmooth),
+                  )
+                : undefined;
 
             for (const item of normalizeSeries(chart.type as NormalizedChartType, chart.data)) {
-                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const), ...(ownColors ? { colorIndex: colorOffset + (item.colorIndex % ownColors.length) } : {}) };
+                const placed = { ...item, valueAxisIndex: chart.options?.secondaryValAxis ? (1 as const) : (0 as const), ...(ownColors ? { colorIndex: colorOffset + (item.colorIndex % ownColors.length) } : {}), ...(style ? { style } : {}) };
 
-                series.push(chart.type === "bar" && chart.data.length === 1 && typePointColors ? withPointStyle(placed, typePointColors) : placed);
+                series.push(chart.type === "bar" && chart.data.length === 1 && typePointColors ? withPointStyle(placed, typePointColors, typeInverted) : placed);
                 seriesOptions.push(chart.options ?? {});
             }
         }
@@ -1051,11 +1128,14 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const catCrossesAt: unknown = options.catAxisCrossesAt;
     let valueAxisCrossing: NormalizedChart["categoryAxis"]["valueAxisCrossing"];
 
-    if (typeof catCrossesAt === "number") {
-        if (!Number.isFinite(catCrossesAt)) {
-            throw new TypeError(`catAxisCrossesAt must be a finite category number or "autoZero"; got ${catCrossesAt}`);
-        }
+    if (typeof catCrossesAt === "number" && !Number.isFinite(catCrossesAt)) {
+        throw new TypeError(`catAxisCrossesAt must be a finite category number or "autoZero"; got ${catCrossesAt}`);
+    }
 
+    if (typeof catCrossesAt === "number" && XY_TYPES.has(normalizedType)) {
+        // A scatter or bubble chart's x axis is a value axis: the y axis crosses it at that x value (#591).
+        valueAxisCrossing = { kind: "value", value: catCrossesAt };
+    } else if (typeof catCrossesAt === "number") {
         // Before the first category is the default; past the last is after it.
         const index = Math.min(Math.max(0, Math.round(catCrossesAt) - 1), categoryCount);
 
@@ -1171,9 +1251,13 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             throw new TypeError("catAxisMinVal must not be after catAxisMaxVal on a date axis");
         }
 
-        // shortcut: a data table on a time line is not measured against LibreOffice; measure it when a deck needs one.
-        if (options.showDataTable) {
-            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[date axis]"] });
+        // A data table on a time line of a labelled slot per category, in order, names each column by its slot's date:
+        // LibreOffice 26.2.6 draws Jan-24..Apr-24 over monthly serials with `mmm-yy` (#593). shortcut: one with empty
+        // slots or a slot shared by several dates is not measured; measure it when a deck needs one.
+        const slotPerCategory = layout.labelSerials.length === serials.length && layout.labelSerials.every(serial => serial !== null) && layout.categorySlots.every((slot, index) => slot === index);
+
+        if (options.showDataTable && !slotPerCategory) {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[date axis with empty slots]"] });
         }
 
         dateSlots = {
@@ -1233,7 +1317,17 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         gridLineCap: catGridLine?.cap ?? PPTX_DEFAULTS.chart.gridLine.cap,
     };
     const primaryScale: ValueAxisScaleKind = normalizedType === "bar3D" ? { kind: "bar3D" } : normalizedType === "radar" ? { kind: "radar", maxIncrements: profile.radarMaxIncrements } : { kind: "linear" };
-    const primaryAxis = normalizeValueAxis(valueAxisOptions[0] ?? options, primaryDataRange, primaryScale, valueAxisOptions[0] ? "valAxes[0]." : "", chartTypes, normalizedType === "scatter" ? scatterGridLine : {}, profile.readsValueAxisDisplayUnits);
+    // PptxGenJS 4.0.1 writes each value axis from `Object.assign({}, options, valAxes[i])`: a valAxes entry keeps every
+    // chart-level valAxis* and valGridLine option it does not set itself (#596).
+    const primaryAxis = normalizeValueAxis(
+        valueAxisOptions[0] ? { ...options, ...valueAxisOptions[0] } : options,
+        primaryDataRange,
+        primaryScale,
+        valueAxisOptions[0] ? "valAxes[0]." : "",
+        chartTypes,
+        normalizedType === "scatter" ? scatterGridLine : {},
+        profile.readsValueAxisDisplayUnits,
+    );
     const valueAxes = [categoryAxisCrossing ? { ...primaryAxis, categoryAxisCrossing } : primaryAxis];
 
     // bar3D and radar charts have no axis band for the display unit's label (set only where the target reads units).
@@ -1344,20 +1438,13 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
                   borderWidth: tableDefaults.borderWidthPt,
               }
             : undefined;
-    // dataBorder: `<a:ln w="${pt || 0.75}">` in its color on bar, bar3D and area series, bubbles and pie slices; a line,
-    // radar or scatter series has its own line.
-    const dataBorder: NormalizedChart["dataBorder"] =
-        options.dataBorder && DATA_BORDER_TYPES.has(normalizedType)
-            ? {
-                  color: normalizeColor(options.dataBorder.color || PPTX_DEFAULTS.chart.dataBorder.color),
-                  width: checkedSize(options.dataBorder.pt || PPTX_DEFAULTS.chart.dataBorder.widthPt, "dataBorder.pt", PPTX_DEFAULTS.limits.lineWidthPt),
-              }
-            : undefined;
     // `<c:overlap val="${stacked ? 100 : barOverlapPct || 0}"/>` on a bar chart; a stack is one bar already.
     const barOverlapPercent = (normalizedType === "bar" || normalizedType === "mixed") && !stackedBars ? Math.max(-100, Math.min(100, finiteNumber(options.barOverlapPct, "barOverlapPct", 0))) : 0;
 
+    // Both targets take LibreOffice's measurements here (#595, #596, #591): PowerPoint cannot open PptxGenJS 4.0.1's XML
+    // for a secondary value axis without a secondary category axis (dangling crossAx), so there is no PowerPoint reference.
     if (secondaryDataRange) {
-        valueAxes.push(normalizeValueAxis(valueAxisOptions[1], secondaryDataRange, { kind: "linear" }, "valAxes[1].", chartTypes, {}, profile.readsValueAxisDisplayUnits));
+        valueAxes.push(normalizeValueAxis({ ...options, ...valueAxisOptions[1] }, secondaryDataRange, { kind: "linear" }, "valAxes[1].", chartTypes, {}, profile.readsValueAxisDisplayUnits));
     }
 
     // PptxGenJS 4.0.1: a fill without a color writes <a:noFill/>; a border defaults a missing or zero pt and a missing
@@ -1396,7 +1483,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         type: normalizedType,
         series,
         colors: [...palette, ...typePalette].map(color => normalizeColor(color)),
-        colorOpacity: Math.max(0, Math.min(1, (options.chartColorsOpacity ?? 100) / 100)),
+        colorOpacity: chartStyle.colorOpacity,
         // Text options.
         showLegend: options.showLegend ?? PPTX_DEFAULTS.chart.showLegend,
         legendPosition: options.legendPos ?? PPTX_DEFAULTS.chart.legendPosition,
@@ -1436,13 +1523,12 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         doughnutHoleSize: Math.max(0, Math.min(90, options.holeSize ?? PPTX_DEFAULTS.chart.doughnutHoleSizePct)),
         firstSliceAngle: (((options.firstSliceAng ?? PPTX_DEFAULTS.chart.firstSliceAngle) % 360) + 360) % 360,
         radarStyle: options.radarStyle ?? PPTX_DEFAULTS.chart.radarStyle,
-        lineSmooth: options.lineSmooth ?? PPTX_DEFAULTS.chart.lineSmooth,
-        lineSymbol: options.lineDataSymbol ?? PPTX_DEFAULTS.chart.lineDataSymbol,
-        lineSymbolSize: checkedSize(options.lineDataSymbolSize ?? PPTX_DEFAULTS.chart.lineDataSymbolSize, "lineDataSymbolSize", PPTX_DEFAULTS.limits.chartMarkerSizePt),
-        // PptxGenJS: `<a:ln w="${lineDataSymbolLineSize || 0.75}"><a:solidFill>${lineDataSymbolLineColor || seriesColor}`.
-        ...(options.lineDataSymbolLineColor ? { lineSymbolLineColor: normalizeColor(options.lineDataSymbolLineColor) } : {}),
-        lineSymbolLineSize: checkedSize(options.lineDataSymbolLineSize || PPTX_DEFAULTS.chart.lineDataSymbolLineSizePt, "lineDataSymbolLineSize", PPTX_DEFAULTS.limits.lineWidthPt),
-        lineSize: checkedSize(options.lineSize ?? PPTX_DEFAULTS.chart.lineSizePt, "lineSize", PPTX_DEFAULTS.limits.lineWidthPt),
+        lineSmooth: chartStyle.lineSmooth,
+        lineSymbol: chartStyle.lineSymbol,
+        lineSymbolSize: chartStyle.lineSymbolSize,
+        ...(chartStyle.lineSymbolLineColor ? { lineSymbolLineColor: chartStyle.lineSymbolLineColor } : {}),
+        lineSymbolLineSize: chartStyle.lineSymbolLineSize,
+        lineSize: chartStyle.lineSize,
         dataLabels,
         plotArea,
         ...(plotLayout ? { plotLayout } : {}),

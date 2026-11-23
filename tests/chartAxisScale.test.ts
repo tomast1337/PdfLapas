@@ -34,10 +34,10 @@ describe("automatic axis scale", () => {
 
     test("takes no more steps than maxIncrements, the room the drawn axis leaves its labels (#585)", () => {
         // 3, -2, 4, 7: PowerPoint's 11 steps draw -3..8 by 1, LibreOffice's 10 -4..8 by 2, a short axis -5..10 by 5.
-        expect(automaticAxisScale(-2, 7, { kind: "none" }, true, 11)).toEqual({ minimum: -3, maximum: 8, interval: 1 });
+        expect(automaticAxisScale(-2, 7, { kind: "none" }, true, { kind: "automatic", maxIncrements: 11 })).toEqual({ minimum: -3, maximum: 8, interval: 1 });
         expect(automaticAxisScale(-2, 7, { kind: "none" }, true)).toEqual({ minimum: -4, maximum: 8, interval: 2 });
-        expect(automaticAxisScale(-2, 7, { kind: "none" }, true, 4)).toEqual({ minimum: -5, maximum: 10, interval: 5 });
-        expect(automaticAxisScale(3, 7, { kind: "none" }, true, 2)).toEqual({ minimum: 0, maximum: 10, interval: 5 });
+        expect(automaticAxisScale(-2, 7, { kind: "none" }, true, { kind: "automatic", maxIncrements: 4 })).toEqual({ minimum: -5, maximum: 10, interval: 5 });
+        expect(automaticAxisScale(3, 7, { kind: "none" }, true, { kind: "automatic", maxIncrements: 2 })).toEqual({ minimum: 0, maximum: 10, interval: 5 });
     });
 
     test("matches LibreOffice 26.2's bar, line and area value axes, which reach to 0 (#547)", () => {

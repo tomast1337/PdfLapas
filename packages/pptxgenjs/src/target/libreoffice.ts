@@ -266,6 +266,12 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // Its PDF export of column and line charts with `showDataTable` and `dataTableFormatCode` "0.00" or "$#,##0.0" prints
     // the table's values as in the data labels' format, 10 and 12, not 10.00 or $12.0 (#583).
     readsDataTableFormatCode: false,
+    // Its PDF export of combo charts with a bar type and two line types (#594): `lineSmooth` on the first line type
+    // smooths both lines, on the second one neither.
+    comboLineSmoothFromFirstLineType: true,
+    // Its PDF export of a bar and line combo whose line type has `secondaryCatAxis`, with `catAxes: [{}, {}]`, draws the
+    // one category axis at the bottom and the secondary value axis on the right, nothing more (#594).
+    drawsSecondaryCategoryAxis: false,
     // Its PDF export of column charts with `valAxisDisplayUnit: "thousands"` and `valAxisDisplayUnitLabel` (values
     // 3000 to 7000) and `"hundreds"` (300 to 700) numbers the axes 0..8000 and 0..800, with no unit name (#566).
     readsValueAxisDisplayUnits: false,

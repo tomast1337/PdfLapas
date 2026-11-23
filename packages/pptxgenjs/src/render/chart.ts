@@ -648,7 +648,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
         const maxIncrements = Math.max(2, Math.min(room.maxIncrements, Math.floor(valueAxisLength / (room.perStep * Math.max(1, labelSize)) + room.rounding)));
         const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
-        const scale = automaticAxisScale(automatic.low, automatic.high, fixed, true, maxIncrements);
+        const scale = automaticAxisScale(automatic.low, automatic.high, fixed, true, { kind: "automatic", maxIncrements });
 
         scaledValueAxes.push({ ...axis, minimum: automatic.fixedMinimum ? axis.minimum : scale.minimum, maximum: automatic.fixedMaximum ? axis.maximum : scale.maximum, majorUnit: scale.interval });
     }
@@ -1126,7 +1126,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // catAxisMinVal, catAxisMaxVal and catAxisMajorUnit fix the x axis's bounds and step, the rest automatic.
         const fixedX = categoryAxisModel.xScale;
         const xFixed: FixedAxisBound = fixedX?.minimum !== undefined ? { kind: "minimum", value: fixedX.minimum } : fixedX?.maximum !== undefined ? { kind: "maximum", value: fixedX.maximum } : { kind: "none" };
-        const automaticX = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), xFixed, false) : undefined;
+        // A fixed catAxisMajorUnit is the step the automatic bounds round out to, as on a value axis (#595).
+        const xStep = fixedX?.majorUnit !== undefined ? { kind: "fixed" as const, interval: fixedX.majorUnit } : undefined;
+        const automaticX = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), xFixed, false, xStep) : undefined;
         const xMinimum = fixedX?.minimum ?? automaticX?.minimum;
         const xMaximum = fixedX?.maximum ?? automaticX?.maximum;
         const xScale =
@@ -1134,6 +1136,65 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 ? { minimum: xMinimum, maximum: xMaximum, interval: fixedX?.majorUnit ?? (fixedX?.minimum !== undefined && fixedX.maximum !== undefined ? automaticAxisInterval(xMinimum, xMaximum) : (automaticX?.interval ?? 1)) }
                 : undefined;
         const scatter: Record<string, unknown>[] = [];
+        // Where each axis crosses the other (catAxisCrossesAt on the x axis, valAxisCrossesAt on the y axis, #591): at an
+        // end, or a value inside, the zero of a hidden copy of the crossed axis shifted by it (ECharts puts an axis line
+        // on another axis's zero only), as on a category chart. LibreOffice 26.2.6 and PowerPoint draw the y axis at x 3
+        // and the x axis at y 20 for catAxisCrossesAt 3 and valAxisCrossesAt 20. shortcut: PowerPoint draws a bubble
+        // chart's y axis at x 1.5 for catAxisCrossesAt 2, PdfLapas at 2 as LibreOffice; find its rule when a deck needs it. shortcut: the labels stay at the plot's edge, where
+        // LibreOffice draws them beside the moved line (#584).
+        const yAxisModel = scaledValueAxes[0];
+        const yAxisCrossing = categoryAxisModel.valueAxisCrossing;
+        const xAxisCrossing = yAxisModel?.categoryAxisCrossing;
+        const hiddenXAxes: Record<string, unknown>[] = [];
+        const hiddenYAxes: Record<string, unknown>[] = [];
+        // The y axis: at the x axis's high end, or on a hidden x axis's zero.
+        let yAxisPlacement: { kind: "default" } | { kind: "high" } | { kind: "on-zero" } = { kind: "default" };
+        // The x axis: at the y axis's low or high end, or on a hidden y axis's zero.
+        let xAxisPlacement: { kind: "default" } | { kind: "low" } | { kind: "high" } | { kind: "on-zero" } = { kind: "default" };
+
+        if (yAxisCrossing?.kind === "max" || (yAxisCrossing?.kind === "value" && xScale && yAxisCrossing.value >= xScale.maximum)) {
+            yAxisPlacement = { kind: "high" };
+        } else if (yAxisCrossing?.kind === "value" && xScale && yAxisCrossing.value > xScale.minimum) {
+            hiddenXAxes.push({ type: "value", show: false, min: xScale.minimum - yAxisCrossing.value, max: xScale.maximum - yAxisCrossing.value, inverse: categoryAxisModel.reversed === true, splitLine: { show: false } });
+            yAxisPlacement = { kind: "on-zero" };
+        }
+
+        if (yAxisModel && xAxisCrossing !== undefined) {
+            const low = yAxisModel.minimum;
+            const high = yAxisModel.maximum;
+            const crossValue = xAxisCrossing.kind === "min" ? low : xAxisCrossing.kind === "max" ? high : Math.min(Math.max(xAxisCrossing.value, low), high);
+
+            if (crossValue >= high) {
+                xAxisPlacement = { kind: "high" };
+            } else if (crossValue <= low) {
+                xAxisPlacement = { kind: "low" };
+            } else {
+                hiddenYAxes.push({ type: "value", show: false, min: low - crossValue, max: high - crossValue, inverse: yAxisModel.reversed === true, splitLine: { show: false } });
+                xAxisPlacement = { kind: "on-zero" };
+            }
+        }
+
+        const xAxis = {
+            type: "value",
+            ...axisStyle,
+            ...categoryAxisText,
+            ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
+            // catAxisOrientation maxMin runs x right to left; a bubble chart's catAxisLabelPos high puts the x labels at
+            // the top (shortcut: ECharts moves the axis line and ticks there too, LibreOffice keeps them at the bottom).
+            inverse: categoryAxisModel.reversed === true,
+            ...(chart.type === "bubble" && categoryAxisModel.labelPosition === "high" ? { position: "top" } : {}),
+            ...(xAxisPlacement.kind === "high" ? { position: yAxisModel?.reversed ? "bottom" : "top" } : {}),
+            ...(xAxisPlacement.kind === "default" ? {} : { axisLine: { ...axisStyle.axisLine, onZero: xAxisPlacement.kind === "on-zero", ...(xAxisPlacement.kind === "on-zero" ? { onZeroAxisIndex: 1 } : {}) } }),
+            splitLine: gridLineOption(categoryAxisModel),
+        };
+        const firstYAxis = yAxisModel ? valueAxisOption(yAxisModel, 0, yAxisModel.minimum, yAxisModel.maximum, { kind: "default" }) : undefined;
+        const yAxis = firstYAxis
+            ? {
+                  ...firstYAxis,
+                  ...(yAxisPlacement.kind === "high" ? { position: categoryAxisModel.reversed ? ("left" as const) : ("right" as const) } : {}),
+                  ...(yAxisPlacement.kind === "on-zero" ? { axisLine: { ...firstYAxis.axisLine, onZero: true, onZeroAxisIndex: 1 } } : {}),
+              }
+            : { type: "value", ...axisStyle, splitLine: { show: false } };
 
         for (const [seriesIndex, series] of ySeries.entries()) {
             // Each point's label: a scatter point's own label, or its series name and y value (a bubble's size where the
@@ -1178,18 +1239,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(graphics.length ? { graphic: graphics } : {}),
             grid,
             // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine.
-            xAxis: {
-                type: "value",
-                ...axisStyle,
-                ...categoryAxisText,
-                ...(xScale ? { min: xScale.minimum, max: xScale.maximum, interval: xScale.interval } : {}),
-                // catAxisOrientation maxMin runs x right to left; a bubble chart's catAxisLabelPos high puts the x labels at
-                // the top (shortcut: ECharts moves the axis line and ticks there too, LibreOffice keeps them at the bottom).
-                inverse: categoryAxisModel.reversed === true,
-                ...(chart.type === "bubble" && categoryAxisModel.labelPosition === "high" ? { position: "top" } : {}),
-                splitLine: gridLineOption(categoryAxisModel),
-            },
-            yAxis: scaledValueAxes[0] ? valueAxisOption(scaledValueAxes[0], 0, scaledValueAxes[0].minimum, scaledValueAxes[0].maximum, { kind: "default" }) : { type: "value", ...axisStyle, splitLine: { show: false } },
+            // A hidden axis to cross on is the second of its direction.
+            xAxis: hiddenXAxes.length > 0 ? [xAxis, ...hiddenXAxes] : xAxis,
+            yAxis: hiddenYAxes.length > 0 ? [yAxis, ...hiddenYAxes] : yAxis,
             series: scatter,
         };
     } else {
@@ -1296,8 +1348,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(crossing !== undefined && !stackedBars ? { startValue: crossValue } : {}),
         };
         // A secondary axis takes the side the primary one leaves: LibreOffice 26.2.6 draws a maxMin category axis's
-        // primary value axis on the right and the secondary one on the left (#582).
-        const secondaryValueAxes = valueAtEnd && !horizontal ? valueAxes.slice(1).map(axis => ({ ...axis, position: "left" as const })) : valueAxes.slice(1);
+        // primary value axis on the right and the secondary one on the left (#582). PptxGenJS writes catAxisCrossesAt on
+        // both value axes, and LibreOffice draws both lines at that category (#591).
+        const secondaryValueAxes =
+            valueCrossing?.kind === "category"
+                ? valueAxes.slice(1).map(axis => ({ ...axis, axisLine: { ...axis.axisLine, onZero: true, onZeroAxisIndex: categoryAxes.length - 1 } }))
+                : valueAtEnd && !horizontal
+                  ? valueAxes.slice(1).map(axis => ({ ...axis, position: "left" as const }))
+                  : valueAxes.slice(1);
         const valueAxisList: Record<string, unknown>[] = [primaryValueAxis, ...secondaryValueAxes];
 
         if (shifted) {
@@ -1317,10 +1375,15 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const visibleSeries = stackedBars ? 1 : Math.max(1, barCount);
         const overlap = chart.barOverlapPercent ?? 0;
         const barWidth = `${100 / (visibleSeries - ((visibleSeries - 1) * overlap) / 100 + chart.barGapWidthPercent / 100)}%`;
-        const border = chart.dataBorder ? { borderColor: chart.dataBorder.color, borderWidth: pointsToPixels(chart.dataBorder.width) } : {};
         const cartesian: Record<string, unknown>[] = [];
 
         for (const series of chart.series) {
+            // A combo chart type's own fill, outline, line and markers, else the chart's (#594).
+            const style = series.style ?? chart;
+            const border = style.dataBorder ? { borderColor: style.dataBorder.color, borderWidth: pointsToPixels(style.dataBorder.width) } : {};
+            const seriesSymbolPixels = pointsToPixels(style.lineSymbolSize);
+            const seriesSymbolSize = style.lineSymbol === "dash" ? [seriesSymbolPixels, seriesSymbolPixels * DASH_SYMBOL_HEIGHT_RATIO] : seriesSymbolPixels;
+            const seriesSymbolBorder = { borderWidth: pointsToPixels(style.lineSymbolLineSize), ...(style.lineSymbolLineColor ? { borderColor: style.lineSymbolLineColor } : {}) };
             const seriesType = series.type === "bar" ? "bar" : "line";
             const lineLike = series.type === "line" || series.type === "area";
             const color = chart.colors[series.colorIndex % chart.colors.length];
@@ -1405,19 +1468,19 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 barWidth: seriesType === "bar" ? barWidth : undefined,
                 barGap: seriesType === "bar" ? `${-overlap}%` : undefined,
                 // PptxGenJS writes <c:smooth> on line series only, so an area is never smoothed.
-                smooth: series.type === "line" ? chart.lineSmooth : undefined,
+                smooth: series.type === "line" ? style.lineSmooth : undefined,
                 // PptxGenJS writes no <c:marker> on an area series, and Office draws none; ECharts draws a point's label on
                 // its symbol, so a labelled series without markers keeps an invisible one.
-                ...(lineLike && label && (series.type === "area" || lineSymbol(chart.lineSymbol) === "none")
+                ...(lineLike && label && (series.type === "area" || lineSymbol(style.lineSymbol) === "none")
                     ? { symbol: "circle", symbolSize: 0 }
-                    : { symbol: series.type === "line" ? lineSymbol(chart.lineSymbol) : series.type === "area" ? "none" : undefined, symbolSize: series.type === "line" ? symbolSize : undefined }),
+                    : { symbol: series.type === "line" ? lineSymbol(style.lineSymbol) : series.type === "area" ? "none" : undefined, symbolSize: series.type === "line" ? seriesSymbolSize : undefined }),
                 // PptxGenJS writes an area series' <c:spPr> as its chartColors fill at chartColorsOpacity and no <a:ln>
                 // (lineSize is only for line and radar series), so LibreOffice fills it opaque by default with no edge;
                 // dataBorder gives it one.
                 lineStyle:
-                    series.type === "line" ? { width: pointsToPixels(chart.lineSize), color } : series.type === "area" ? (chart.dataBorder ? { width: pointsToPixels(chart.dataBorder.width), color: chart.dataBorder.color } : { width: 0 }) : undefined,
-                areaStyle: series.type === "area" ? { color, opacity: chart.colorOpacity, ...(crossing !== undefined ? { origin: crossValue } : {}) } : undefined,
-                itemStyle: { opacity: chart.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...symbolBorder } : series.type === "bar" ? border : {}) },
+                    series.type === "line" ? { width: pointsToPixels(style.lineSize), color } : series.type === "area" ? (style.dataBorder ? { width: pointsToPixels(style.dataBorder.width), color: style.dataBorder.color } : { width: 0 }) : undefined,
+                areaStyle: series.type === "area" ? { color, opacity: style.colorOpacity, ...(crossing !== undefined ? { origin: crossValue } : {}) } : undefined,
+                itemStyle: { opacity: style.colorOpacity, color, ...(series.type === "line" ? { borderColor: color, ...seriesSymbolBorder } : series.type === "bar" ? border : {}) },
                 yAxisIndex: series.valueAxisIndex,
                 // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
                 // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.

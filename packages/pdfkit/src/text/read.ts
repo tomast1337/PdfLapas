@@ -12,15 +12,19 @@ import type { FaceRequest } from "#src/fonts";
 export type DecorationPiece =
     | { readonly kind: "line"; readonly top: number; readonly height: number; readonly dashes: readonly number[] }
     | { readonly kind: "wave"; readonly centre: number; readonly amplitude: number; readonly half: number; readonly stroke: number }
-    | { readonly kind: "zigzag"; readonly top: number; readonly height: number; readonly line: number };
+    /** `line` px tall, or `line` thicknesses when `lineInBand`. */
+    | { readonly kind: "zigzag"; readonly top: number; readonly height: number; readonly line: number; readonly lineInBand: boolean };
 
 export type Decoration = {
     readonly color: Color;
     readonly pieces: readonly DecorationPiece[];
     /** The band the HTML states, in em: its top `top` below the baseline, `thickness` tall. Without it, the face's (draw.ts). */
     readonly band?: { readonly top: number; readonly thickness: number };
-    /** `data-underline-line-band`: the underline takes its line's averaged band. */
-    readonly lineBand?: boolean;
+    /**
+     * `data-underline-line-band`: the underline takes its line's averaged band, and continues the one before it on its
+     * line when both have one `look` (their `data-underline` and colour as written).
+     */
+    readonly lineBand?: { readonly look: string };
 };
 
 export type Run = {
@@ -221,12 +225,13 @@ function readPieces(value: string): { kind: "pieces"; pieces: DecorationPiece[] 
             return { kind: "invalid", reason: `'${written}' is not line(...), wave(...) or zigzag(...)` };
         }
 
-        // The arguments as numbers; the last of a wave or zigzag is a px length.
+        // The arguments as numbers; the last of a wave is a px length, of a zigzag a px length or a plain number.
         const words = list.trim().split(/\s+/);
         const numbers: number[] = [];
+        const lineInBand = kind === "zigzag" && !PX_ARGUMENT.test(words.at(-1) ?? "");
 
         for (const [index, word] of words.entries()) {
-            const pxLength = kind !== "line" && index === words.length - 1;
+            const pxLength = kind !== "line" && !lineInBand && index === words.length - 1;
             const digits = pxLength ? PX_ARGUMENT.exec(word)?.[1] : word;
             const number = digits === undefined || digits === "" ? Number.NaN : Number(digits);
 
@@ -255,10 +260,10 @@ function readPieces(value: string): { kind: "pieces"; pieces: DecorationPiece[] 
             pieces.push({ kind: "wave", centre: first, amplitude: second, half: third, stroke: fourth });
         } else {
             if (numbers.length !== 3 || second < MIN_DECORATION_LENGTH || third < MIN_DECORATION_LENGTH) {
-                return { kind: "invalid", reason: `'${written}' is not zigzag(<top> <height> <w>px) with a height and width of at least ${MIN_DECORATION_LENGTH}` };
+                return { kind: "invalid", reason: `'${written}' is not zigzag(<top> <height> <w>px|<w>) with a height and width of at least ${MIN_DECORATION_LENGTH}` };
             }
 
-            pieces.push({ kind: "zigzag", top: first, height: second, line: third });
+            pieces.push({ kind: "zigzag", top: first, height: second, line: third, lineInBand });
         }
     }
 
@@ -492,7 +497,7 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
                 color: decorationColor,
                 pieces: decorationPieces(child, "data-underline", report),
                 ...(band ? { band } : {}),
-                ...(hasAttribute(child, "data-underline-line-band") ? { lineBand: true } : {}),
+                ...(hasAttribute(child, "data-underline-line-band") ? { lineBand: { look: `${attribute(child, "data-underline", "")}|${decorationColor.rgb.join(",")},${decorationColor.alpha}` } } : {}),
             };
             const strike: Decoration = { color: runColor, pieces: decorationPieces(child, "data-strike", report), ...(strikeBand ? { band: strikeBand } : {}) };
             const decorations: Pick<Run, "underline" | "strike"> = {

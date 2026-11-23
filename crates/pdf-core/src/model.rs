@@ -457,8 +457,15 @@ pub(crate) enum DecorationPiece {
     Line { top: f32, height: f32, dashes: Vec<f32> },
     /// Cubic half-waves `half` long, `amplitude` off the line at `centre`, the first up, stroked `stroke` px wide.
     Wave { centre: f32, amplitude: f32, half: f32, stroke: f32 },
-    /// A zigzag of 45-degree slopes filling `height` from `top`, its line `line` px tall.
-    Zigzag { top: f32, height: f32, line: f32 },
+    /// A zigzag of 45-degree slopes filling `height` from `top`, its line `line` tall.
+    Zigzag { top: f32, height: f32, line: ZigzagLine },
+}
+
+/// A zigzag's line height: in px, or in thicknesses of the band it is drawn around (`zigzag(<top> <height> <w>)`).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum ZigzagLine {
+    Px(f32),
+    Thicknesses(f32),
 }
 
 /// A band in em of the run's font size: its top `offset` above the baseline (below when negative), `size` tall.

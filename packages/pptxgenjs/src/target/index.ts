@@ -8,11 +8,8 @@ export { POWERPOINT_FACES, type PowerPointFace, type PowerPointFaceRole } from "
 export const UNDERLINE_TYPES = Object.freeze(["sng", "dbl", "heavy", "dotted", "dottedHeavy", "dash", "dashHeavy", "dashLong", "dashLongHeavy", "dotDash", "dotDashHeavy", "dotDotDash", "dotDotDashHeavy", "wavy", "wavyHeavy", "wavyDbl", "words"] as const);
 export type UnderlineType = (typeof UNDERLINE_TYPES)[number];
 
-/**
- * An underline type's shape: its pieces around the band. `zigzagLine`: each zigzag's line is `inBand` of the run's own
- * band thickness T tall, T taken as `fallbackBandEm` of the font size where the run's face is not known.
- */
-export type UnderlineShape = { readonly pieces: readonly NormalizedDecorationPiece[]; readonly zigzagLine?: { readonly inBand: number; readonly fallbackBandEm: number } };
+/** An underline type's shape: its pieces around the band. */
+export type UnderlineShape = { readonly pieces: readonly NormalizedDecorationPiece[] };
 
 /**
  * Where a target draws underlines and strikes, and their shapes around the band (docs/HTML_PROFILE.md). `bands`

@@ -83,7 +83,7 @@ const decorationShape = z.strictObject({
                     .optional(),
             }),
             z.strictObject({ kind: z.literal("wave"), centre: finite, amplitude: finite, halfPeriod: z.number().positive(), stroke: z.number().positive() }),
-            z.strictObject({ kind: z.literal("zigzag"), top: finite, height: z.number().positive(), thickness: z.number().positive() }),
+            z.strictObject({ kind: z.literal("zigzag"), top: finite, height: z.number().positive(), thickness: z.number().positive(), thicknessUnit: z.literal("band").optional() }),
         ]),
     ),
 });

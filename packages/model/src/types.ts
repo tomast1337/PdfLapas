@@ -117,8 +117,12 @@ export type NormalizedDecorationPiece =
      * first control point on its start and its second at its middle, `amplitude` off the line, the first toward the baseline.
      */
     | { kind: "wave"; centre: number; amplitude: number; halfPeriod: number; stroke: number }
-    /** A zigzag of 45-degree slopes filling the band from `top`, `height` tall, its line `thickness` px tall. */
-    | { kind: "zigzag"; top: number; height: number; thickness: number };
+    /**
+     * A zigzag of 45-degree slopes filling the band from `top`, `height` tall, its line `thickness` px tall, or with
+     * `thicknessUnit` "band" `thickness` thicknesses T of the band it is drawn around (a line's shared band where the
+     * run takes it).
+     */
+    | { kind: "zigzag"; top: number; height: number; thickness: number; thicknessUnit?: "band" };
 
 /** An underline or strike: its pieces around a band. */
 export type NormalizedDecorationShape = {

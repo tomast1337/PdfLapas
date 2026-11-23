@@ -17,7 +17,7 @@ use crate::color::{Rgba, fill_of, unit};
 use crate::effect::Effect;
 use crate::effect::EffectSource;
 use crate::link::page_quad;
-use crate::model::{DecorationPiece, DecorationShape, TextBox, TextDirection, VerticalAlign};
+use crate::model::{DecorationPiece, DecorationShape, TextBox, TextDirection, VerticalAlign, ZigzagLine};
 use crate::path::{rect_path, stroke_width, to_path};
 use crate::text::layout::{BoxLayout, Brush, BulletMarker, RunPaint, RunRef, TextStroke};
 use crate::text::outline::glyph_outlines;
@@ -120,6 +120,40 @@ fn join_segment(out: &mut Vec<Segment>, segment: Segment) {
     }
 }
 
+/// Joins each `data-underline-line-band` underline segment of a line to the one before it when both have one shape and
+/// one colour, sit on one baseline and touch, so a dash pattern or zigzag runs on across runs, as PowerPoint draws
+/// them (a dash underline on a 24pt then a 12pt run of a synthetic deck is one dash pattern of their shared band;
+/// a colour change starts a new one). Run after `line_band`, which weighs each run by its own segment.
+pub(crate) fn join_line_band(segments: &mut Vec<Segment>, paints: &[RunPaint]) {
+    let key = |segment: &Segment| {
+        let paint = paints.get(segment.paint).filter(|p| !segment.strike && p.decoration.underline_line_band)?;
+        let shape = paint.decoration.underline.as_ref()?;
+        Some((&shape.pieces, paint.decoration.underline_color.unwrap_or(paint.color)))
+    };
+    let mut kept = 0;
+    for index in 0..segments.len() {
+        let Some(&segment) = segments.get(index) else { break };
+        let previous = segments.get_mut(..kept).and_then(|done| done.iter_mut().rev().find(|s| !s.strike));
+        match previous {
+            Some(last)
+                if key(&segment).is_some()
+                    && key(last) == key(&segment)
+                    && (last.baseline - segment.baseline).abs() < SEGMENT_JOIN_PX
+                    && (segment.start - last.end).abs() < SEGMENT_JOIN_PX =>
+            {
+                last.end = segment.end;
+            }
+            _ => {
+                if let Some(slot) = segments.get_mut(kept) {
+                    *slot = segment;
+                }
+                kept += 1;
+            }
+        }
+    }
+    segments.truncate(kept);
+}
+
 /// The band of a line's `data-underline-line-band` underlines: their own bands averaged by their segments' widths (a
 /// 12pt then a 24pt Arial run on the PowerPoint target: 1.44pt thick, its top 2.06pt below the baseline, where 12pt
 /// alone is 0.84/1.27 and 24pt alone 1.80/2.42, measured against its PDF export of a synthetic deck). None when the
@@ -171,7 +205,13 @@ fn piece_path(piece: &DecorationPiece, start: f32, end: f32, top: f32, t: f32) -
             half,
             stroke,
         } => (wave(start, end, top + centre * t, amplitude * t, half * t), Some(*stroke)),
-        DecorationPiece::Zigzag { top: at, height, line } => (zigzag(start, top + at * t, end - start, height * t, *line), None),
+        DecorationPiece::Zigzag { top: at, height, line } => {
+            let line = match *line {
+                ZigzagLine::Px(px) => px,
+                ZigzagLine::Thicknesses(n) => n * t,
+            };
+            (zigzag(start, top + at * t, end - start, height * t, line), None)
+        }
     }
 }
 
@@ -349,6 +389,7 @@ impl Renderer {
             // parley splits the run.
             line_segments(&line, paints, (ox, oy), &mut segments);
             let band = line_band(&segments, paints);
+            join_line_band(&mut segments, paints);
             for segment in &segments {
                 self.draw_decoration(surface, paints, segment, band);
             }
@@ -517,6 +558,8 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Decoration, Synthesis};
+    use kurbo::Shape;
 
     #[test]
     fn obliques_lean_right_above_the_baseline_and_keep_it_in_place() {
@@ -605,7 +648,7 @@ mod tests {
         let zigzag = DecorationPiece::Zigzag {
             top: -0.5,
             height: 2.0,
-            line: 0.25,
+            line: ZigzagLine::Px(0.25),
         };
         let [(x0, y0, x1, y1)] = filled(&zigzag)[..] else { panic!("one zigzag") };
         // From half a thickness above the band, 2 thicknesses tall; whole half-waves, so it may run past the text.
@@ -637,5 +680,82 @@ mod tests {
             spans,
             [(0, false, 0.0, 20.0), (0, true, 0.0, 10.0), (0, false, 25.0, 30.0), (1, false, 30.0, 40.0)]
         );
+    }
+
+    #[test]
+    fn line_band_underlines_of_one_shape_and_colour_run_on_across_runs() {
+        let dashed = DecorationShape {
+            band: None,
+            pieces: vec![DecorationPiece::Line {
+                top: 0.0,
+                height: 1.0,
+                dashes: vec![3.0, 2.0],
+            }],
+        };
+        let paint = |color: Rgba, shape: &DecorationShape, line_band: bool| RunPaint {
+            color,
+            highlight: None,
+            outline: None,
+            decoration: Decoration {
+                underline: Some(shape.clone()),
+                underline_line_band: line_band,
+                ..Decoration::default()
+            },
+            baseline_offset: 0.0,
+            synthesis: Synthesis::default(),
+            link: None,
+            glow: None,
+        };
+        let black = Rgba(0, 0, 0, 1.0);
+        // 0 and 1 alike, 2 another colour, 3 like 2 but solid, 4 like 3 without the line band.
+        let paints = [
+            paint(black, &dashed, true),
+            paint(black, &dashed, true),
+            paint(Rgba(192, 0, 0, 1.0), &dashed, true),
+            paint(Rgba(192, 0, 0, 1.0), &DecorationShape::solid(), true),
+            paint(Rgba(192, 0, 0, 1.0), &DecorationShape::solid(), false),
+            paint(Rgba(192, 0, 0, 1.0), &DecorationShape::solid(), false),
+        ];
+        let segment = |paint: usize, strike: bool, start: f32, end: f32| Segment {
+            paint,
+            strike,
+            start,
+            end,
+            baseline: 0.0,
+            face: Band { offset: 0.0, size: 1.0 },
+            font_size: 10.0,
+        };
+        let mut segments = vec![
+            segment(0, false, 0.0, 10.0),
+            segment(0, true, 0.0, 10.0),
+            segment(1, false, 10.0, 30.0),
+            segment(2, false, 30.0, 40.0),
+            segment(3, false, 40.0, 50.0),
+            segment(4, false, 50.0, 60.0),
+            segment(5, false, 60.0, 70.0),
+        ];
+        join_line_band(&mut segments, &paints);
+        let spans: Vec<_> = segments.iter().map(|s| (s.paint, s.strike, s.start, s.end)).collect();
+        assert_eq!(
+            spans,
+            [
+                (0, false, 0.0, 30.0),
+                (0, true, 0.0, 10.0),
+                (2, false, 30.0, 40.0),
+                (3, false, 40.0, 50.0),
+                (4, false, 50.0, 60.0),
+                (5, false, 60.0, 70.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_zigzag_line_in_thicknesses_scales_with_its_band() {
+        let zigzag = |line: ZigzagLine| {
+            piece_path(&DecorationPiece::Zigzag { top: 0.0, height: 2.0, line }, 0.0, 10.0, 0.0, 2.0)
+                .0
+                .bounding_box()
+        };
+        assert_eq!(zigzag(ZigzagLine::Thicknesses(0.5)), zigzag(ZigzagLine::Px(1.0)));
     }
 }

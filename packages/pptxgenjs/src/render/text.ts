@@ -23,7 +23,7 @@ function piecesAttribute(pieces: readonly NormalizedDecorationPiece[]): string {
         } else if (piece.kind === "wave") {
             written.push(`wave(${decimal(piece.centre)} ${decimal(piece.amplitude)} ${decimal(piece.halfPeriod)} ${decimal(piece.stroke)}px)`);
         } else {
-            written.push(`zigzag(${decimal(piece.top)} ${decimal(piece.height)} ${decimal(piece.thickness)}px)`);
+            written.push(`zigzag(${decimal(piece.top)} ${decimal(piece.height)} ${decimal(piece.thickness)}${piece.thicknessUnit === "band" ? "" : "px"})`);
         }
     }
 

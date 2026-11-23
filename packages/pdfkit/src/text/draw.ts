@@ -80,6 +80,8 @@ function metrics(face: Face, size: number) {
 
 /** The thinnest decoration band, px, as pdf-core draws it. */
 const MIN_THICKNESS = 0.5;
+/** Widest gap, px, between two underline stretches of a line that one continues (pdf-core's SEGMENT_JOIN_PX). */
+const JOIN_PX = 1e-3;
 
 /** A decoration's band in px at `size`: the HTML's em band, else the face's (`fallback`). */
 function decorationBand(decoration: Decoration, fallback: Band, size: number): Band {
@@ -162,13 +164,14 @@ function decorate(paint: Paint, decoration: Decoration, band: Band, stretch: Str
                 // 45-degree slopes `line` px tall filling the piece's height, whole half-waves of `reach`, down first:
                 // pdf-core's zigzag.
                 const zigzagTop = top + piece.top * t;
-                const reach = Math.max(piece.height * t - piece.line, piece.line);
+                const line = piece.lineInBand ? piece.line * t : piece.line;
+                const reach = Math.max(piece.height * t - line, line);
                 const halves = Math.max(1, Math.ceil(width / reach));
                 const edge = (index: number) => (index % 2 === 0 ? zigzagTop : zigzagTop + reach);
 
                 pen.moveTo(start, zigzagTop);
                 for (let index = 0; index <= halves; index++) {
-                    pen.lineTo(start + reach * index, edge(index) + piece.line);
+                    pen.lineTo(start + reach * index, edge(index) + line);
                 }
 
                 for (let index = halves; index >= 0; index--) {
@@ -304,21 +307,45 @@ export function drawLayout(paint: Paint, layout: BoxLayout, left: number, top: n
                 bandThickness += width * band.thickness;
             }
 
+            // Each stretch's underline, drawn along it and the stretches after it it continues: a line-band underline
+            // continues the one before it when both look alike, sit on one baseline and touch, so a dash pattern or
+            // zigzag runs on across runs (pdf-core's `join_line_band`).
+            const underlines = new Map<Stretch, { band: Band; end: number }>();
+            let last: { stretch: Stretch; look: string } | undefined;
+
+            for (const stretch of runs) {
+                const underline = stretch.run.underline;
+
+                if (!underline || stretch.end <= stretch.start) {
+                    continue;
+                }
+
+                if (!underline.lineBand || bandWidth <= 0) {
+                    underlines.set(stretch, { band: decorationBand(underline, metrics(stretch.face, stretch.size).underline, stretch.size), end: stretch.end });
+                    last = undefined;
+                    continue;
+                }
+
+                const head = last && last.look === underline.lineBand.look && Math.abs(last.stretch.y - stretch.y) < JOIN_PX ? underlines.get(last.stretch) : undefined;
+
+                if (head && Math.abs(stretch.start - head.end) < JOIN_PX) {
+                    head.end = stretch.end;
+                } else {
+                    underlines.set(stretch, { band: { top: bandTop / bandWidth, thickness: bandThickness / bandWidth }, end: stretch.end });
+                    last = { stretch, look: underline.lineBand.look };
+                }
+            }
+
             for (const stretch of runs) {
                 const { run, face, size } = stretch;
-                const m = metrics(face, size);
-                const underline = run.underline;
+                const underline = underlines.get(stretch);
 
-                if (underline) {
-                    const band = underline.lineBand && bandWidth > 0 ? { top: bandTop / bandWidth, thickness: bandThickness / bandWidth } : decorationBand(underline, m.underline, size);
-
-                    if (stretch.end > stretch.start) {
-                        decorate(paint, underline, band, stretch);
-                    }
+                if (run.underline && underline) {
+                    decorate(paint, run.underline, underline.band, { ...stretch, end: underline.end });
                 }
 
                 if (run.strike) {
-                    decorate(paint, run.strike, decorationBand(run.strike, m.strike, size), stretch);
+                    decorate(paint, run.strike, decorationBand(run.strike, metrics(face, size).strike, size), stretch);
                 }
             }
         }

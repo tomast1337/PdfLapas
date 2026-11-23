@@ -223,7 +223,17 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "catAxisLineStyle",
     "catAxisMajorTickMark", // `cross` is drawn outside the axis at twice the length
     "catAxisMinorTickMark", // as catAxisMajorTickMark
-    "catLabelFormatCode", // the numeric formats of valAxisLabelFormatCode, no date formats; not on radar, scatter or bubble charts
+    "catLabelFormatCode", // numeric and date formats (years, months, days), not on radar, scatter or bubble charts (#580)
+    // A date axis's time line on line, column, bar, area and combo charts, not on radar or bar3D charts; no minor ticks
+    // (#593). A scatter or bubble chart's x axis takes catAxisMinVal, catAxisMaxVal and catAxisMajorUnit.
+    "catAxisBaseTimeUnit", // not with several dates in one slot
+    "catAxisMajorTimeUnit",
+    "catAxisMajorUnit",
+    "catAxisMaxVal",
+    "catAxisMinorTimeUnit",
+    "catAxisMinorUnit",
+    "catAxisMinVal",
+    "catAxisMultiLevelLabels", // single-level labels only, which it does not change
     "valAxisCrossesAt", // not on radar, bar3D, scatter or bubble charts; the primary axis only with a secondary one
     "valAxisDisplayUnit", // where the target reads `<c:dispUnits>` (readsValueAxisDisplayUnits)
     "valAxisDisplayUnitLabel", // as valAxisDisplayUnit, not on bar3D or radar charts nor with a value-axis title

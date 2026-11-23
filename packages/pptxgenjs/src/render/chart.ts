@@ -2,7 +2,7 @@ import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts
 import { GraphicComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent } from "echarts/components";
 import { type EChartsCoreOption, format, init, use } from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
-import { automaticAxisInterval, automaticAxisScale } from "#src/chart/axisScale";
+import { automaticAxisInterval, automaticAxisScale, type FixedAxisBound } from "#src/chart/axisScale";
 import { pointLabelText, showsPointLabel } from "#src/chart/dataLabel";
 import { formatChartNumber } from "#src/chart/format";
 import { PPTX_DEFAULTS } from "#src/defaults";
@@ -1123,7 +1123,16 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // major unit or the same automatic interval. A bubble chart's x axis takes the same scale, with no room for the
         // bubbles: its PDF export numbers x values 1..4 0.5..4.5 by 0.5, 10..40 5..45 by 5, 0..100 0..120 by 20, -5..5 -6..6
         // by 2 and 1000..4000 500..4500 by 500, whatever the sizes (#548).
-        const xScale = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), { kind: "none" }, false) : undefined;
+        // catAxisMinVal, catAxisMaxVal and catAxisMajorUnit fix the x axis's bounds and step, the rest automatic.
+        const fixedX = categoryAxisModel.xScale;
+        const xFixed: FixedAxisBound = fixedX?.minimum !== undefined ? { kind: "minimum", value: fixedX.minimum } : fixedX?.maximum !== undefined ? { kind: "maximum", value: fixedX.maximum } : { kind: "none" };
+        const automaticX = xValues.length > 0 ? automaticAxisScale(Math.min(...xValues), Math.max(...xValues), xFixed, false) : undefined;
+        const xMinimum = fixedX?.minimum ?? automaticX?.minimum;
+        const xMaximum = fixedX?.maximum ?? automaticX?.maximum;
+        const xScale =
+            xMinimum !== undefined && xMaximum !== undefined
+                ? { minimum: xMinimum, maximum: xMaximum, interval: fixedX?.majorUnit ?? (fixedX?.minimum !== undefined && fixedX.maximum !== undefined ? automaticAxisInterval(xMinimum, xMaximum) : (automaticX?.interval ?? 1)) }
+                : undefined;
         const scatter: Record<string, unknown>[] = [];
 
         for (const [seriesIndex, series] of ySeries.entries()) {
@@ -1184,7 +1193,19 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             series: scatter,
         };
     } else {
-        const categories = chart.series[0]?.labels ?? [];
+        // A date axis draws a category per time-line slot, each series' points in their dates' slots (#580).
+        const dateSlots = categoryAxisModel.dateSlots;
+        const categories = dateSlots?.labels ?? chart.series[0]?.labels ?? [];
+        const slotCategory: number[] = [];
+
+        for (const [category, slot] of (dateSlots?.categorySlots ?? []).entries()) {
+            if (slot !== null) {
+                slotCategory[slot] = category;
+            }
+        }
+
+        // Only the slots a major unit labels get a label and a tick.
+        const majorSlots = dateSlots?.labels.includes("") ? (index: number) => dateSlots.labels[index] !== "" : undefined;
         const valueAxes: ReturnType<typeof valueAxisOption>[] = [];
         // The value range each axis draws: a percent-stacked axis 0 to 100.
         const ranges: [number, number][] = [];
@@ -1227,6 +1248,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             data: categories,
             ...axisStyle,
             ...categoryAxisText,
+            ...(majorSlots ? { axisLabel: { ...categoryAxisText.axisLabel, interval: majorSlots }, axisTick: { ...categoryAxisText.axisTick, interval: majorSlots } } : {}),
             ...(categoryAxisModel.reversed ? { inverse: true } : {}),
             ...(labelsApart ? { axisLabel: { show: false }, name: undefined } : {}),
             // The category axis crosses a reversed value axis at its minimum, now at the far end (LibreOffice draws a
@@ -1331,7 +1353,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             // dataLabelBkgrdColors.
             const label = showsPointLabel(labels)
                 ? {
-                      ...dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dataIndex] ?? 0, { kind: "none" })),
+                      ...dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dateSlots ? (slotCategory[dataIndex] ?? -1) : dataIndex] ?? 0, { kind: "none" })),
                       ...(labels.seriesColorBackground ? { backgroundColor: color } : {}),
                   }
                 : undefined;
@@ -1357,11 +1379,27 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 data = points;
             }
 
+            // A slot without a date is empty, and LibreOffice joins a line across it (displayBlanksAs span).
+            if (dateSlots) {
+                const slotted: unknown[] = Array.from({ length: categories.length }, () => "-");
+
+                for (const [category, item] of data.entries()) {
+                    const slot = dateSlots.categorySlots[category];
+
+                    if (slot !== null && slot !== undefined) {
+                        slotted[slot] = item;
+                    }
+                }
+
+                data = slotted;
+            }
+
             cartesian.push({
                 label,
                 name: series.name,
                 type: seriesType,
                 data,
+                ...(dateSlots && lineLike ? { connectNulls: true, showAllSymbol: true } : {}),
                 // Each type stacks apart from the others, as each is its own chart element.
                 stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,

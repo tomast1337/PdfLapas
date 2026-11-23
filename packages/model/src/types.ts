@@ -453,8 +453,15 @@ export type NormalizedChartCatAxis = {
     labelRotate: number;
     /** Every how many categories a label is printed (`<c:tickLblSkip>`, where the target reads it); absent: each. */
     labelSkip?: number;
-    /** The number or date format of numeric categories (`catLabelFormatCode`, a date axis); absent: the labels as text. */
+    /** The number format of numeric categories (`catLabelFormatCode`); absent: the labels as text. */
     labelFormatCode?: string;
+    /**
+     * A date axis's time line (`catLabelFormatCode` on date serials): each slot's formatted label, empty between two
+     * major units, and each category's slot, null outside `catAxisMinVal`..`catAxisMaxVal`; absent: a slot per category.
+     */
+    dateSlots?: { labels: string[]; categorySlots: (number | null)[] };
+    /** A scatter or bubble chart's x-axis bounds and step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`). */
+    xScale?: { minimum?: number; maximum?: number; majorUnit?: number };
     /** Whether the categories run from the last (`<c:orientation val="maxMin"/>`); absent: from the first. */
     reversed?: boolean;
     lineColor: CssColor;

@@ -348,6 +348,8 @@ const chart = z.strictObject({
         labelRotate: finite,
         labelSkip: integerFrom(1).optional(),
         labelFormatCode: z.string().optional(),
+        dateSlots: z.strictObject({ labels: z.array(z.string()), categorySlots: z.array(integerFrom(0).nullable()) }).optional(),
+        xScale: z.strictObject({ minimum: finite.optional(), maximum: finite.optional(), majorUnit: z.number().positive().optional() }).optional(),
         reversed: z.boolean().optional(),
         lineColor: cssColor,
         lineWidth: nonNegative,

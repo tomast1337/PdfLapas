@@ -769,9 +769,9 @@ describe("rendering targets", () => {
         const presentation = new PuppeteerGenPowerPoint();
 
         presentation.addSlide().addText("lorem‑ipsum", { x: 1, y: 1, w: 3, h: 1 });
-        const marked = /<span class="text-run" data-non-breaking-hyphen="hyphen-minus" style="[^"]*"[^>]*>((?:<span style="letter-spacing: [^"]*;">[^<]*<\/span>)+)<\/span>/.exec((await presentation.toHtml()).html);
+        const marked = /<span class="text-run" data-non-breaking-hyphen="hyphen-minus" style="[^"]*"[^>]*>((?:<span style="letter-spacing: [^"]*;">[^<]*<\/span>|[^<])+)<\/span>/.exec((await presentation.toHtml()).html);
 
-        // Calibri's kern pairs cut the word into word spans (#577); together they hold the run's text.
+        // Calibri's kern pairs cut the word into word spans (#577) where its font is installed; either way the run holds the text.
         expect(marked?.[1]?.replace(/<[^>]*>/g, "")).toBe("lorem‑ipsum");
     });
 

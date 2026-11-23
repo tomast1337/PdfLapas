@@ -203,8 +203,8 @@ export const CHART_OPTION_NAMES = Object.freeze([
 const IMPLEMENTED_CHART_OPTIONS = new Set<string>(SUPPORTED_CHART_OPTIONS);
 const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelFormatCode", // common single-section numeric formats
-    "valAxisMajorTickMark",
-    "valAxisMinorTickMark", // `cross` remains explicit unsupported
+    "valAxisMajorTickMark", // `cross` is drawn outside the axis at twice the length
+    "valAxisMinorTickMark", // as valAxisMajorTickMark
     "dataLabelFormatCode", // the same numeric formats as valAxisLabelFormatCode
     "barDir", // horizontal bar3D bars remain explicit unsupported (#561)
     "valAxisLogScaleBase", // not drawn on bar3D or radar charts (#561)
@@ -212,24 +212,34 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelRotate", // not drawn on radar charts (#561)
     "valAxisLabelPos", // low and high are not drawn on radar charts (#561)
     "catGridLine", // not drawn on radar charts (#479)
-    // Not drawn on radar charts; nor on bar3D, scatter or bubble charts for the placement options (#566).
-    "catAxisCrossesAt",
-    "catAxisHidden",
-    "catAxisLabelFrequency", // and where the target reads `tickLblSkip` only (readsCategoryLabelSkip)
-    "catAxisLabelPos", // `high` not on bar3D or bubble charts
+    // Not drawn on radar charts (#566, #582).
+    "catAxisCrossesAt", // nor on bar3D, scatter or bubble charts, nor with a secondary value axis (#591)
+    "catAxisLabelFrequency", // where the target reads `tickLblSkip` only (readsCategoryLabelSkip); not on scatter or bubble charts
+    "catAxisLabelPos", // `high` not on bar3D charts; low and high are nextTo on radar charts
     "catAxisLabelRotate",
     "catAxisLineColor",
     "catAxisLineShow",
     "catAxisLineSize",
     "catAxisLineStyle",
-    "catAxisMajorTickMark", // `cross` remains explicit unsupported
+    "catAxisMajorTickMark", // `cross` is drawn outside the axis at twice the length
     "catAxisMinorTickMark", // as catAxisMajorTickMark
-    "catAxisOrientation",
-    "catLabelFormatCode", // the numeric formats of valAxisLabelFormatCode, no date formats
-    "valAxisCrossesAt", // not with a secondary value axis
-    "valAxisDisplayUnit", // where the target reads `<c:dispUnits>` (readsValueAxisDisplayUnits); not on radar charts
-    "valAxisDisplayUnitLabel", // as valAxisDisplayUnit, not on bar3D charts nor with a value-axis title
-    "showDataTable", // column, line, area and combo charts only (#567)
+    "catLabelFormatCode", // the numeric formats of valAxisLabelFormatCode, no date formats; not on radar, scatter or bubble charts
+    "valAxisCrossesAt", // not on radar, bar3D, scatter or bubble charts; the primary axis only with a secondary one
+    "valAxisDisplayUnit", // where the target reads `<c:dispUnits>` (readsValueAxisDisplayUnits)
+    "valAxisDisplayUnitLabel", // as valAxisDisplayUnit, not on bar3D or radar charts nor with a value-axis title
+    "showDataTable", // not on scatter, bubble or bar3D charts; none on pie, doughnut or radar charts, as LibreOffice (#583, #592)
+    "dataTableFormatCode", // where the target reads it (readsDataTableFormatCode), no target yet
+    "serAxisLabelFrequency", // where the target reads `tickLblSkip` (readsSeriesLabelSkip), no target yet
+    // LibreOffice 26.2.6 draws nothing for them on a bar3D chart (#581); PowerPoint is not measured.
+    "serAxisBaseTimeUnit",
+    "serAxisLabelPos",
+    "serAxisLineColor",
+    "serAxisLineShow",
+    "serAxisMajorTimeUnit",
+    "serAxisMajorUnit",
+    "serAxisMinorTimeUnit",
+    "serAxisMinorUnit",
+    "serLabelFormatCode",
     "dataLabelBkgrdColors", // not on bar3D charts
     "plotArea", // not drawn on pie, doughnut, radar or bar3D charts, as LibreOffice draws none there (#479)
     "fill", // as plotArea

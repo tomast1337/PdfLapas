@@ -281,6 +281,16 @@ export type RenderingTargetProfile = {
      */
     readonly readsCategoryLabelSkip: boolean;
     /**
+     * Whether a bar3D depth axis prints a series name every `serAxisLabelFrequency` series (`<c:tickLblSkip>`), or
+     * every name (`NormalizedChartSeriesAxis.labelSkip`).
+     */
+    readonly readsSeriesLabelSkip: boolean;
+    /**
+     * Whether a data table prints its values in `dataTableFormatCode` (the values' `<c:numCache>` format), or in its
+     * series' data-label format (`NormalizedChartDataTable.valueFormatCode`).
+     */
+    readonly readsDataTableFormatCode: boolean;
+    /**
      * Whether a value axis divides its labels by `valAxisDisplayUnit` and prints the unit's name for
      * `valAxisDisplayUnitLabel` (`<c:dispUnits>`), or prints the values as they are (`NormalizedChartValueAxis.displayUnit`).
      */

@@ -1197,6 +1197,11 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChart.seriesAxis`                                     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.hidden`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.reversed`                             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesAxis.labelSkip`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesAxis.gridLineColor`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesAxis.gridLineWidth`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesAxis.gridLineStyle`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesAxis.gridLineCap`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.labelColor`                           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.labelFontFace`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.labelFontSize`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1209,6 +1214,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartSeriesAxis.titleFontSize`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.titleRotate`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.dataTable`                                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataTable.valueFormatCode`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.horizontalBorder`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.verticalBorder`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.outline`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

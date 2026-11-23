@@ -363,6 +363,11 @@ const chart = z.strictObject({
         .strictObject({
             hidden: z.boolean(),
             reversed: z.boolean(),
+            labelSkip: integerFrom(2).optional(),
+            gridLineColor: cssColor,
+            gridLineWidth: nonNegative,
+            gridLineStyle: z.enum(["solid", "dash", "dot", "none"]),
+            gridLineCap: z.enum(["flat", "round", "square"]),
             labelColor: cssColor,
             labelFontFace: fontFace,
             labelFontSize: nonNegative,
@@ -378,6 +383,7 @@ const chart = z.strictObject({
         .optional(),
     dataTable: z
         .strictObject({
+            valueFormatCode: z.string().optional(),
             horizontalBorder: z.boolean(),
             verticalBorder: z.boolean(),
             outline: z.boolean(),

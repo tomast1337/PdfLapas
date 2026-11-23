@@ -1900,7 +1900,7 @@ describe("chart normalization and rendering", () => {
         expect(formatChartNumber(0.25, "0%")).toBe("25%");
     });
 
-    test("validates logarithmic axes and explicitly rejects unsupported format and cross ticks", () => {
+    test("validates logarithmic axes and explicitly rejects unsupported formats", () => {
         const logarithmic = normalizeChart("line", [{ name: "Growth", labels: ["A", "B"], values: [1, 100] }], {
             valAxisMinVal: 1,
             valAxisMaxVal: 100,
@@ -1911,7 +1911,8 @@ describe("chart normalization and rendering", () => {
         expect(() => normalizeChart("line", categoricalData, { valAxisLogScaleBase: 10 })).toThrow("positive minimum");
         expect(() => normalizeChart("line", categoricalData, { valAxisLogScaleBase: 1 })).toThrow("between 2 and 99");
         expect(() => normalizeChart("line", categoricalData, { valAxisLabelFormatCode: "0;[Red]-0" })).toThrow(UnsupportedChartError);
-        expect(() => normalizeChart("line", categoricalData, { valAxisMajorTickMark: "cross" })).toThrow(UnsupportedChartError);
+        // LibreOffice 26.2.6 draws a cross tick across the axis line (#582).
+        expect(normalizeChart("line", categoricalData, { valAxisMajorTickMark: "cross", catAxisMinorTickMark: "cross" }).valueAxes[0]?.majorTickMark).toBe("cross");
     });
 
     test("rejects incompatible mixed families and unimplemented per-series axes", () => {
@@ -2237,7 +2238,8 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("radar", quarters, { catAxisLabelRotate: 45 })).toThrow("catAxisLabelRotate[radar]");
         expect(() => normalizeChart("bar3D", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { catAxisLabelPos: "high" })).toThrow("catAxisLabelPos[high][bar3D]");
-        expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "cross" })).toThrow("catAxisMajorTickMark[cross]");
+        expect(() => normalizeChart("bar3D", quarters, { valAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("valAxisCrossesAt[bar3D]");
+        expect(() => normalizeChart("scatter", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[scatter]");
         expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "in" } as unknown as PptxGenJS.IChartOpts)).toThrow(TypeError);
         expect(() => normalizeChart("line", quarters, { catLabelFormatCode: "mmm-yy" })).toThrow("catLabelFormatCode[format]");
         expect(() => normalizeChart("bar3D", quarters, { dataLabelBkgrdColors: true })).toThrow("dataLabelBkgrdColors[bar3D]");
@@ -2251,8 +2253,72 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         // LibreOffice 26.2 draws the table's text without borders or keys (drawsDataTableBorders).
         expect(normalizeChart("bar", pair, options, "libreoffice").dataTable).toMatchObject({ horizontalBorder: false, verticalBorder: false, outline: false, keys: false });
         expect(normalizeChart("bar", pair).dataTable).toBeUndefined();
-        expect(() => normalizeChart("pie", pair, { showDataTable: true })).toThrow("showDataTable[pie]");
-        expect(() => normalizeChart("bar", pair, { showDataTable: true, barDir: "bar" })).toThrow("showDataTable[barDir bar]");
+        // LibreOffice 26.2.6 draws no table on a pie, doughnut or radar chart, and a horizontal bar chart's under its
+        // value labels (#583); a scatter, bubble or bar3D chart's is not drawn yet.
+        expect(normalizeChart("pie", [pair[0]!], { showDataTable: true }).dataTable).toBeUndefined();
+        expect(normalizeChart("radar", pair, { showDataTable: true }).dataTable).toBeUndefined();
+        expect(normalizeChart("bar", pair, { showDataTable: true, barDir: "bar" }).dataTable).toBeDefined();
+        expect(() => normalizeChart("scatter", pair, { showDataTable: true })).toThrow("showDataTable[scatter]");
+        expect(() => normalizeChart("bar3D", pair, { showDataTable: true })).toThrow("showDataTable[bar3D]");
+        // dataTableFormatCode formats the values where the target reads it (readsDataTableFormatCode), no target yet.
+        expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "libreoffice").dataTable?.valueFormatCode).toBeUndefined();
+        expect(normalizeChart("bar", pair, { showDataTable: true, dataTableFormatCode: "0.00" }, "powerpoint").dataTable?.valueFormatCode).toBeUndefined();
+    });
+
+    test("keeps a horizontal bar chart's category labels beside its data table (#583)", () => {
+        const texts = textsOf(chartSvg("bar", pair, { showDataTable: true, barDir: "bar" }));
+
+        // Each category on the axis and in the table's header row.
+        expect(texts.filter(text => text === "Q1")).toHaveLength(2);
+    });
+
+    test("draws the radar, bar3D, scatter and secondary-axis placement options LibreOffice draws (#582)", () => {
+        // A radar chart's spokes run counterclockwise for maxMin, and the value labels go on the spoke catAxisCrossesAt names.
+        expect(normalizeChart("radar", quarters, { catAxisOrientation: "maxMin", catAxisCrossesAt: 2 } as unknown as PptxGenJS.IChartOpts).categoryAxis).toMatchObject({ reversed: true, valueAxisCrossing: { kind: "category", index: 1 } });
+        expect(textsOf(chartSvg("radar", quarters, { catAxisLabelPos: "none" }))).not.toContain("Q1");
+        expect(textsOf(chartSvg("radar", quarters, { catAxisHidden: true }))).not.toContain("Q1");
+        // bar3D reverses and formats its categories.
+        const bar3D = textsOf(chartSvg("bar3D", [{ name: "Lorem", labels: ["1", "2", "3"], values: [3, 5, 4] }], { catAxisOrientation: "maxMin", catLabelFormatCode: "0.0" } as unknown as PptxGenJS.IChartOpts));
+
+        expect(bar3D.filter(text => text.endsWith(".0"))).toEqual(["1.0", "2.0", "3.0"]);
+        // A scatter chart's x axis keeps its General numbers and every label, as LibreOffice draws it.
+        expect(normalizeChart("scatter", pair, { catLabelFormatCode: "0.0", catAxisLabelFrequency: 2 } as unknown as PptxGenJS.IChartOpts, "powerpoint").categoryAxis).not.toHaveProperty("labelFormatCode");
+        // valAxisCrossesAt and catAxisOrientation with a secondary axis; catAxisCrossesAt moves both value axes.
+        const secondary = (options: PptxGenJS.IChartOpts) =>
+            normalizeChart(
+                [
+                    { type: "bar", data: pair, options: {} },
+                    { type: "line", data: [{ name: "Dolor", labels: ["Q1", "Q2", "Q3", "Q4"], values: [100, 300, 200, 400] }], options: { secondaryValAxis: true } },
+                ],
+                [],
+                { ...options, valAxes: [{ showValAxisTitle: false }, { showValAxisTitle: false }] },
+            );
+
+        expect(secondary({ valAxisCrossesAt: 2 } as PptxGenJS.IChartOpts).valueAxes[0]?.categoryAxisCrossing).toEqual({ kind: "value", value: 2 });
+        expect(secondary({ catAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts).categoryAxis.reversed).toBe(true);
+        expect(() => secondary({ catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("valAxes[secondary][catAxisCrossesAt]");
+    });
+
+    test("draws the bar3D series gridlines and accepts the depth-axis options LibreOffice does not draw (#581)", () => {
+        const options = {
+            serGridLine: { color: "FF0000", size: 2 },
+            serAxisLabelFrequency: "2",
+            serAxisLineShow: true,
+            serAxisLineColor: "00FF00",
+            serAxisLabelPos: "high",
+            serLabelFormatCode: "0.0",
+            serAxisMajorUnit: 2,
+            serAxisBaseTimeUnit: "days",
+        } as PptxGenJS.IChartOpts;
+        const chart = normalizeChart("bar3D", pair, options);
+
+        expect(chart.seriesAxis).toMatchObject({ gridLineColor: "#FF0000", gridLineWidth: 2, gridLineStyle: "solid" });
+        // LibreOffice 26.2.6 names every series whatever serAxisLabelFrequency says (readsSeriesLabelSkip).
+        expect(chart.seriesAxis?.labelSkip).toBeUndefined();
+        expect(normalizeChart("bar3D", pair).seriesAxis?.gridLineStyle).toBe("none");
+        expect(chartSvg("bar3D", pair, options)?.querySelectorAll(".bar3d-series-grid").length).toBe(3);
+        expect(() => normalizeChart("bar3D", pair, { serAxisLabelFrequency: "0" } as PptxGenJS.IChartOpts)).toThrow("serAxisLabelFrequency");
+        expect(() => normalizeChart("bar3D", pair, { serGridLine: { color: "FF0000", lorem: 1 } } as unknown as PptxGenJS.IChartOpts)).toThrow("serGridLine.lorem");
     });
 
     test("draws the data table's rows in place of the category labels", () => {

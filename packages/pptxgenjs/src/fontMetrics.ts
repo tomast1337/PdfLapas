@@ -238,6 +238,8 @@ const KERN_HORIZONTAL = 0x0001;
 // Format 0: nPairs, then uint16 searchRange, entrySelector and rangeShift, then 6-byte pairs (uint16 left and right glyph, FWORD value).
 const KERN_FORMAT_0_PAIRS = 14;
 const KERN_PAIR_SIZE = 6;
+/** U+0020 SPACE, which PowerPoint kerns as itself whatever else its glyph maps (readGlyphAdvances). */
+const SPACE_CODE_POINT = 0x20;
 
 /**
  * A font's head.unitsPerEm and OS/2 usWinAscent and usWinDescent, from TrueType or OpenType (CFF) bytes, for the
@@ -380,7 +382,8 @@ const GLYPH_ADVANCES_RESULT_SCHEMA = z.discriminatedUnion("kind", [z.strictObjec
  * (format 12, else format 4), and head.unitsPerEm: what the PowerPoint target lays text out on its advance grid with
  * (RENDERING_TARGETS.advanceGridPt). A character the font does not map is left out, and so is every one of a font
  * without a Unicode cmap (a symbol font). `kerning` holds the pair kerning of a version 0 `kern` table, what
- * PowerPoint kerns a run from 12pt with; it is left out without one. `underline` (post underlinePosition and
+ * PowerPoint kerns a run from 12pt with, keyed as PowerPoint kerns it: a glyph that several code points map is kerned
+ * only as the last of them, and as the space; it is left out without one. `underline` (post underlinePosition and
  * underlineThickness) and `strikeout` (OS/2 yStrikeoutPosition and yStrikeoutSize) are the face's decoration bands,
  * left out without the table or a positive thickness. A TrueType collection (.ttc) gives the face at
  * `faceIndex`; WOFF and WOFF2 are not read. Browser-safe: bytes in.
@@ -483,9 +486,30 @@ export function readGlyphAdvances(bytes: Uint8Array, faceIndex = 0): GlyphAdvanc
 
     // The pair kerning of a version 0 `kern` table's horizontal format 0 subtables, the ones PowerPoint kerns from (as
     // readFontWinMetrics's `pairKerning`), summed, keyed by the left then the right character of each glyph pair through
-    // `characters` (glyph id to code points); empty for an Apple-format table. A subtable is stepped over by its pairs, not
-    // its uint16 length, which a large one overflows (Arial's 160,250 bytes say 29,178).
+    // `kernCharacters`; empty for an Apple-format table. A subtable is stepped over by its pairs, not its uint16 length,
+    // which a large one overflows (Arial's 160,250 bytes say 29,178).
     const kerning = new Map<number, Map<number, number>>();
+    // The characters PowerPoint kerns a glyph as: only the last code point the cmap maps to it, and the space. Measured
+    // in its PDF export of a synthetic deck at 24pt (#539): Segoe UI's hyphen glyph is U+002D and U+2010, and "f‐ k‐ r‐
+    // t‐" are kerned with U+2010 but "f- k- r- t-" with U+002D are not; its "(" is also U+FD3E and ")" U+FD3F, and "(j"
+    // and "f)" are not kerned where "[j", "{j", "f]" and "f}", whose glyphs have one code point, are. Palatino Linotype's
+    // hyphen is U+002D, U+00AD, U+2010 and U+2011, and "T- V- W- Y-" are kerned with neither U+002D nor U+2010, where its
+    // "f)" and "(J" are. The 400 other pairs measured in Segoe UI, Palatino Linotype, Arial, Times New Roman and Calibri
+    // follow this, the space included: its glyph is also U+00A0, and Arial's "Y " and " T" are kerned.
+    const kernCharacters = new Map<number, number[]>();
+
+    for (const [glyph, codePoints] of characters) {
+        const last = Math.max(...codePoints);
+        const kept: number[] = [];
+
+        for (const codePoint of codePoints) {
+            if (codePoint === last || codePoint === SPACE_CODE_POINT) {
+                kept.push(codePoint);
+            }
+        }
+
+        kernCharacters.set(glyph, kept);
+    }
 
     if (tables.has("kern") && field("kern", 0, "its version") === 0) {
         const kernSubtables = field("kern", KERN_TABLES, "nTables");
@@ -516,8 +540,8 @@ export function readGlyphAdvances(bytes: Uint8Array, faceIndex = 0): GlyphAdvanc
 
             for (let pair = 0; pair < pairCount; pair++) {
                 const record = first + pair * KERN_PAIR_SIZE;
-                const lefts = characters.get(field("kern", record, `subtable ${index} pair ${pair} left glyph`)) ?? [];
-                const rights = characters.get(field("kern", record + 2, `subtable ${index} pair ${pair} right glyph`)) ?? [];
+                const lefts = kernCharacters.get(field("kern", record, `subtable ${index} pair ${pair} left glyph`)) ?? [];
+                const rights = kernCharacters.get(field("kern", record + 2, `subtable ${index} pair ${pair} right glyph`)) ?? [];
                 // An FWORD: signed 16-bit.
                 const value = (field("kern", record + 4, `subtable ${index} pair ${pair} value`) << 16) >> 16;
 

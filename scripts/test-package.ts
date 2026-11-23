@@ -2,7 +2,7 @@ import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const PACKAGES = ["model", "puppeteer", "pptxgenjs", "wasm", "pdfkit", "react"];
+const PACKAGES = ["model", "puppeteer", "pptxgenjs", "wasm", "pdfkit", "react", "native"];
 
 const projectRoot = resolve(import.meta.dir, "..");
 const temporaryRoot = await mkdtemp(join(tmpdir(), "pdflapas-consumer-"));
@@ -69,7 +69,7 @@ try {
 
     // A clean consumer installs the packed tarballs and typechecks and runs each public entry under Bun and Node.js.
     const consumerDirectory = join(temporaryRoot, "pdflapas-consumer");
-    const dependencies = ["@pdflapas/pptxgenjs", "@pdflapas/wasm", "@pdflapas/pdfkit", "@pdflapas/react"];
+    const dependencies = ["@pdflapas/pptxgenjs", "@pdflapas/wasm", "@pdflapas/pdfkit", "@pdflapas/react", "@pdflapas/native"];
     // Import specifiers of the four public entries, so the same consumer checks run against @pdflapas/* and the legacy shim.
     const names = { main: "@pdflapas/pptxgenjs", html: "@pdflapas/pptxgenjs/html", wasm: "@pdflapas/wasm", react: "@pdflapas/react" };
 
@@ -384,6 +384,38 @@ console.log(\`WASM package consumer generated a PDF under \${"Bun" in globalThis
     await run(["node", "--experimental-strip-types", wasmConsumerPath], consumerDirectory);
     await run([process.execPath, "run", pdfkitConsumerPath], consumerDirectory);
     await run(["node", "--experimental-strip-types", pdfkitConsumerPath], consumerDirectory);
+    // The native prototype: Node gets the error that points at @pdflapas/wasm; Bun renders the WASM bytes when the tarball
+    // carries the library (bun run build:native before packing), else names the missing library.
+    const nativeConsumerSource = `
+import PuppeteerGen, { PAGE_SIZES } from "${names.main}";
+import { createNativeRenderer } from "@pdflapas/native";
+import { createWasmRenderer, loadSystemFonts } from "${names.wasm}";
+
+const fonts = await loadSystemFonts();
+const presentation = new PuppeteerGen(PAGE_SIZES.SCREEN_16X9.landscape);
+presentation.addSlide().addText("Native package consumer", { x: 1, y: 1, w: 4, h: 1, fontFace: "Calibri" });
+const document = await presentation.toHtml();
+const native = await createNativeRenderer({ fonts }).then(renderer => renderer, (error: Error) => error);
+if (!("Bun" in globalThis)) {
+    if (!(native instanceof Error) || native.message !== "@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node") throw new Error(\`@pdflapas/native under Node: \${native}\`);
+} else if (native instanceof Error) {
+    if (!native.message.startsWith("No @pdflapas/native library for")) throw native;
+} else {
+    const [a, b] = [await native.render(document), await (await createWasmRenderer({ fonts })).render(document)];
+    if (a.length !== b.length || a.some((byte, index) => byte !== b[index])) throw new Error("@pdflapas/native rendered other bytes than @pdflapas/wasm");
+}
+console.log(\`native package consumer passed under \${"Bun" in globalThis ? "Bun" : "Node.js"}\${native instanceof Error ? \`: \${native.message}\` : ", byte-identical to WASM"}\`);
+`;
+    const nativeConsumerPath = join(consumerDirectory, "native-consumer.ts");
+
+    await Bun.write(nativeConsumerPath, nativeConsumerSource);
+    const nativeConfig = await Bun.file(join(consumerDirectory, "tsconfig.json")).json();
+
+    nativeConfig.files.push("native-consumer.ts");
+    await Bun.write(join(consumerDirectory, "tsconfig.json"), JSON.stringify(nativeConfig, null, 2));
+    await run([resolve(projectRoot, "node_modules/.bin/tsc"), "-p", "tsconfig.json"], consumerDirectory);
+    await run([process.execPath, "run", nativeConsumerPath], consumerDirectory);
+    await run(["node", "--experimental-strip-types", nativeConsumerPath], consumerDirectory);
     // Install React only after the core consumer has been typechecked and run without it.
     await run([process.execPath, "add", "--dev", "--ignore-scripts", ...["react", "react-dom", "@types/react", "@types/react-dom"].map(name => `${name}@${rootMetadata.devDependencies[name]}`)], consumerDirectory);
     const reactConsumerSource = `

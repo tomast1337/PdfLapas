@@ -47,6 +47,8 @@ notes/*
 
 # Built by `bun run build:wasm` (issue #16 builds it in CI)
 packages/wasm/src/*.wasm
+# Built by `bun run build:native` (prototype, not built in CI yet)
+packages/native/src/pdflapas_native.*
 
 # Claude Code agent worktrees (full repo copies with their own node_modules and build output)
 .claude/worktrees/

@@ -1,0 +1,17 @@
+[package]
+name = "pdf-ffi"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A C ABI over pdf-core for @pdflapas/native, loaded with bun:ffi: hand-written extern "C" functions, no binding
+# generator. Built with `--profile native` (crates/Cargo.toml), which unwinds so catch_unwind can stop a panic.
+[lib]
+name = "pdflapas_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pdf-core = { workspace = true }
+
+[lints]
+workspace = true

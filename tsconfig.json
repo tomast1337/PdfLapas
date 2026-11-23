@@ -41,7 +41,8 @@
       "@pdflapas/pptxgenjs/html": ["./packages/pptxgenjs/src/html.ts"],
       "@pdflapas/wasm": ["./packages/wasm/src/node.ts"],
       "@pdflapas/pdfkit": ["./packages/pdfkit/src/node.ts"],
-      "@pdflapas/react": ["./packages/react/src/index.ts"]
+      "@pdflapas/react": ["./packages/react/src/index.ts"],
+      "@pdflapas/native": ["./packages/native/src/bun.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "crates"]

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["pdf-core", "pdf-wasm"]
+members = ["pdf-core", "pdf-wasm", "pdf-ffi"]
 
 [workspace.dependencies]
 pdf-core = { path = "pdf-core" }
@@ -11,6 +11,13 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# @pdflapas/native (crates/pdf-ffi, `bun run build:native`): optimized for speed rather than size, and unwinding, so
+# its catch_unwind turns a panic into an error status instead of aborting the server process that loaded it.
+[profile.native]
+inherits = "release"
+opt-level = 3
+panic = "unwind"
 
 # A panic in wasm traps the instance and poisons the shared renderer (GHSA-fmx3-qwqc-h37c), so non-test
 # code has no panic path: errors go through `Result`, lookups through `get`. clippy.toml allows these

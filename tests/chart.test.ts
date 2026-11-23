@@ -871,21 +871,124 @@ describe("chart normalization and rendering", () => {
             ).series[0]?.pointFills,
         ).toEqual(["#CC0000", "#33CC00", "#CC0000"]);
 
-        // A line type's line options and a bar type's gap and overlap are drawn chart-wide.
+        // A line type's line options style its series; a bar type's gap and overlap are drawn chart-wide.
         const styled = normalizeChart(combo({ barGapWidthPct: 80, barOverlapPct: 20 }, { lineSize: 4, lineSmooth: true, lineDataSymbol: "square", lineDataSymbolSize: 9, lineDataSymbolLineColor: "FF0000" }), [], { lineSize: 1 });
+        const lineStyle = styled.series[2]?.style;
 
-        expect<unknown[]>([styled.lineSize, styled.lineSmooth, styled.lineSymbol, styled.lineSymbolSize, styled.lineSymbolLineColor]).toEqual([4, true, "square", 9, "#FF0000"]);
+        expect<unknown[]>([lineStyle?.lineSize, lineStyle?.lineSmooth, lineStyle?.lineSymbol, lineStyle?.lineSymbolSize, lineStyle?.lineSymbolLineColor]).toEqual([4, true, "square", 9, "#FF0000"]);
+        expect([styled.lineSize, styled.series[0]?.style]).toEqual([1, undefined]);
         expect([styled.barGapWidthPercent, styled.barOverlapPercent]).toEqual([80, 20]);
         // A false secondaryCatAxis is the default.
         expect(() => normalizeChart(combo({}, { secondaryCatAxis: false }), [], {})).not.toThrow();
+    });
 
-        // Two line types with different line sizes cannot share the chart's.
+    test("styles each combo chart type's series from its own options (#594)", () => {
+        const line = { name: "Line", labels: ["A", "B", "C"], values: [6, 9, 7] };
+        const otherLine = { name: "Other", labels: ["A", "B", "C"], values: [2, 4, 3] };
+        // Two line types with their own line sizes and markers; LibreOffice 26.2.6 smooths both as the first says.
+        const twoLines = normalizeChart(
+            [
+                { type: "bar", data: categoricalData, options: {} },
+                { type: "line", data: [line], options: { lineSize: 1, lineSmooth: true } },
+                { type: "line", data: [otherLine], options: { lineSize: 5, lineDataSymbol: "square" } },
+            ],
+            [],
+            {},
+        );
+
+        expect(twoLines.series.map(series => [series.style?.lineSize, series.style?.lineSymbol, series.style?.lineSmooth])).toEqual([
+            [undefined, undefined, undefined],
+            [undefined, undefined, undefined],
+            [1, "circle", true],
+            [5, "square", true],
+        ]);
+        expect(twoLines.lineSmooth).toBe(true);
+        // PowerPoint's PDF export smooths each line type as its own lineSmooth says (comboLineSmoothFromFirstLineType).
+        const powerPointLines = normalizeChart(
+            [
+                { type: "bar", data: categoricalData, options: {} },
+                { type: "line", data: [line], options: { lineSize: 1 } },
+                { type: "line", data: [otherLine], options: { lineSize: 5, lineSmooth: true } },
+            ],
+            [],
+            {},
+            "powerpoint",
+        );
+
+        expect(powerPointLines.series.map(series => series.style?.lineSmooth)).toEqual([undefined, undefined, false, true]);
+
+        // A bar type's own opacity (in percent; PptxGenJS writes no alpha for 0, so it is opaque) and outline; a type's
+        // raw lineDataSymbolLineSize is EMU.
+        const own = normalizeChart(
+            [
+                { type: "bar", data: categoricalData, options: { chartColorsOpacity: 40, dataBorder: { pt: 2, color: "FF0000" } } },
+                { type: "line", data: [line], options: { lineDataSymbolLineSize: 12700 } },
+            ],
+            [],
+            { chartColorsOpacity: 0 },
+        );
+
+        expect(own.colorOpacity).toBe(1);
+        expect(own.series[0]?.style).toMatchObject({ colorOpacity: 0.4, dataBorder: { color: "#FF0000", width: 2 } });
+        expect(own.series[2]?.style?.lineSymbolLineSize).toBe(1);
+
+        // A single-series bar type's own invertedColors fill its negative points.
+        const inverted = normalizeChart(
+            [
+                { type: "bar", data: [{ name: "Lorem", labels: ["A", "B", "C", "D"], values: [10, -8, 30, -15] }], options: { chartColors: ["4472C4", "ED7D31"], invertedColors: ["00B050", "7030A0"] } },
+                { type: "line", data: [{ ...line, labels: ["A", "B", "C", "D"], values: [5, 15, 10, 20] }], options: {} },
+            ],
+            [],
+            {},
+        );
+
+        expect<string[] | undefined>(inverted.series[0]?.pointFills).toEqual(["#4472C4", "#7030A0", "#4472C4", "#7030A0"]);
+
+        // A type's dataBorder is written unchecked, so it needs its pt and color.
         try {
-            normalizeChart([...combo({}, { lineSize: 2 }), { type: "line", data: [line], options: { lineSize: 3 } }], [], {});
+            normalizeChart(
+                [
+                    { type: "bar", data: categoricalData, options: { dataBorder: { color: "FF0000" } } as PptxGenJS.IChartOpts },
+                    { type: "line", data: [line], options: {} },
+                ],
+                [],
+                {},
+            );
             throw new Error("Expected normalization to fail");
         } catch (error) {
-            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["series[2].options.lineSize[differs from series[1]]"]);
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["series[0].options.dataBorder[needs a positive pt and a color]"]);
         }
+    });
+
+    test("reads catAxes and a secondary category axis that draws nothing (#594)", () => {
+        const secondary: PptxGenJS.IChartMulti[] = [
+            { type: "bar", data: categoricalData, options: {} },
+            { type: "line", data: [{ name: "Line", labels: ["A", "B", "C"], values: [100, 300, 200] }], options: { secondaryValAxis: true, secondaryCatAxis: true } },
+        ];
+        // PptxGenJS writes the primary category axis from `{ ...options, ...catAxes[0] }`.
+        const chart = normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{ catAxisLabelColor: "FF0000" }, {}] });
+
+        expect<string>(chart.categoryAxis.labelColor).toBe("#FF0000");
+        expect(chart.valueAxes).toHaveLength(2);
+        expect(() => normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, {}, {}] })).toThrow("catAxes must have as many entries as valAxes");
+
+        const rejections: [PptxGenJS.IChartOpts, string][] = [
+            [{ valAxes: [{}, {}] }, "series[1].options.secondaryCatAxis[needs secondaryValAxis and catAxes[1]]"],
+            [{ valAxes: [{}, {}], catAxes: [{}, { catAxisTitle: "Sec" }] }, "catAxes[1].catAxisTitle"],
+            [{ valAxes: [{}, {}], catAxes: [{ catAxisCrossesAt: 2 }, {}] }, "catAxes[0].catAxisCrossesAt"],
+        ];
+
+        for (const [options, rejected] of rejections) {
+            try {
+                normalizeChart(secondary, [], options);
+                throw new Error("Expected normalization to fail");
+            } catch (error) {
+                expect((error as UnsupportedChartError).unsupportedOptions).toEqual([rejected]);
+            }
+        }
+
+        // PowerPoint's PDF export draws a second row of category names, which the renderers do not (drawsSecondaryCategoryAxis).
+        expect(() => normalizeChart(secondary, [], { valAxes: [{}, {}], catAxes: [{}, {}] }, "powerpoint")).toThrow("secondaryCatAxis");
     });
 
     test("normalizes PptxGenJS bar3D defaults and bounded view options", () => {
@@ -1937,7 +2040,7 @@ describe("chart normalization and rendering", () => {
         } catch (error) {
             expect(error).toBeInstanceOf(UnsupportedChartError);
             expect((error as UnsupportedChartError).reason).toBe("chart-option");
-            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["series[1].options.secondaryCatAxis"]);
+            expect((error as UnsupportedChartError).unsupportedOptions).toEqual(["series[1].options.secondaryCatAxis[needs secondaryValAxis and catAxes[1]]"]);
         }
 
         expect(() =>
@@ -2239,7 +2342,16 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("bar3D", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { catAxisLabelPos: "high" })).toThrow("catAxisLabelPos[high][bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { valAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("valAxisCrossesAt[bar3D]");
-        expect(() => normalizeChart("scatter", quarters, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt[scatter]");
+        // A scatter chart's x axis is a value axis: the y axis crosses it at that x value (#591).
+        const xy = [
+            { name: "X", values: [1, 2, 3, 4, 5, 6] },
+            { name: "Lorem", values: [10, 22, 15, 30, 25, 18] },
+        ];
+        const crossed = normalizeChart("scatter", xy, { catAxisCrossesAt: 3, valAxisCrossesAt: 20 } as PptxGenJS.IChartOpts);
+
+        expect(crossed.categoryAxis.valueAxisCrossing).toEqual({ kind: "value", value: 3 });
+        expect(crossed.valueAxes[0]?.categoryAxisCrossing).toEqual({ kind: "value", value: 20 });
+        expect(() => normalizeChart("scatter", xy, { catAxisCrossesAt: Number.NaN } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt");
         expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "in" } as unknown as PptxGenJS.IChartOpts)).toThrow(TypeError);
         // A date format needs date serials: text categories are not a time line.
         expect(() => normalizeChart("line", quarters, { catLabelFormatCode: "mmm-yy" })).toThrow("catLabelFormatCode[format]");
@@ -2298,7 +2410,9 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
 
         expect(secondary({ valAxisCrossesAt: 2 } as PptxGenJS.IChartOpts).valueAxes[0]?.categoryAxisCrossing).toEqual({ kind: "value", value: 2 });
         expect(secondary({ catAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts).categoryAxis.reversed).toBe(true);
-        expect(() => secondary({ catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts)).toThrow("valAxes[secondary][catAxisCrossesAt]");
+        // PptxGenJS writes catAxisCrossesAt on both value axes (makeValAxis): LibreOffice 26.2.6 draws both at that
+        // category, overlapping (#591).
+        expect(secondary({ catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts).categoryAxis.valueAxisCrossing).toEqual({ kind: "category", index: 1 });
     });
 
     test("lays a date axis out as a time line, as LibreOffice 26.2.6 does (#580)", () => {
@@ -2330,6 +2444,9 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "weeks" })).toThrow("catAxisBaseTimeUnit");
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 1.5 })).toThrow("whole number");
         expect(() => normalizeChart("bar3D", dates(months), { catAxisMinVal: 1 })).toThrow("catAxisMinVal[bar3D]");
+        // A data table on a slot per category names its columns by date (#593); one with empty slots is not measured.
+        expect(normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", showDataTable: true }).dataTable).toBeDefined();
+        expect(() => normalizeChart("line", dates(["45292", "45352"]), { catLabelFormatCode: "mmm-yy", showDataTable: true })).toThrow("showDataTable[date axis with empty slots]");
         // On a text axis catAxisMinVal, catAxisMaxVal and catAxisMultiLevelLabels change nothing in LibreOffice.
         expect(normalizeChart("bar", quarters, { catAxisMinVal: 2, catAxisMaxVal: 3, catAxisMultiLevelLabels: true }).categoryAxis.dateSlots).toBeUndefined();
         // A scatter chart's x axis takes the bounds and the step.

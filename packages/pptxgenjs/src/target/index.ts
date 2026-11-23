@@ -291,6 +291,16 @@ export type RenderingTargetProfile = {
      */
     readonly readsDataTableFormatCode: boolean;
     /**
+     * Whether every line series of a combo chart is smoothed as its first line type's `lineSmooth` says (each type's
+     * `<c:smooth>`), or each as its own type's (`NormalizedChartSeries.style.lineSmooth`).
+     */
+    readonly comboLineSmoothFromFirstLineType: boolean;
+    /**
+     * Whether a combo chart type with `secondaryCatAxis` draws a second category axis (`catAxes[1]`, its own
+     * `<c:catAx>`), or none; the renderers draw none, so a target that draws it rejects the option.
+     */
+    readonly drawsSecondaryCategoryAxis: boolean;
+    /**
      * Whether a value axis divides its labels by `valAxisDisplayUnit` and prints the unit's name for
      * `valAxisDisplayUnitLabel` (`<c:dispUnits>`), or prints the values as they are (`NormalizedChartValueAxis.displayUnit`).
      */

@@ -397,6 +397,12 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // shortcut: not measured on PowerPoint, so LibreOffice's values (#581, #583); measure them with the copt decks.
     readsSeriesLabelSkip: false,
     readsDataTableFormatCode: false,
+    // Its PDF export of a combo chart with a bar type and two line types, `lineSmooth` on the second only, smooths the
+    // second line and not the first: each type keeps its own `<c:smooth>` (#594).
+    comboLineSmoothFromFirstLineType: false,
+    // Its PDF export of a bar and line combo whose line type has `secondaryCatAxis`, with `catAxes: [{}, {}]`, draws a
+    // second row of category names under the first (#594), which the renderers do not draw, so the option is rejected.
+    drawsSecondaryCategoryAxis: true,
     // Column charts with `valAxisDisplayUnit: "thousands"` (values 3000 to 7000) and `"hundreds"` (300 to 700) number
     // both axes 0..8, and `valAxisDisplayUnitLabel` prints "Thousands" beside the axis (#566).
     // shortcut: the name is drawn level above the axis, where PowerPoint turns it upright left of the axis; turn it when

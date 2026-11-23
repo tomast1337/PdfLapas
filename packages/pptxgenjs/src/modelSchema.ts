@@ -294,6 +294,18 @@ const chart = z.strictObject({
             pointLineColors: z.array(cssColor).optional(),
             dataLabels: dataLabels.optional(),
             pointFills: z.array(cssColor).optional(),
+            style: z
+                .strictObject({
+                    colorOpacity: z.number().min(0).max(1),
+                    dataBorder: z.strictObject({ color: cssColor, width: nonNegative }).optional(),
+                    lineSmooth: z.boolean(),
+                    lineSymbol: z.enum(["circle", "dash", "diamond", "dot", "none", "square", "triangle"]),
+                    lineSymbolSize: nonNegative,
+                    lineSymbolLineColor: cssColor.optional(),
+                    lineSymbolLineSize: nonNegative,
+                    lineSize: nonNegative,
+                })
+                .optional(),
         }),
     ),
     colors: z.array(cssColor),
@@ -355,7 +367,7 @@ const chart = z.strictObject({
         lineWidth: nonNegative,
         lineStyle: z.enum(["solid", "dash", "dot"]),
         minorTickMark: tickMark,
-        valueAxisCrossing: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("max") }), z.strictObject({ kind: z.literal("category"), index: integerFrom(0) })]).optional(),
+        valueAxisCrossing: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("max") }), z.strictObject({ kind: z.literal("category"), index: integerFrom(0) }), z.strictObject({ kind: z.literal("value"), value: finite })]).optional(),
         gridLineColor: cssColor,
         gridLineWidth: nonNegative,
         gridLineStyle: z.enum(["solid", "dash", "dot", "none"]),

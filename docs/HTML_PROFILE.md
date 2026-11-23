@@ -1028,6 +1028,17 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartSeries.automaticPointFill`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.pointLineColors`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeries.dataLabels`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeries.style`                                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.colorOpacity`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.dataBorder`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.dataBorder.color`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.dataBorder.width`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSmooth`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSymbol`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSymbolSize`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSymbolLineColor`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSymbolLineSize`                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartSeriesStyle.lineSize`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colors`                                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.colorOpacity`                                   | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.showLegend`                                     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1201,6 +1212,8 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartCatAxis.valueAxisCrossing<max>.kind`             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.valueAxisCrossing<category>.kind`        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.valueAxisCrossing<category>.index`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.valueAxisCrossing<value>.kind`           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.valueAxisCrossing<value>.value`          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChart.seriesAxis`                                     | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.hidden`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartSeriesAxis.reversed`                             | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

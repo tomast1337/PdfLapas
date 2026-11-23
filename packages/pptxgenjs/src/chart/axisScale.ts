@@ -40,6 +40,9 @@ export function automaticAxisInterval(minimum: number, maximum: number, maxIncre
     return decimal(magnitude * 100);
 }
 
+/** The step between an axis's labels: automatic in at most maxIncrements steps, or fixed by the caller. */
+export type AxisStep = { kind: "automatic"; maxIncrements: number } | { kind: "fixed"; interval: number };
+
 /** The bound an option fixes on an axis whose other bound is automatic, or none. */
 export type FixedAxisBound = { kind: "none" } | { kind: "minimum"; value: number } | { kind: "maximum"; value: number };
 
@@ -55,9 +58,11 @@ export type FixedAxisBound = { kind: "none" } | { kind: "minimum"; value: number
  *    bound (from 0 when none is fixed), then moves one interval further where the data comes within borderRatio of the
  *    range of it, unless it is 0. More than maxIncrements steps take the next interval in 1, 2, 5 x 10^k.
  * A scatter chart's x axis passes its data range, with no fixed bound and not toward 0. A renderer that knows the drawn
- * axis passes the steps its labels leave room for as maxIncrements (the target's valueAxisStepRoom, #585).
+ * axis passes the steps its labels leave room for as maxIncrements (the target's valueAxisStepRoom, #585). A fixed step
+ * (valAxisMajorUnit) is the interval, and the automatic bounds round out to it: 3..8 by 2 is 0..10 in LibreOffice
+ * 26.2.6, -15..30 by 7 is -21..35 (#595).
  */
-export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBound, towardZero: boolean, maxIncrements: number = PPTX_DEFAULTS.chart.automaticScale.maxIncrements): AxisScale {
+export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBound, towardZero: boolean, step: AxisStep = { kind: "automatic", maxIncrements: PPTX_DEFAULTS.chart.automaticScale.maxIncrements }): AxisScale {
     const { borderRatio, wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
     let autoMinimum = fixed.kind !== "minimum";
     let autoMaximum = fixed.kind !== "maximum";
@@ -100,7 +105,7 @@ export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBo
 
     // The intervals count from the fixed bound, so a fixed minimum of 7 draws 7, 12, 17 and not 10, 15.
     const base = !autoMinimum ? tempMinimum : !autoMaximum ? tempMaximum : 0;
-    let interval = automaticAxisInterval(tempMinimum, tempMaximum, maxIncrements);
+    let interval = step.kind === "fixed" ? step.interval : automaticAxisInterval(tempMinimum, tempMaximum, step.maxIncrements);
     let scale: AxisScale = { minimum: low, maximum: high, interval };
 
     // Each pass at least doubles the interval, so three passes reach one that fits.
@@ -127,7 +132,7 @@ export function automaticAxisScale(low: number, high: number, fixed: FixedAxisBo
         // `+ 0` turns a negated 0 into 0, so no label reads -0.
         scale = negate ? { minimum: -maximum + 0, maximum: -minimum + 0, interval } : { minimum, maximum, interval };
 
-        if (Math.floor((maximum - minimum) / interval + STEP_EPSILON) <= maxIncrements) {
+        if (step.kind === "fixed" || Math.floor((maximum - minimum) / interval + STEP_EPSILON) <= step.maxIncrements) {
             return scale;
         }
 

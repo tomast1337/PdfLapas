@@ -347,6 +347,20 @@ export type NormalizedChartSeries = {
     dataLabels?: NormalizedChartDataLabels;
     /** Each point's own fill, by point index (a filled `<c:dPt>`), when `varyColors` is set; absent: the chart's colors. */
     pointFills?: CssColor[];
+    /** The series' own fill opacity, outline, line and markers (a combo chart type's own options); absent: the chart's. */
+    style?: NormalizedChartSeriesStyle;
+};
+
+/** How a series is filled, outlined and lined, with the same meaning as the chart's fields of the same names. */
+export type NormalizedChartSeriesStyle = {
+    colorOpacity: number;
+    dataBorder?: { color: CssColor; width: number };
+    lineSmooth: boolean;
+    lineSymbol: "circle" | "dash" | "diamond" | "dot" | "none" | "square" | "triangle";
+    lineSymbolSize: number;
+    lineSymbolLineColor?: CssColor;
+    lineSymbolLineSize: number;
+    lineSize: number;
 };
 
 export type NormalizedChartValueAxis = {
@@ -471,9 +485,10 @@ export type NormalizedChartCatAxis = {
     minorTickMark: "none" | "inside" | "outside" | "cross";
     /**
      * Where the value axis crosses this axis (the value axis's `<c:crosses>` or `<c:crossesAt>`): after the last
-     * category, or before the one at this 0-based index; absent: before the first.
+     * category, before the one at this 0-based index, or on a scatter or bubble chart's x axis at this x value; absent:
+     * before the first (on an x axis, at 0 or the end nearer it).
      */
-    valueAxisCrossing?: { kind: "max" } | { kind: "category"; index: number };
+    valueAxisCrossing?: { kind: "max" } | { kind: "category"; index: number } | { kind: "value"; value: number };
     gridLineColor: CssColor;
     gridLineWidth: number;
     gridLineStyle: "solid" | "dash" | "dot" | "none";

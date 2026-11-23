@@ -472,6 +472,16 @@ contract includes:
   `chartColors[index]` (a 0.4pt hairline, as LibreOffice draws an `<a:ln>` without a width). PptxGenJS
   writes that point (and each point of a single-series bar chart with `lineSize: 0`) without a fill, so
   LibreOffice fills it in the theme's accent1, 4472C4, and keys the legend in the series color.
+- Combo charts: each chart type styles its own series (`chartColorsOpacity`, `dataBorder`, line and
+  marker options, `invertedColors`). Smoothing follows the first line type's `lineSmooth` on the
+  LibreOffice target and each type's own on the PowerPoint one. A fixed `valAxisMajorUnit` widens the
+  automatic bounds to whole steps (3..8 by 2 is 0..10). `valAxes` entries take the chart-level
+  `valAxis*` options under their own, as PptxGenJS writes them.
+- Secondary axes: a type with `secondaryValAxis` gets a value axis on the right; `secondaryCatAxis`
+  (with `catAxes[1]`) draws nothing more on the LibreOffice target and is rejected on the PowerPoint
+  one, which draws a second row of category names. PowerPoint cannot open PptxGenJS 4.0.1's XML for a
+  secondary value axis without a secondary category axis (its `<c:crossAx>` names an axis it never
+  writes), so such charts follow LibreOffice on both targets.
 - Chart/plot borders, gridline defaults, format codes, and both complete color
   palettes used by PptxGenJS.
 

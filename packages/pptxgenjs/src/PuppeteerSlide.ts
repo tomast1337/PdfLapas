@@ -243,8 +243,11 @@ export class PuppeteerSlide implements PptxSlide {
         );
         const series: NormalizedChartSeries[] = [];
 
-        // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill).
-        for (const { automaticPointFill, ...item } of normalized.series) {
+        // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill);
+        // a combo chart type's own marker outline goes where the chart's does (drawsChartMarkerOutline).
+        for (const { automaticPointFill, ...entry } of normalized.series) {
+            const item = entry.style && !target.drawsChartMarkerOutline ? { ...entry, style: { ...entry.style, lineSymbolLineSize: 0 } } : entry;
+
             series.push(target.chartPointKeepsSeriesFill || !automaticPointFill ? item : { ...item, automaticPointFill });
         }
 

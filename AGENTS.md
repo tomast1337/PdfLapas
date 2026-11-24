@@ -109,6 +109,12 @@ mutable state: the `PuppeteerGen` presentation, `WasmRenderer` (owns a wasm inst
 polymorphism. Add an interface when two implementations exist or when it is a published contract for
 third parties: `PresentationRenderer` in `@pdflapas/model` qualifies.
 
+**Caller data is never modified.** The public API never writes onto, sorts or splices what the caller
+passes, and never keeps a live reference to it that is read later: code that needs to change it or
+read it at draw time copies it once at the API call (deep where nested values change). Reusing one
+options object across calls draws exactly as copies would, even where PptxGenJS writes onto it
+(`tests/callerInput.test.ts`); the run options replay is the open exception (#645).
+
 **Explicit state by default.** Prefer state that is created by the caller and passed down, so a
 function's inputs are visible at its call site. Module-level mutable state (`let` at module scope, a
 module-level `Map`/`WeakMap` that is written to, a Rust `static` with interior mutability) is a cost,

@@ -388,6 +388,30 @@ describe("Puppeteer print workarounds", () => {
         expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
     }, 60_000);
 
+    test("draws a vertical box's underline and strike across its line, left of the baseline for the underline (#570)", async () => {
+        for (const vert of ["vert", "vert270"] as const) {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addText([{ text: "Underline", options: { strike: "sngStrike", underline: { style: "sng" } } }], { x: 1, y: 1, w: 1, h: 4, fontFace: "Arial", fontSize: 24, vert });
+            const document = await presentation.toHtml();
+            const [, thickness = "", offset = ""] = document.html.match(/text-decoration-thickness: ([\d.]+)em; text-underline-offset: ([\d.]+)em;/) ?? [];
+            const [, strikeOffset = "", strikeThickness = ""] = document.html.match(/data-strike-band="(-[\d.]+)em ([\d.]+)em"/) ?? [];
+            const content = pdfContentStreams(await new PuppeteerPdfRenderer().render(document)).join("\n");
+            // The SVG's group turned a quarter clockwise (`0 scale -scale 0 x y cm`), so a fill's y is across the line,
+            // growing leftwards; the text's `cm` is turned the same way, its baseline the `Tm`'s y.
+            const [, scale = "", x = "", underlineTop = "", underlineHeight = "", strikeTop = "", strikeHeight = ""] =
+                content.match(/\n0 ([\d.]+) -\1 0 ([\d.]+) [\d.]+ cm\n(?:(?!Q\n).*\n)*?[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n/) ?? [];
+            const [, textScale = "", textX = "", text = ""] = content.match(/\n0 ([\d.]+) -\1 0 ([\d.]+) -?[\d.]+ cm\n(?:(?!Q\n).*\n)*?1 0 0 -1 [\d.]+ ([\d.]+) Tm\n/) ?? [];
+            const baseline = (Number(x) - (Number(textX) - Number(textScale) * Number(text))) / Number(scale);
+            const size = inchesToPixels(24 / 72);
+
+            expect(Number(scale)).toBeGreaterThan(0);
+            expect(Math.abs(Number(underlineTop) - baseline - Number(offset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
+            expect(Math.abs(Number(strikeTop) - baseline - Number(strikeOffset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
+            expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
+        }
+    }, 60_000);
+
     test("runs a line-band underline's dash pattern on across runs of one look, and starts it again at a colour change (#397)", async () => {
         // A face no runner has, its post band (Arial's) given through fontMetrics, so the HTML states the band in em and
         // the print step draws the dashes whatever fonts are installed (#391).

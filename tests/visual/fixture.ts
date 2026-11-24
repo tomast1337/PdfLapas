@@ -2358,6 +2358,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartAxisPlacementFixture(presentation);
     populateChartLabelsAtLineFixture(presentation);
     populateChartDateSlotFixture(presentation);
+    populateVerticalDecorationFixture(presentation);
 }
 
 /**
@@ -3895,4 +3896,45 @@ export function populateChartDateSlotFixture(presentation: Presentation): void {
         catAxisMinorUnit: 1,
         catAxisMinorTimeUnit: "months",
     });
+}
+
+/**
+ * Underline and strike in vertical text (#570): the Puppeteer print step draws a `vert` box's pieces as it draws a
+ * horizontal one's, along its lines and left of the baseline, on the glyphs' under side. One line per box, in a box as
+ * wide as the line (1.2 x 20pt, 32px), so the anchor across the line has no room to act: Chromium anchors a `vert`
+ * box's lines at its left and orders them left to right, where LibreOffice and pdf-core start at the right (#654).
+ * Page score only: the print step places only horizontal lines on data-line-baseline, so Chromium's vertical line sits
+ * 1px right of LibreOffice's and a tight crop of the box scores 0.11 to 0.12 (0.07 shifted back). A parity slide after
+ * the others (no page number moves).
+ */
+export function populateVerticalDecorationFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    const boxes: { x: number; runs: PptxGenJS.TextProps[] }[] = [
+        {
+            x: 1.5,
+            runs: [
+                { text: "Lorem ipsum ", options: { underline: { style: "sng" } } },
+                { text: "dolor", options: { strike: "sngStrike" } },
+            ],
+        },
+        {
+            x: 3.5,
+            runs: [
+                { text: "Sit amet ", options: { underline: { style: "dbl", color: "C00000" } } },
+                { text: "elit", options: { strike: "dblStrike" } },
+            ],
+        },
+        {
+            x: 5.5,
+            runs: [
+                { text: "Consectetur ", options: { underline: { style: "dash" } } },
+                { text: "adipiscing", options: { underline: { style: "wavy" } } },
+            ],
+        },
+    ];
+
+    slide.addText("Underline and strike in vertical text", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    for (const { x, runs } of boxes) {
+        slide.addText(runs, { x, y: 1, w: 1 / 3, h: 4.2, vert: "vert", fontFace: "Arial", fontSize: 20, color: "363636", align: "center", valign: "middle", margin: 0 });
+    }
 }

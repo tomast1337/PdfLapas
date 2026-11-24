@@ -185,7 +185,25 @@ type SvgPainter = {
 /** zrender prefixes SVG ids with its instance number (zr<N>-), taken from a process-wide counter. */
 const ZRENDER_ID_PREFIX = /^zr\d+-/;
 
-function renderEChartsSvg(width: number, height: number, option: EChartsCoreOption): string {
+/** An ECharts axis by its component and index. */
+type EChartsAxisRef = { axis: "xAxis" | "yAxis"; index: number };
+
+/**
+ * Labels drawn beside an axis line inside the plot (`nextTo`, #584). ECharts keeps an onZero axis's labels at the plot's
+ * edge, so they are a hidden copy of that axis on the edge's side (`axisLabelsCopy`), moved onto the line once the plot
+ * is laid out: the line stands at `at` on the crossed axis, the edge at `edge`.
+ */
+type LabelsAtLine = { labels: EChartsAxisRef; crossed: EChartsAxisRef; at: number; edge: number };
+
+/**
+ * A copy of an axis that draws only its labels, hidden until renderEChartsSvg moves it onto its line (LabelsAtLine). The
+ * labels go over the series (ECharts draws them at z 2), as LibreOffice 26.2.6 prints a negative column's name over it.
+ */
+function axisLabelsCopy<Axis extends object>(axis: Axis, position: "top" | "bottom" | "left" | "right") {
+    return { ...axis, show: false, position, z: 3, name: undefined, axisLine: { show: false, onZero: false }, axisTick: { show: false }, minorTick: { show: false }, splitLine: { show: false } };
+}
+
+function renderEChartsSvg(width: number, height: number, option: EChartsCoreOption, labelsAtLines: readonly LabelsAtLine[]): string {
     // zrender checks the process-global `document` when measuring text. The
     // visual oracle installs jsdom globally for PptxGenJS, but jsdom exposes a
     // canvas whose getContext is intentionally unimplemented. Hide only that
@@ -203,6 +221,26 @@ function renderEChartsSvg(width: number, height: number, option: EChartsCoreOpti
     try {
         instance = init(null, null, { renderer: "svg", ssr: true, width, height });
         instance.setOption({ ...option, animation: false });
+
+        // Each labels copy shows, moved from the edge onto its line (a negative offset moves an axis into the plot).
+        if (labelsAtLines.length > 0) {
+            const moved: { xAxis: Record<string, unknown>[]; yAxis: Record<string, unknown>[] } = { xAxis: [], yAxis: [] };
+
+            for (const { labels, crossed, at, edge } of labelsAtLines) {
+                const finder = crossed.axis === "xAxis" ? { xAxisIndex: crossed.index } : { yAxisIndex: crossed.index };
+                const axes = moved[labels.axis];
+
+                // setOption merges axes by index, so the ones before it take an empty patch.
+                while (axes.length <= labels.index) {
+                    axes.push({});
+                }
+
+                axes[labels.index] = { show: true, offset: -Math.abs(instance.convertToPixel(finder, at) - instance.convertToPixel(finder, edge)) };
+            }
+
+            instance.setOption(moved);
+        }
+
         // Not renderToSVGString(): it cannot turn off the emphasis :hover CSS, whose class names
         // (zr<N>-cls-<M>) come from process-wide counters and made toHtml() differ between runs (#66).
         // A printed chart has no hover. `as`: ssr with renderer "svg" always creates zrender's SVGPainter.
@@ -757,6 +795,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         },
     } as const;
     let option: EChartsCoreOption;
+    const labelsAtLines: LabelsAtLine[] = [];
 
     if (chart.type === "pie" || chart.type === "doughnut") {
         const [series] = chart.series;
@@ -1237,23 +1276,23 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // end, or a value inside, the zero of a hidden copy of the crossed axis shifted by it (ECharts puts an axis line
         // on another axis's zero only), as on a category chart. LibreOffice 26.2.6 and PowerPoint draw the y axis at x 3
         // and the x axis at y 20 for catAxisCrossesAt 3 and valAxisCrossesAt 20; PowerPoint draws a bubble chart's y axis
-        // half a category early (bubbleCategoryCrossingShift, applied in the model). shortcut: the labels stay at the plot's edge, where
-        // LibreOffice draws them beside the moved line (#584).
+        // half a category early (bubbleCategoryCrossingShift, applied in the model). `nextTo` labels follow the moved line
+        // (#584).
         const yAxisModel = scaledValueAxes[0];
         const yAxisCrossing = categoryAxisModel.valueAxisCrossing;
         const xAxisCrossing = yAxisModel?.categoryAxisCrossing;
         const hiddenXAxes: Record<string, unknown>[] = [];
         const hiddenYAxes: Record<string, unknown>[] = [];
         // The y axis: at the x axis's high end, or on a hidden x axis's zero.
-        let yAxisPlacement: { kind: "default" } | { kind: "high" } | { kind: "on-zero" } = { kind: "default" };
+        let yAxisPlacement: { kind: "default" } | { kind: "high" } | { kind: "on-zero"; at: number } = { kind: "default" };
         // The x axis: at the y axis's low or high end, or on a hidden y axis's zero.
-        let xAxisPlacement: { kind: "default" } | { kind: "low" } | { kind: "high" } | { kind: "on-zero" } = { kind: "default" };
+        let xAxisPlacement: { kind: "default" } | { kind: "low" } | { kind: "high" } | { kind: "on-zero"; at: number } = { kind: "default" };
 
         if (yAxisCrossing?.kind === "max" || (yAxisCrossing?.kind === "value" && xScale && yAxisCrossing.value >= xScale.maximum)) {
             yAxisPlacement = { kind: "high" };
         } else if (yAxisCrossing?.kind === "value" && xScale && yAxisCrossing.value > xScale.minimum) {
             hiddenXAxes.push({ type: "value", show: false, min: xScale.minimum - yAxisCrossing.value, max: xScale.maximum - yAxisCrossing.value, inverse: categoryAxisModel.reversed === true, splitLine: { show: false } });
-            yAxisPlacement = { kind: "on-zero" };
+            yAxisPlacement = { kind: "on-zero", at: yAxisCrossing.value };
         }
 
         if (yAxisModel && xAxisCrossing !== undefined) {
@@ -1267,7 +1306,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 xAxisPlacement = { kind: "low" };
             } else {
                 hiddenYAxes.push({ type: "value", show: false, min: low - crossValue, max: high - crossValue, inverse: yAxisModel.reversed === true, splitLine: { show: false } });
-                xAxisPlacement = { kind: "on-zero" };
+                xAxisPlacement = { kind: "on-zero", at: crossValue };
             }
         }
 
@@ -1338,14 +1377,34 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             });
         }
 
+        // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine. A hidden axis to cross
+        // on is the second of its direction.
+        const xAxes: Record<string, unknown>[] = [xAxis, ...hiddenXAxes];
+        const yAxes: Record<string, unknown>[] = [yAxis, ...hiddenYAxes];
+        // `nextTo` labels beside a line inside the plot (LabelsAtLine): where it crosses, or at the other axis's 0 by
+        // default (ECharts' onZero, Office's autoZero), as LibreOffice 26.2.6 draws a scatter chart's x and y labels for
+        // catAxisCrossesAt 3 and valAxisCrossesAt 5 (#584).
+        const xLineAt = xAxisPlacement.kind === "on-zero" ? xAxisPlacement.at : xAxisPlacement.kind === "default" && yAxisModel && yAxisModel.minimum < 0 && yAxisModel.maximum > 0 ? 0 : undefined;
+        const yLineAt = yAxisPlacement.kind === "on-zero" ? yAxisPlacement.at : yAxisPlacement.kind === "default" && xScale && xScale.minimum < 0 && xScale.maximum > 0 ? 0 : undefined;
+
+        if (yAxisModel && xLineAt !== undefined && categoryAxisModel.labelPosition === "nextTo" && !categoryAxisModel.hidden) {
+            labelsAtLines.push({ labels: { axis: "xAxis", index: xAxes.length }, crossed: { axis: "yAxis", index: 0 }, at: xLineAt, edge: yAxisModel.reversed ? yAxisModel.maximum : yAxisModel.minimum });
+            xAxes.push(axisLabelsCopy(xAxis, "bottom"));
+            xAxes[0] = { ...xAxis, axisLabel: { ...xAxis.axisLabel, show: false } };
+        }
+
+        if (xScale && yAxisModel && firstYAxis && yLineAt !== undefined && yAxisModel.labelPosition === "nextTo" && !yAxisModel.hidden) {
+            labelsAtLines.push({ labels: { axis: "yAxis", index: yAxes.length }, crossed: { axis: "xAxis", index: 0 }, at: yLineAt, edge: categoryAxisModel.reversed ? xScale.maximum : xScale.minimum });
+            yAxes.push(axisLabelsCopy(yAxis, "left"));
+            yAxes[0] = { ...yAxis, axisLabel: { ...firstYAxis.axisLabel, show: false } };
+        }
+
         option = {
             ...common,
             ...(graphics.length ? { graphic: graphics } : {}),
             grid,
-            // PptxGenJS writes the x axis (a c:valAx) with catGridLine and the y axis with valGridLine.
-            // A hidden axis to cross on is the second of its direction.
-            xAxis: hiddenXAxes.length > 0 ? [xAxis, ...hiddenXAxes] : xAxis,
-            yAxis: hiddenYAxes.length > 0 ? [yAxis, ...hiddenYAxes] : yAxis,
+            xAxis: xAxes.length > 1 ? xAxes : xAxis,
+            yAxis: yAxes.length > 1 ? yAxes : yAxis,
             series: scatter,
         };
     } else {
@@ -1396,8 +1455,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // line they are a second category axis of their own, as LibreOffice keeps a column chart's labels below its
         // negative values (its default `low`).
         const labelSide = categoryAxisModel.labelPosition === "high" ? highSide : lowSide;
-        // shortcut: ECharts keeps an onZero axis's labels at the plot edge, so `nextTo` labels stay at the low end rather
-        // than beside a line inside the plot; follow the line once the plot height is known here.
+        // `nextTo` labels beside a line inside the plot follow it (LabelsAtLine, below).
         const labelsApart = (categoryAxisModel.labelPosition === "low" && lineAt !== "low") || (categoryAxisModel.labelPosition === "high" && lineAt !== "high");
         // A crossing inside the axis other than 0 moves the line onto the zero of a hidden copy of the value axis shifted
         // by it, as ECharts puts an axis line on another axis's zero only.
@@ -1445,6 +1503,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // starts at the other side.
         const valueCrossing = categoryAxisModel.valueAxisCrossing;
         const valueAtEnd = (valueCrossing?.kind === "max") !== (categoryAxisModel.reversed === true);
+        const crossingAxisIndex = categoryAxes.length;
 
         if (valueCrossing?.kind === "category") {
             categoryAxes.push({ type: "value", show: false, min: -valueCrossing.index, max: categories.length - valueCrossing.index, inverse: categoryAxisModel.reversed === true, splitLine: { show: false } });
@@ -1770,6 +1829,39 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             });
         }
 
+        // `nextTo` labels beside a line inside the plot (LabelsAtLine): the category labels at the value axis's crossing
+        // (0 by default), each value axis's at a catAxisCrossesAt category. LibreOffice 26.2.6 draws them there on column,
+        // line and horizontal bar charts with values 5, -3, 7, -6, valAxisCrossesAt 3 and catAxisCrossesAt 2 (#584).
+        const categoryDirection = horizontal ? ("yAxis" as const) : ("xAxis" as const);
+        const valueDirection = horizontal ? ("xAxis" as const) : ("yAxis" as const);
+
+        if (categoryAxisModel.labelPosition === "nextTo" && lineAt === "inside" && !categoryAxisModel.hidden) {
+            labelsAtLines.push({ labels: { axis: categoryDirection, index: categoryAxes.length }, crossed: { axis: valueDirection, index: 0 }, at: crossValue, edge: low });
+            categoryAxes.push(axisLabelsCopy(categoryAxis, lowSide));
+            categoryAxes[0] = { ...categoryAxis, axisLabel: { ...categoryAxis.axisLabel, show: false } };
+        }
+
+        for (const [index, axis] of scaledValueAxes.entries()) {
+            const line = valueAxisList[index];
+
+            if (valueCrossing?.kind !== "category" || index > 1 || !line || axis.labelPosition !== "nextTo" || axis.hidden) {
+                continue;
+            }
+
+            // The primary axis's labels left of its line (below a horizontal chart's), the secondary's right (above); the
+            // edge on that side is the crossing axis's low end, or its high end when the categories run reversed.
+            const primary = index === 0;
+
+            labelsAtLines.push({
+                labels: { axis: valueDirection, index: valueAxisList.length },
+                crossed: { axis: categoryDirection, index: crossingAxisIndex },
+                at: 0,
+                edge: primary !== (categoryAxisModel.reversed === true) ? -valueCrossing.index : categories.length - valueCrossing.index,
+            });
+            valueAxisList.push(axisLabelsCopy(line, horizontal ? (primary ? "bottom" : "top") : primary ? "left" : "right"));
+            valueAxisList[index] = { ...line, axisLabel: { ...valueAxes[index]?.axisLabel, show: false } };
+        }
+
         const categoryAxisOption = categoryAxes.length === 1 ? categoryAxis : categoryAxes;
         const valueAxisOptionList = valueAxisList.length === 1 ? primaryValueAxis : valueAxisList;
 
@@ -1783,14 +1875,14 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         };
     }
 
-    return chartContainer(renderEChartsSvg(width, height, option), style, chart.altText, idScope);
+    return chartContainer(renderEChartsSvg(width, height, option, labelsAtLines), style, chart.altText, idScope);
 }
 
 /** Resolves caller renderer input to SVG source so the slide model stores only data. */
 export function renderChartExtensionSvg(input: ChartExtensionInput, style: NormalizedObjectStyle): string {
     const { width, height } = chartSize(style);
 
-    return input.renderer === "svg" ? input.svg : renderEChartsSvg(width, height, input.option as EChartsCoreOption);
+    return input.renderer === "svg" ? input.svg : renderEChartsSvg(width, height, input.option as EChartsCoreOption, []);
 }
 
 export function renderChartExtension(svg: string, style: NormalizedObjectStyle, altText: string, idScope: string): Html {

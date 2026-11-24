@@ -453,7 +453,9 @@ export const PPTX_DEFAULTS = Object.freeze({
             labelBold: false,
             labelItalic: false,
             labelRotate: 0,
+            // makeValAxis: `valAxisLabelPos || (barDir === 'col' ? 'nextTo' : 'low')`, and `nextTo` on a scatter chart.
             labelPosition: "nextTo" as const,
+            barLabelPosition: "low" as const,
             labelFormatCode: "General",
             lineColor: "888888",
             lineWidthPt: 1,

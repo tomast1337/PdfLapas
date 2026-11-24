@@ -1061,7 +1061,7 @@ describe("chart normalization and rendering", () => {
     });
 
     test("numbers a scatter chart's x axis as PowerPoint does, from 0 by the room its labels leave (scatterXAxisScale, #616)", () => {
-        // The x axis's labels, the last ones ECharts writes (after the y axis's).
+        // The x axis's labels, the lowest texts (the y labels stand beside a y axis at x 0, #584).
         const xLabels = (target: "libreoffice" | "powerpoint", x: number[], wide: boolean, count: number): string[] => {
             const presentation = new PuppeteerGen(undefined, { target });
 
@@ -1074,8 +1074,19 @@ describe("chart normalization and rendering", () => {
                 { ...(wide ? { x: 0.6, y: 0.9, w: 8.8, h: 4.5 } : { x: 0.4, y: 0.9, w: 4.4, h: 4.1 }), catAxisLabelFontFace: "Arial", valAxisLabelFontFace: "Arial", lineSize: 0 },
             );
             const svg = renderedPage(presentation).querySelector(".slide-chart svg");
+            const texts = Array.from(svg?.querySelectorAll("text") ?? [], text => ({ content: text.textContent ?? "", y: Number(/translate\([-\d.]+ ([-\d.]+)\)/.exec(text.getAttribute("transform") ?? "")?.[1]) }));
+            const bottom = Math.max(...texts.map(text => text.y));
+            const labels: string[] = [];
 
-            return Array.from(svg?.querySelectorAll("text") ?? [], text => text.textContent ?? "").slice(-count);
+            for (const text of texts) {
+                if (text.y === bottom) {
+                    labels.push(text.content);
+                }
+            }
+
+            expect(labels).toHaveLength(count);
+
+            return labels;
         };
 
         // PowerPoint's PDF exports of these charts, 4.4 and 8.8 inches wide.
@@ -2536,6 +2547,69 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(Array.from(table?.querySelectorAll(".bar3d-table") ?? [], text => text.textContent)).toEqual(["Q1", "Q2", "Q3", "Q4", "Lorem", "3", "5", "4", "7", "Ipsum", "5", "2", "6", "4"]);
         expect(textsOf(table).filter(text => text === "Q1")).toHaveLength(1);
         expect(table?.querySelectorAll(".bar3d-table-rule")).toHaveLength(2);
+    });
+
+    test("draws nextTo labels beside an axis line inside the plot, as LibreOffice does (#584)", () => {
+        // An ECharts text's anchor, from its translate().
+        const at = (svg: Element | null, content: string) => {
+            const transform =
+                Array.from(svg?.querySelectorAll("text") ?? [])
+                    .find(text => text.textContent === content)
+                    ?.getAttribute("transform") ?? "";
+            const match = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform);
+
+            return { x: Number(match?.[1]), y: Number(match?.[2]) };
+        };
+        const rising = [{ name: "Lorem", labels: ["Q1", "Q2", "Q3", "Q4"], values: [2, 5, 8, 4] }];
+        const xy = [
+            { name: "X", values: [1, 2, 3, 4, 5] },
+            { name: "Lorem", values: [4, 9, 6, 8, 3] },
+        ];
+
+        // PptxGenJS writes value labels `low` on a horizontal bar chart and `nextTo` on a scatter chart whatever is set.
+        expect(normalizeChart("bar", quarters, { barDir: "bar" }).valueAxes[0]?.labelPosition).toBe("low");
+        expect(normalizeChart("bar", quarters).valueAxes[0]?.labelPosition).toBe("nextTo");
+        expect(normalizeChart("scatter", xy, { valAxisLabelPos: "low" }).valueAxes[0]?.labelPosition).toBe("nextTo");
+
+        // Column labels `nextTo` stand just under the line at 0, `low` ones at the bottom; the title stays at the bottom.
+        const nextTo = chartSvg("line", quarters, { catAxisLabelPos: "nextTo", showCatAxisTitle: true, catAxisTitle: "Ipsum" });
+        const low = chartSvg("line", quarters, {});
+
+        expect(at(nextTo, "Q1").y - at(nextTo, "0").y).toBeGreaterThan(0);
+        expect(at(nextTo, "Q1").y - at(nextTo, "0").y).toBeLessThan(25);
+        expect(at(low, "Q1").y).toBeGreaterThan(at(low, "-2").y);
+        expect(at(nextTo, "Ipsum").y).toBeGreaterThan(at(nextTo, "-2").y);
+        // A horizontal bar chart's names (nextTo by default) stand left of the line at 0.
+        const bar = chartSvg("bar", quarters, { barDir: "bar" });
+
+        expect(Math.abs(at(bar, "Q1").x - at(bar, "0").x)).toBeLessThan(20);
+        // The category labels follow valAxisCrossesAt 3, and the value labels catAxisCrossesAt 2.
+        const valueCrossed = chartSvg("bar", rising, { catAxisLabelPos: "nextTo", valAxisCrossesAt: 3 } as PptxGenJS.IChartOpts);
+
+        expect(at(valueCrossed, "Q1").y - at(valueCrossed, "3").y).toBeGreaterThan(0);
+        expect(at(valueCrossed, "Q1").y - at(valueCrossed, "3").y).toBeLessThan(25);
+        const categoryCrossed = chartSvg("bar", rising, { catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
+
+        expect(at(categoryCrossed, "0").x).toBeGreaterThan(at(categoryCrossed, "Q1").x);
+        expect(at(categoryCrossed, "0").x).toBeLessThan(at(categoryCrossed, "Q2").x);
+        // A horizontal bar chart's `low` value labels stay at the bottom; `nextTo` ones go between Q1 and Q2.
+        const barLow = chartSvg("bar", rising, { barDir: "bar", catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
+        const barNextTo = chartSvg("bar", rising, { barDir: "bar", catAxisCrossesAt: 2, valAxisLabelPos: "nextTo" } as PptxGenJS.IChartOpts);
+
+        expect(at(barLow, "0").y).toBeGreaterThan(at(barLow, "Q1").y);
+        expect(at(barNextTo, "0").y).toBeLessThan(at(barNextTo, "Q1").y);
+        expect(at(barNextTo, "0").y).toBeGreaterThan(at(barNextTo, "Q2").y);
+        // A scatter chart's x labels follow valAxisCrossesAt 5, its y labels catAxisCrossesAt 3.
+        const scatter = chartSvg("scatter", xy, { catAxisCrossesAt: 3, valAxisCrossesAt: 5 } as PptxGenJS.IChartOpts);
+
+        // Both axes number 1 to 5, so y 5 is a step below 6 and x 3 halfway between 2.5 and 3.5.
+        const yFive = 2 * at(scatter, "6").y - at(scatter, "7").y;
+        const xThree = (at(scatter, "2.5").x + at(scatter, "3.5").x) / 2;
+
+        expect(at(scatter, "1.5").y - yFive).toBeGreaterThan(0);
+        expect(at(scatter, "1.5").y - yFive).toBeLessThan(25);
+        expect(xThree - at(scatter, "8").x).toBeGreaterThan(0);
+        expect(xThree - at(scatter, "8").x).toBeLessThan(20);
     });
 
     test("normalizes the data table, with borders and keys where the target draws them (#567)", () => {

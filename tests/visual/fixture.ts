@@ -2353,6 +2353,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartTypeOptionFixture(presentation);
     populateChartOptionSourceFixture(presentation);
     populateChartAxisPlacementFixture(presentation);
+    populateChartLabelsAtLineFixture(presentation);
 }
 
 /**
@@ -3821,4 +3822,29 @@ export function populateChartAxisPlacementFixture(presentation: Presentation): v
         valAxes: [{}, {}],
         catAxes: [{}, { catAxisLabelColor: "C00000", showCatAxisTitle: true, catAxisTitle: "Secondary" }],
     });
+}
+
+/**
+ * `nextTo` axis labels beside an axis line inside the plot (#584): LibreOffice 26.2.6 draws a column chart's category
+ * labels under the line at 0, a horizontal bar chart's names (nextTo by default) left of it, both over the bars, and
+ * labels that follow valAxisCrossesAt and catAxisCrossesAt. Two parity slides after the others (no page number moves),
+ * two charts each: four on one page put it over the 0.12 page limit on plot-area spacing alone, each chart's crop within
+ * 0.08.
+ */
+export function populateChartLabelsAtLineFixture(presentation: Presentation): void {
+    const atZero = presentation.addSlide();
+    const atCrossing = presentation.addSlide();
+
+    atZero.addText("Axis labels beside a moved axis line", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    atCrossing.addText("Axis labels beside a crossing axis line", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const negative = [{ name: "Lorem", labels, values: [5, -3, 7, -6] }];
+    const rising = [{ name: "Lorem", labels, values: [2, 5, 8, 4] }];
+    // Light bars, as on the other chart slides: a pixel's shift of a saturated bar outweighs the labels this slide is for.
+    const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, chartColors: ["BDD7EE"], catAxisLabelFontFace: "Arial", valAxisLabelFontFace: "Arial" };
+
+    atZero.addChart("bar", negative, { ...shared, x: 0.4, y: 0.8, catAxisLabelPos: "nextTo" });
+    atZero.addChart("bar", negative, { ...shared, x: 5.2, y: 0.8, barDir: "bar" });
+    atCrossing.addChart("bar", rising, { ...shared, x: 0.4, y: 0.8, catAxisLabelPos: "nextTo", valAxisCrossesAt: 3, catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
+    atCrossing.addChart("bar", rising, { ...shared, x: 5.2, y: 0.8, barDir: "bar", valAxisLabelPos: "nextTo", catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
 }

@@ -1,4 +1,4 @@
-import type { NormalizedChart, NormalizedDecorationPiece } from "@pdflapas/model";
+import type { NormalizedChart, NormalizedChartStepRoomLength, NormalizedDecorationPiece } from "@pdflapas/model";
 import { LIBREOFFICE } from "./libreoffice";
 import { POWERPOINT } from "./powerpoint";
 
@@ -250,8 +250,9 @@ export type RenderingTargetProfile = {
      * label's width, on a vertical axis and on a horizontal one (`NormalizedChartValueAxis.automaticScale.stepRoom`).
      */
     readonly valueAxisStepRoom: {
-        readonly vertical: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
-        readonly horizontal: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number };
+        /** `length`: the axis's length the room takes (`NormalizedChartStepRoomLength`); absent: the plot's before its labels. */
+        readonly vertical: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number; readonly length?: NormalizedChartStepRoomLength };
+        readonly horizontal: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number; readonly length?: NormalizedChartStepRoomLength };
         readonly maxIncrements: number;
     };
     /**

@@ -400,12 +400,19 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of 200 synthetic chart axes (#589, #616, #619: column, bar, line, area, scatter, bubble and
     // secondary value axes, 8 to 18pt Arial, 1.3 to 8in) and the 78 measured earlier (#527, #565, #602) takes one step
     // when it has room for it: 1.22 label heights a step along a vertical axis, counted between the rounded bounds, and
-    // 4.15 along a horizontal one (horizontal bar and scatter x), counted over the padded range. Fitted on PdfLapas's
-    // plot lengths, which run longer than PowerPoint's on short plots (66 vs 59pt): on PowerPoint's own lengths 1.18 and
-    // 3.9 match 276 of 277. 1.18 to 1.3 vertical and 4.0 to 4.2 horizontal keep within 2 of the best.
-    // shortcut: the room is the plot's length before its labels are laid out, so R28 (0..20 by 10 on 1.3in) and R31 (a
-    // 1.6in wide bar, 0..20 by 10) step by 5 here; measure the label band first when a deck needs it.
-    valueAxisStepRoom: { vertical: { label: "height" as const, perStep: 1.22, rounding: 0 }, horizontal: { label: "height" as const, perStep: 4.15, rounding: 0 }, maxIncrements: 11 },
+    // 4.15 along a horizontal one (horizontal bar and scatter x), counted over the padded range. 1.15 to 1.22 vertical
+    // keep within 1 of the best. The length is the one PowerPoint lays out (#620): a column chart's plot is its frame
+    // less 13.9pt and 2.14 category label sizes, whatever its height (10pt labels: 34.7pt, 7pt 29.5, 14pt 43.4, 20pt 57),
+    // and a horizontal bar's is the width less the category names left of it and half its last value label. With it
+    // 199 of the 201 axes match (R28 0..20 by 10 on 1.3in and R31 on a 2.5in wide bar now too), and 11 of 12 short
+    // column charts (1.1 to 2.4in): 0, 8, 20, 14 runs 0..40 by 20 at 1.1in there and 0..30 by 10 here.
+    // shortcut: PowerPoint takes one step (0..50 by 50) on a 1.3in wide bar, where the room keeps at least 2; allow one
+    // when a deck needs it.
+    valueAxisStepRoom: {
+        vertical: { label: "height" as const, perStep: 1.18, rounding: 0, length: { kind: "band" as const, pt: 13.9, em: 2.14 } },
+        horizontal: { label: "height" as const, perStep: 4.15, rounding: 0, length: { kind: "laidOut" as const } },
+        maxIncrements: 11,
+    },
     // The same 277 axes follow Excel's automatic scale: a minimum under 5/6 of the maximum (or its mirror below 0)
     // drops to 0 (6..10 0..12 by 2, 83..100 0..120 by 20); else a value axis moves it half the range toward 0 with no
     // padding (83.4..100 75..105 by 5, 950..1000 920..1010 by 10), while scatter and bubble axes keep it (950..1000

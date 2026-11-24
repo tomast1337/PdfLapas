@@ -633,8 +633,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // An automatic value axis (no valAxisMajorUnit) takes the steps its target fits along the drawn axis (stepRoom, #585):
     // at most the plot's length over the room per step, in label heights or the first scale's widest label widths.
     // shortcut: ECharts may still narrow the plot for its labels (outerBounds), so a horizontal axis's length can be
-    // long: 18pt labels on 0.3..0.9 step by 0.2 on an axis LibreOffice draws 110 to 120pt long, where it steps by 0.5.
-    // Take the laid-out length (a second layout pass, as LibreOffice's) when a deck needs it (#585).
+    // long in LibreOffice's room: 18pt labels on 0.3..0.9 step by 0.2 on an axis LibreOffice draws 110 to 120pt long,
+    // where it steps by 0.5. Give that target the laid-out length (as PowerPoint's has, #620) when a deck needs it (#585).
     const plotWidth = layout ? layout.w * width : width - gridLeft - gridRight;
     const valueAxisLength = horizontal ? plotWidth : layout ? layout.h * height : height - gridTop - gridBottom;
     const scaledValueAxes: NormalizedChartValueAxis[] = [];
@@ -678,7 +678,29 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             continue;
         }
 
-        const roomSteps = stepRoomIncrements(room, valueAxisLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
+        // A band room (PowerPoint's) swaps the gaps and label bands this layout gives a vertical plot for the target's.
+        // A horizontal axis's band room is the plot's width once ECharts fits the labels in the frame (outerBounds): the
+        // category names left of a plot whose bars start at its left edge, and half the last value label past its right.
+        let roomLength = valueAxisLength;
+
+        if (room.length?.kind === "band" && !layout && !horizontal && categoryBand === bottomLabelBand) {
+            roomLength = valueAxisLength + 2 * gap + valueLabelPx / 2 + bottomLabelBand - pointsToPixels(room.length.pt) - room.length.em * categoryLabelPx;
+        } else if (room.length?.kind === "laidOut" && !layout && horizontal) {
+            const labelFont = (size: number, face: string) => `${pointsToPixels(size)}px ${face}`;
+            let namesWidth = 0;
+
+            if (automatic.low >= 0 && !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && categoryAxisModel.labelPosition !== "high") {
+                for (const name of chart.series[0]?.labels ?? []) {
+                    namesWidth = Math.max(namesWidth, format.getTextRect(name, labelFont(categoryAxisModel.labelFontSize, categoryAxisModel.labelFontFace)).width + AXIS_LABEL_MARGIN);
+                }
+            }
+
+            const lastLabel = format.getTextRect(formatChartNumber(axis.maximum / (axis.displayUnit?.divisor ?? 1), axis.labelFormatCode), labelFont(axis.labelFontSize, axis.labelFontFace)).width / 2;
+
+            roomLength = width - Math.max(gridLeft, labelBound + leftLegendShift + namesWidth) - Math.max(gridRight, Math.max(labelBound, rightLegendBand) + lastLabel);
+        }
+
+        const roomSteps = stepRoomIncrements(room, roomLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
         const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
         const scale = automatic.padding
             ? paddedAxisScale(automatic.low, automatic.high, fixed, automatic.padding, { kind: "room", steps: roomSteps })

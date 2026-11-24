@@ -320,7 +320,13 @@ export class PuppeteerSlide implements PptxSlide {
                               ? {
                                     xScale: {
                                         ...normalized.categoryAxis.xScale,
-                                        stepRoom: { ...target.valueAxisStepRoom.horizontal, maxIncrements: target.valueAxisStepRoom.maxIncrements },
+                                        // The plot's width before its labels: the scatter axes match PowerPoint with it (#616).
+                                        stepRoom: {
+                                            label: target.valueAxisStepRoom.horizontal.label,
+                                            perStep: target.valueAxisStepRoom.horizontal.perStep,
+                                            rounding: target.valueAxisStepRoom.horizontal.rounding,
+                                            maxIncrements: target.valueAxisStepRoom.maxIncrements,
+                                        },
                                         ...(target.automaticScale.kind === "padded"
                                             ? {
                                                   padding: {

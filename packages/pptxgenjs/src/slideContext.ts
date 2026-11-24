@@ -3,6 +3,7 @@ import type { ComponentRegistry } from "./components/registry";
 import type { FontMetricsLookup } from "./defaults";
 import type { RenderingTarget } from "./target";
 import type { SharedRunOptions } from "./normalize/sharedRunOptions";
+import type { SharedShadows } from "./normalize/sharedShadow";
 import type { PageSize } from "./pageLayouts";
 import type { PuppeteerSlide } from "./PuppeteerSlide";
 
@@ -59,6 +60,8 @@ export type SlideContext = {
     readonly fontMetrics: FontMetricsLookup;
     /** What PptxGenJS has written onto the run options objects of the presentation's text boxes and table cells. */
     readonly sharedRunOptions: SharedRunOptions;
+    /** What PptxGenJS has written onto the `shadow` objects of the presentation's text boxes, shapes and pictures. */
+    readonly sharedShadows: SharedShadows;
     /** The `context.document` of components rendered to check them when they are added; toHtml() does not use it. */
     readonly getDocument: () => Document;
     /** The slide `offset` places after this one, added when it does not exist yet: where autoPage tables continue. */

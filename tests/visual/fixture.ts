@@ -610,6 +610,8 @@ export const PARITY_REGIONS = [
     ...FLIPPED_TEXT_CASES.map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.25, y: y - 0.4, w: w + 0.5, h: h + 0.8 })),
     // A text box without a fill casts its shadow from its glyphs (#626).
     { page: 7, name: "unfilled-text-shadow", x: 0.65, y: 3.05, w: 4.2, h: 1.1 },
+    { page: 7, name: "translucent-text-shadow", x: 5.15, y: 3.05, w: 4.2, h: 1.1 },
+    { page: 7, name: "shared-text-shadow", x: 0.65, y: 4.25, w: 8.7, h: 1 },
     ...TEXT_CASES,
     { page: 59, name: "html-react-component-bars", x: 1, y: 1, w: 6, h: 2 },
     { page: 12, name: "dashed-arrow-line", x: 6.55, y: 1.6, w: 2.6, h: 0 },
@@ -1052,6 +1054,27 @@ export function populateParityFixture(presentation: Presentation): void {
         shadow: { type: "outer", color: "000000", opacity: 0.5, blur: 2, offset: 3, angle: 45 },
         margin: 4,
     });
+    // A translucent fill shows the glyphs' share of the box's shadow through it, dimmed (#626).
+    effectsSlide.addText("Glyph shadow under the fill", {
+        x: 5.25,
+        y: 3.15,
+        w: 4,
+        h: 0.9,
+        fontFace: "Arial",
+        fontSize: 24,
+        bold: true,
+        color: "17365D",
+        fill: { color: "70AD47", transparency: 50 },
+        shadow: { type: "outer", color: "000000", opacity: 1, blur: 1, offset: 4, angle: 90 },
+        margin: 4,
+    });
+    // One shadow object for two boxes: PptxGenJS converts it in place, so the second writes it out of range and LibreOffice
+    // draws no shadow there (#633).
+    const sharedShadow = { type: "outer", color: "000000", opacity: 0.5, blur: 2, offset: 3, angle: 45 } as const;
+
+    for (const [index, x] of [0.75, 5.25].entries()) {
+        effectsSlide.addText(`Shared shadow ${index + 1}`, { x, y: 4.35, w: 4, h: 0.8, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", shadow: sharedShadow, margin: 4 });
+    }
 
     const directionSlide = presentation.addSlide();
 

@@ -26,6 +26,11 @@ const INSET_SHADOW = /(?:^|; )box-shadow: inset ([^;]+);/;
 // An outer shadow and a fill as render/style.ts applyObjectStyle writes them on a box.
 const OUTER_BOX_SHADOW = /(?:^|; )box-shadow: (?!inset )/;
 const BACKGROUND_COLOR = /(?:^|; )background-color: ([^;]+);/;
+// An outer shadow's offset, blur and color as render/style.ts applyObjectStyle writes them.
+const OUTER_BOX_SHADOW_VALUE = /(?:^|; )box-shadow: (?!inset )([^ ;]+)px ([^ ;]+)px ([^ ;]+)px ([^;]+);/;
+// The colors colorToCSS writes: #RRGGBB, and rgba() whose alpha is a JavaScript number string.
+const HEX_COLOR = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i;
+const RGBA_COLOR = /^rgba\((\d+), (\d+), (\d+), ([^)]+)\)$/;
 // A box's line as render/style.ts applyLine writes it: color, width, style.
 const TEXT_BORDER = /(?:^|; )border-color: ([^;]+); border-width: ([^;]+)px; border-style: ([^;]+);/;
 // The face and its fallback faces as the profile writes them: CSS strings, `\` and `"` escaped; group 2 is the face, group 3 its fallback faces.
@@ -298,22 +303,47 @@ export function printHtml(html: string): string {
             // a CSS border lies inside the box and pushes the text in by its width. An outline moves nothing.
             const style = attribute(element, "style") ?? "";
             const border = style.match(TEXT_BORDER);
+            const background = style.match(BACKGROUND_COLOR)?.[1];
+            const shadow = style.match(OUTER_BOX_SHADOW_VALUE);
+            const fill = background?.match(RGBA_COLOR);
+            let declarations = "";
+
+            // Translucent shadow: the profile casts a text box's shadow from what it draws, under it, so a fill of alpha a
+            // casts its share at a times the shadow's alpha, which also shows through the fill; Chromium casts the whole
+            // box at full strength and hides it under the box (#626). Scale it, and lay its share inside the box as a
+            // background layer under the fill, moved by the shadow's offset.
+            // shortcut: the layer inside the box has hard edges, not the shadow's blur; blur it if a deck needs that.
+            if (shadow && fill) {
+                const [, x = "", y = "", blur = "", color = ""] = shadow;
+                const [, red = "", green = "", blue = "", alpha = ""] = fill;
+                const hex = HEX_COLOR.exec(color);
+                const rgba = RGBA_COLOR.exec(color);
+                const channels = hex ? hex.slice(1, 4).map(channel => parseInt(channel, 16)) : rgba ? rgba.slice(1, 4).map(Number) : undefined;
+
+                if (!channels) {
+                    throw new Error(`Cannot print '${objectName(element)}': its box-shadow color ${JSON.stringify(color)} is neither #RRGGBB nor rgba(r, g, b, a) (PdfLapas HTML profile)`);
+                }
+
+                const cast = `rgba(${channels.join(", ")}, ${Number(rgba?.[4] ?? 1) * Number(alpha)})`;
+
+                declarations += ` box-shadow: ${x}px ${y}px ${blur}px ${cast}; background-color: transparent; background-image: linear-gradient(rgba(${red}, ${green}, ${blue}, ${alpha}), rgba(${red}, ${green}, ${blue}, ${alpha})), linear-gradient(${cast}, ${cast}); background-origin: border-box; background-repeat: no-repeat; background-size: 100% 100%; background-position: 0px 0px, ${x}px ${y}px;`;
+            }
 
             if (!border || border[3] === "none") {
                 // Glyph shadow: the profile casts a text box's shadow from what it draws, which without a fill or line is
                 // its glyphs alone, drawn by its runs' text-shadow; Chromium would cast the whole box (#626).
-                const background = style.match(BACKGROUND_COLOR)?.[1];
-
                 if (OUTER_BOX_SHADOW.test(style) && (background === undefined || background === "transparent")) {
-                    edits.push(addStyle(element, "box-shadow: none;"));
+                    declarations += " box-shadow: none;";
                 }
+            } else {
+                const width = number(element, border[2], "numeric border-width");
 
-                continue;
+                declarations += ` border-style: none; outline: ${width}px ${border[3]} ${border[1]}; outline-offset: ${-width / 2}px;`;
             }
 
-            const width = number(element, border[2], "numeric border-width");
-
-            edits.push(addStyle(element, `border-style: none; outline: ${width}px ${border[3]} ${border[1]}; outline-offset: ${-width / 2}px;`));
+            if (declarations) {
+                edits.push(addStyle(element, declarations.trim()));
+            }
         } else if (element.tagName === "svg" && hasClass(element, "shape-svg")) {
             // drop-shadow() has no inset form, so Chromium would draw an inner shadow outside the shape. addShape rejects
             // one, so only hand-written HTML gets here: fail, as the WASM renderer does by default ("inner shadow not rendered").

@@ -474,10 +474,21 @@ describe("Puppeteer print workarounds", () => {
         slide.addText("Half", { x: 4, y: 1, w: 2, h: 1, fill: { color: "70AD47", transparency: 50 }, shadow: shadow() });
         slide.addText("None", { x: 1, y: 3, w: 2, h: 1, shadow: shadow() });
         slide.addText([{ text: "Runs", options: { bold: true } }], { x: 4, y: 3, w: 2, h: 1, rotate: 30, shadow: shadow() });
-        const boxes = [...(await printedPage(presentation)).querySelectorAll<HTMLElement>(".slide-text")].map(box => ({
+        const printed = [...(await printedPage(presentation)).querySelectorAll<HTMLElement>(".slide-text")];
+        const boxes = printed.map(box => ({
             box: box.style.boxShadow === "none" ? "none" : "cast",
             glyphs: [...box.querySelectorAll<HTMLElement>(".text-run")].map(run => run.dataset.textShadow),
         }));
+        const half = printed[1]?.style;
+
+        // The half-transparent fill casts its share at half strength, laid inside the box under the fill too.
+        expect(half?.boxShadow).toContain("rgba(0, 0, 0, 0.5)");
+        expect(half?.backgroundColor).toBe("transparent");
+        expect(half?.backgroundImage).toBe("linear-gradient(rgba(112, 173, 71, 0.5), rgba(112, 173, 71, 0.5)), linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5))");
+        // Moved by the shadow's offset, as the last box-shadow states it.
+        const offsets = [...(printed[1]?.getAttribute("style") ?? "").matchAll(/box-shadow: (\S+px \S+px) /g)].map(([, offset]) => offset);
+
+        expect(printed[1]?.getAttribute("style")).toContain(`background-position: 0px 0px, ${offsets.at(-1)};`);
 
         // An opaque fill hides the glyphs' share; a run array casts the box's shadow as a string does.
         expect(boxes).toEqual([
@@ -493,6 +504,8 @@ describe("Puppeteer print workarounds", () => {
             return object?.kind === "text" ? object.text.paragraphs[0]?.runs[0]?.shadow : undefined;
         };
 
+        // Under the half-transparent fill the glyph shadow shows through it: half 70AD47, half the black shadow.
+        expect(String(glyphShadow(1)?.color)).toBe("#385724");
         // The rotated array box's glyph shadow is cast in slide space, as the box's own.
         const boxShadow = model[3]?.style.shadow;
 

@@ -250,7 +250,7 @@ describe("PowerPoint's padded automatic scale", () => {
         }
     });
 
-    test("keeps a scatter axis's minimum far from 0 and pads it, and widens a bubble chart's data (#616)", () => {
+    test("keeps a scatter axis's minimum far from 0 and pads it, and pads a bubble chart's by its room (#616, #620)", () => {
         expect(scale(950, 1000, scatter)).toBe("940..1010/10");
         expect(scale(85, 100, scatter)).toBe("84..102/2");
         expect(scale(5000, 5600, scatter)).toBe("4900..5700/100");
@@ -258,10 +258,22 @@ describe("PowerPoint's padded automatic scale", () => {
         // 95..100 on a 4.2in wide plot, whose room leaves about four steps.
         expect(scale(95, 100, { ...scatter, count: "range" }, 4.5)).toBe("94..102/2");
         // Bubbles: y 3..8 0..10 by 1, x 0..100 -50..150 by 50 on a narrow plot, y 20..90 0..120 by 20.
-        expect(scale(3, 8, { ...scatter, bubbleRoom: 0.125 })).toBe("0..10/1");
-        expect(scale(0, 100, { ...scatter, bubbleRoom: 0.125, count: "range" }, 4.5)).toBe("-50..150/50");
-        expect(scale(0, 100, { ...scatter, bubbleRoom: 0.125 })).toBe("-20..120/20");
-        expect(scale(20, 90, { ...scatter, bubbleRoom: 0.125 })).toBe("0..120/20");
+        const bubble = { ...scatter, bubbleRoom: 0.15 };
+
+        expect(scale(3, 8, bubble)).toBe("0..10/1");
+        expect(scale(0, 100, { ...bubble, count: "range" }, 4.5)).toBe("-50..150/50");
+        expect(scale(0, 100, bubble)).toBe("-20..120/20");
+        expect(scale(20, 90, bubble)).toBe("0..120/20");
+        expect(scale(95, 100, { ...bubble, count: "range" }, 4.5)).toBe("94..102/2");
+        // Across 0 the room alone pads the data, 15% of its range a side (#620): -8..7 -12..10 by 2, -6..6 -8..8 by 2,
+        // -80..70 -120..100 by 20 and -15..2 -20..5 by 5, where 5% more would round out a step further.
+        expect(scale(-8, 7, bubble)).toBe("-12..10/2");
+        expect(scale(-6, 6, bubble)).toBe("-8..8/2");
+        expect(scale(-80, 70, bubble)).toBe("-120..100/20");
+        expect(scale(-15, 2, bubble)).toBe("-20..5/5");
+        // A minimum the room carries below 0 stays and is padded across it: x 0.4..3.6 is -0.08..4.08, not 0..4.14.
+        expect(scale(0.4, 3.6, { ...bubble, count: "range" }, 3)).toBe("-2..6/2");
+        expect(scale(1, 4, bubble, 5)).toBe("0..5/1");
     });
 
     test("takes a longer step where the room's steps run out, counted between the bounds or over the padded range", () => {

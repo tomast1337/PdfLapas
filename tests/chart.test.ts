@@ -1172,6 +1172,11 @@ describe("chart normalization and rendering", () => {
         expect(scale("powerpoint", "bar", [0, 8, 20, 14], { ...quarters, h: 1.3 })).toBe("0..30 (4)");
         expect(scale("powerpoint", "bar", [0, 8, 20, 14], { ...quarters, h: 1.5 })).toBe("0..25 (6)");
         expect(scale("powerpoint", "bar", [0, 6.4, 16, 11.2], { ...quarters, h: 2.2, w: 2.5, barDir: "bar" }, ["Q1", "Q2", "Q3", "Q4"])).toBe("0..20 (3)");
+        // A horizontal bar's axis runs 11pt and half its end labels in from the edges, past the names: 0, 8, 20, 14 runs
+        // 0..50 by 50 on a 1.4in wide bar, 0..40 by 20 on 1.5 to 2in and 0..30 by 10 on 2.2in.
+        const narrow = (w: number) => scale("powerpoint", "bar", [0, 8, 20, 14], { ...quarters, h: 2.2, w, barDir: "bar", showLegend: false }, ["Q1", "Q2", "Q3", "Q4"]);
+
+        expect([narrow(1.4), narrow(1.5), narrow(2), narrow(2.2)]).toEqual(["0..50 (2)", "0..40 (3)", "0..40 (3)", "0..30 (4)"]);
     });
 
     test("steps a bar3D value axis as LibreOffice does, by valAxisMajorUnit when set (#541)", () => {

@@ -26,6 +26,25 @@ export type PdfkitRendererOptions = {
     imageLimits?: ImagePixelLimits;
 };
 
+export type PdfkitRendererPoolOptions = PdfkitRendererOptions & {
+    /**
+     * Worker threads, each with its own renderer and its own parsed copy of `fonts` (the font bytes are shared). Default:
+     * one per core but one, at most 8.
+     */
+    workers?: number;
+};
+
+/** What createPdfkitRendererPool() returns (Node/Bun): a renderer whose renders run in worker threads. */
+export type PdfkitRendererPool = PresentationRenderer & {
+    /** What the last render to finish could not draw; with several in flight, read the error of the one you need instead. */
+    warnings(): string[];
+    /** The font faces the last render to finish asked for that none of the fonts provides. */
+    missingFonts(): MissingFont[];
+    /** Terminates the workers; queued and in-flight renders reject. */
+    close(): Promise<void>;
+    [Symbol.asyncDispose](): Promise<void>;
+};
+
 export type SystemFontOptions = {
     /** Directories searched recursively. Defaults to the platform's system and user font directories. */
     dirs?: readonly string[];
@@ -89,6 +108,10 @@ export class PdfkitRenderer implements PresentationRenderer {
 
 export async function createPdfkitRenderer(options: PdfkitRendererOptions): Promise<PdfkitRenderer> {
     return new PdfkitRenderer(options);
+}
+
+export async function createPdfkitRendererPool(_options: PdfkitRendererPoolOptions): Promise<PdfkitRendererPool> {
+    throw new Error("createPdfkitRendererPool() starts worker threads and is only available under Node/Bun; in a browser use createPdfkitRenderer(), in a Web Worker to keep the page responsive");
 }
 
 export async function loadSystemFonts(_options?: SystemFontOptions): Promise<Uint8Array[]> {

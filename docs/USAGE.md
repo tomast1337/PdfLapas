@@ -778,12 +778,12 @@ latency (p50, p95, p99), throughput, the process's RSS and heap, and the number 
 (Chromium, read from `/proc`, so Linux only); after each level it waits for the idle browser to close and prints the
 same after a full collection.
 
-| Variable                    | Default          | Meaning                                                                                                                      |
-| --------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool`, `wasm-pool-html` (the pool with `buildHtmlInWorkers`) and `pdfkit` |
-| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                                                                                 |
-| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                                                                            |
-| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                                                                                      |
+| Variable                    | Default          | Meaning                                                                                                                                     |
+| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool`, `wasm-pool-html` (the pool with `buildHtmlInWorkers`), `pdfkit` and `pdfkit-pool` |
+| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                                                                                                |
+| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                                                                                           |
+| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                                                                                                     |
 
 ```bash
 BENCH_LOAD_ENGINES=puppeteer BENCH_LOAD_CONCURRENCY=16 BENCH_LOAD_SECONDS=600 BENCH_LOAD_SAMPLE_SECONDS=60 bun run bench:load
@@ -810,7 +810,7 @@ What that means for a service:
   browser closes one second after the last render and relaunches on the next; after every level the process was
   back at 170-185 MB with no Chromium left, and 10 minutes at 16 (22,272 renders) showed no growth.
 - **WASM and PDFKit** render on the calling thread, so concurrency adds latency, not throughput, and a render
-  blocks the event loop for its duration (#578). For WASM, use the worker pool below when one core is not enough.
+  blocks the event loop for its duration (#578). Use the worker pools below when one core is not enough.
   Memory does not grow with renders: 10 minutes at 16 (27,851 WASM renders) ended at the same 475 MB RSS as two
   minutes.
 - A failing render (the broken image) fails alone: no other request failed or slowed in any run.
@@ -860,7 +860,7 @@ await renderer.close();
   so the calling thread saves about 1 ms per request (4.8-5.0 ms) and one process reached 160-170 renders/s at 16 in
   flight, for 250-400 MB more RSS (each worker loads the HTML builder, charts included, 30-50 MB). Turn it on when the
   calling thread is the bottleneck and memory is not; keep the default when RSS matters more, or scale with more
-  processes instead. PDFKit has no pool yet (#608).
+  processes instead.
 
 Measured with `BENCH_LOAD_ENGINES=wasm,wasm-pool BENCH_LOAD_CONCURRENCY=1,4,16,64 BENCH_LOAD_SECONDS=30 bun run bench:load`
 (Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above; the single renderer measured slower here than in
@@ -876,6 +876,42 @@ the table above, so the two are side by side from the same run):
 | WASM pool        | 4           | 130.8     | 26 ms  | 34 ms   | 43 ms   |
 | WASM pool        | 16          | 143.6     | 68 ms  | 283 ms  | 313 ms  |
 | WASM pool        | 64          | 148.6     | 336 ms | 551 ms  | 628 ms  |
+
+### Rendering in worker threads (PDFKit)
+
+`createPdfkitRendererPool()` (Node and Bun) is the same pool for the PDFKit backend: worker threads, each with its
+own `PdfkitRenderer` and the fonts parsed once, behind the same `PresentationRenderer` interface, so it goes in the
+`renderer` option. `toPdf()` builds the HTML on the calling thread and posts it; the workers never load the HTML
+builder. A render gives the same PDF bytes as `createPdfkitRenderer()` with the same options.
+
+```typescript
+import PuppeteerGen from "@pdflapas/pptxgenjs";
+import { createPdfkitRendererPool, loadSystemFonts } from "@pdflapas/pdfkit";
+
+const renderer = await createPdfkitRendererPool({ fonts: await loadSystemFonts(), workers: 4 });
+const pres = new PuppeteerGen(undefined, { renderer });
+pres.addSlide().addText("Hello", { x: 1, y: 1, w: 4, h: 1 });
+const pdf = await pres.toPdf();
+await renderer.close();
+```
+
+- **Options.** The same as `createPdfkitRenderer()` (`fonts`, `onUnsupported`, `onMissingFont`, `imageLimits`) plus
+  `workers`, which defaults to one per core but one, at most 8. Errors, `onMissingFont`, `warnings()`,
+  `missingFonts()`, failures and `close()` behave as in the WASM pool above.
+- **Memory.** Each worker parses the fonts into its own fontkit faces; the font bytes passed in are shared once.
+  With `loadSystemFonts()`'s default set, 8 workers took the process from 0.4 GB (one renderer) to 3.3-4.5 GB RSS
+  under load; load only the faces your decks use to lower it.
+
+Measured with `BENCH_LOAD_ENGINES=pdfkit,pdfkit-pool,wasm-pool BENCH_LOAD_CONCURRENCY=1,16 BENCH_LOAD_SECONDS=30 bun run bench:load`
+(Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above):
+
+| Renderer           | Concurrency | Renders/s | p50    | p95     | Main thread CPU per request |
+| ------------------ | ----------- | --------- | ------ | ------- | --------------------------- |
+| PDFKit, one thread | 1           | 12.8      | 73 ms  | 106 ms  | 64.1 ms                     |
+| PDFKit, one thread | 16          | 14.5      | 80 ms  | 5495 ms | 57.0 ms                     |
+| PDFKit pool        | 1           | 14.6      | 69 ms  | 90 ms   | 8.0 ms                      |
+| PDFKit pool        | 16          | 69.0      | 195 ms | 298 ms  | 10.7 ms                     |
+| WASM pool          | 16          | 134.4     | 73 ms  | 312 ms  | 6.1 ms                      |
 
 ### Fonts for the PowerPoint target
 

@@ -170,14 +170,21 @@ console.log("standalone package consumer passed");
     // The PDFKit renderer (#316), typechecked with the others (#354): its node condition loads system fonts, and it draws a shadow through its dependencies.
     const pdfkitConsumerSource = `
 import PuppeteerGen, { PAGE_SIZES } from "${names.main}";
-import { createPdfkitRenderer, loadSystemFonts } from "@pdflapas/pdfkit";
+import { createPdfkitRenderer, createPdfkitRendererPool, loadSystemFonts } from "@pdflapas/pdfkit";
 
-const renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts() });
+const fonts = await loadSystemFonts();
+const renderer = await createPdfkitRenderer({ fonts });
 const presentation = new PuppeteerGen(PAGE_SIZES.SCREEN_16X9.landscape, { renderer });
 presentation.addSlide().addText("PDFKit package consumer", { x: 1, y: 1, w: 4, h: 1, fontFace: "Calibri" });
 presentation.addSlide().addShape("rect", { x: 1, y: 1, w: 2, h: 1, fill: { color: "0088CC" }, shadow: { type: "outer", blur: 4, offset: 3, angle: 45, color: "000000", opacity: 0.5 } });
-const pdf = new TextDecoder("latin1").decode(await presentation.toPdf());
+const bytes = await presentation.toPdf();
+const pdf = new TextDecoder("latin1").decode(bytes);
 if (!pdf.startsWith("%PDF-") || pdf.match(/\\/Type\\s*\\/Page\\b(?!s)/g)?.length !== 2 || !pdf.includes("/SMask")) throw new Error("PDFKit entry did not render a two-page PDF with a shadow");
+// The pool's worker is a separate file in dist/: it must start from the package and render the same bytes.
+const pool = await createPdfkitRendererPool({ fonts, workers: 1 });
+const pooled = await pool.render(await presentation.toHtml());
+await pool.close();
+if (pooled.length !== bytes.length || pooled.some((byte, index) => byte !== bytes[index])) throw new Error("createPdfkitRendererPool() rendered other bytes than createPdfkitRenderer()");
 console.log(\`PDFKit package consumer generated a PDF under \${"Bun" in globalThis ? "Bun" : "Node.js"}\`);
 `;
     const pdfkitConsumerPath = join(consumerDirectory, "pdfkit-consumer.ts");

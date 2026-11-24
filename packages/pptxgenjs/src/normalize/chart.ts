@@ -486,7 +486,8 @@ function finiteNumber(value: number | undefined, name: string, fallback: number)
 type ValueAxisScaleKind = { kind: "linear" } | { kind: "bar3D" } | { kind: "radar"; rounding: "bar3D" | "linear"; maxIncrements: number };
 
 function normalizeValueAxis(
-    axisOptions: PptxGenJS.IChartPropsAxisVal | undefined,
+    // The chart's barDir with it: PptxGenJS writes each value axis from the chart's options (makeValAxis).
+    axisOptions: (PptxGenJS.IChartPropsAxisVal & Pick<PptxGenJS.IChartOpts, "barDir">) | undefined,
     dataRange: [number, number],
     scaleKind: ValueAxisScaleKind,
     path: string,
@@ -602,7 +603,7 @@ function normalizeValueAxis(
         labelBold: axisOptions?.valAxisLabelFontBold ?? defaults.labelBold,
         labelItalic: axisOptions?.valAxisLabelFontItalic ?? defaults.labelItalic,
         labelRotate: finiteNumber(axisOptions?.valAxisLabelRotate, "valAxisLabelRotate", defaults.labelRotate),
-        labelPosition: axisOptions?.valAxisLabelPos ?? defaults.labelPosition,
+        labelPosition: chartTypes.includes("scatter") ? defaults.labelPosition : (axisOptions?.valAxisLabelPos ?? (axisOptions?.barDir === "bar" ? defaults.barLabelPosition : defaults.labelPosition)),
         lineColor: normalizeColor(axisOptions?.valAxisLineColor ?? defaults.lineColor),
         lineWidth: positiveNumber(axisOptions?.valAxisLineSize, "valAxisLineSize", defaults.lineWidthPt),
         lineStyle: axisOptions?.valAxisLineStyle ?? defaults.lineStyle,

@@ -451,6 +451,12 @@ contract includes:
   set one is 1pt solid 888888 with flat caps unless given), and a hidden title "Axis Title" at
   Office's 10pt. A bottom title lowers the plot by two plot-area gaps and 1.71 title font sizes, as
   LibreOffice lays it out.
+- Axis label positions: category labels `low` on column, line and area charts and `nextTo` on
+  horizontal bar charts; value labels `nextTo`, but `low` on horizontal bar charts; both `nextTo` on
+  scatter charts whatever is set, as PptxGenJS writes `tickLblPos`. `nextTo` labels sit beside the
+  axis line wherever it crosses the plot (at 0 with negative values, or at `valAxisCrossesAt` and
+  `catAxisCrossesAt`), over the series, while the axis title stays at the plot's edge, as LibreOffice
+  draws them.
 - Scatter gridlines: 1pt solid D9D9D9 on both axes when `catGridLine` or `valGridLine` is unset, as
   PptxGenJS writes them; a set `valGridLine` replaces the default whole (a missing color is 888888).
   A bubble chart keeps the other charts' defaults: no x gridlines and 888888 y gridlines.

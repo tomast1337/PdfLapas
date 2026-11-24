@@ -212,10 +212,10 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "valAxisLabelRotate", // not drawn on radar charts (#561)
     "valAxisLabelPos", // low and high are not drawn on radar charts (#561)
     "catGridLine", // not drawn on radar charts (#479)
+    "catAxisCrossesAt", // not from catAxes[0], where PptxGenJS 4.0.1 does not read it (only valAxes entries)
     // Not drawn on radar charts (#566, #582).
-    "catAxisCrossesAt", // nor on bar3D, scatter or bubble charts, nor with a secondary value axis (#591)
     "catAxisLabelFrequency", // where the target reads `tickLblSkip` only (readsCategoryLabelSkip); not on scatter or bubble charts
-    "catAxisLabelPos", // `high` not on bar3D charts; low and high are nextTo on radar charts
+    "catAxisLabelPos", // low and high are nextTo on radar charts; nextTo on scatter charts, as PptxGenJS writes it
     "catAxisLabelRotate",
     "catAxisLineColor",
     "catAxisLineShow",
@@ -235,7 +235,7 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "catAxisMinorUnit",
     "catAxisMinVal",
     "catAxisMultiLevelLabels", // single-level labels only, which it does not change
-    "valAxisCrossesAt", // not on radar, bar3D, scatter or bubble charts; the primary axis only with a secondary one
+    "valAxisCrossesAt", // not on radar charts; the primary axis only with a secondary one
     "valAxisDisplayUnit", // where the target reads `<c:dispUnits>` (readsValueAxisDisplayUnits)
     "valAxisDisplayUnitLabel", // as valAxisDisplayUnit, not on bar3D or radar charts nor with a value-axis title
     "showDataTable", // not on scatter, bubble or bar3D charts; none on pie, doughnut or radar charts, as LibreOffice (#583, #592)

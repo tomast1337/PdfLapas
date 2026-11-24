@@ -20,7 +20,7 @@ import type { PptxSlide } from "./pptx";
 import { chartSize, renderChartExtension, renderChartExtensionSvg } from "./render/chart";
 import { renderComponent } from "./render/component";
 import { objectIdScope } from "./render/slide";
-import type { MasterPlaceholder, PlaceholderBody, SlideContext } from "./slideContext";
+import type { MasterPlaceholder, PlaceholderBody, PlaceholderMargin, SlideContext } from "./slideContext";
 import { RENDERING_TARGETS } from "./target";
 import { UnsupportedFeatureError } from "./UnsupportedFeatureError";
 
@@ -61,10 +61,20 @@ export class PuppeteerSlide implements PptxSlide {
     newAutoPagedSlides: PptxGenJS.PresSlide[];
     private objectCounts: Record<string, number> = {};
     /**
-     * Text filling a master placeholder, by its index in `model.objects`: the font (a title's head font) and shared
-     * `_bodyProp` it was drawn with, and how to draw it with others, as PptxGenJS resolves both when it writes the file.
+     * Text filling a master placeholder, by its index in `model.objects`: the font (a title's head font), shared
+     * `_bodyProp` and margin it was drawn with, its own `margin`, and how to draw it with others, as PptxGenJS resolves
+     * them when it writes the file.
      */
-    private placeholderTexts: Array<{ index: number; headFont: boolean; fontFace: string; placeholder: MasterPlaceholder; body: PlaceholderBody; draw: (fontFace: string, body: PlaceholderBody) => NormalizedSlideObject }> = [];
+    private placeholderTexts: Array<{
+        index: number;
+        headFont: boolean;
+        fontFace: string;
+        placeholder: MasterPlaceholder;
+        body: PlaceholderBody;
+        ownMargin: PlaceholderMargin;
+        margin: PlaceholderMargin;
+        draw: (fontFace: string, body: PlaceholderBody, margin: PlaceholderMargin) => NormalizedSlideObject;
+    }> = [];
     /** Normalized, JSON-serializable record of this slide; toHtml() renders the slide from it alone. */
     readonly model: NormalizedSlide = {
         background: normalizeColor(PPTX_DEFAULTS.slide.backgroundColor),
@@ -149,22 +159,32 @@ export class PuppeteerSlide implements PptxSlide {
     /**
      * The slide's model as getModel() returns it: the background picture first, stretched over `pageSize` (the
      * presentation's), then its master's objects, then the slide's, then its number, which PptxGenJS writes last.
-     * `masterSlideNumber` is the `slideNumber` set last on any slide.
+     * `masterSlideNumber` is the `slideNumber` set last on any slide. `writtenMargins` holds, by placeholder, the margin
+     * the slides before this one wrote onto its shared `_bodyProp`; this slide's fills add theirs.
      */
-    toModel(pageSize: PageSize, masterSlideNumber: PptxGenJS.SlideNumberProps | null): NormalizedSlide {
+    toModel(pageSize: PageSize, masterSlideNumber: PptxGenJS.SlideNumberProps | null, writtenMargins: Map<MasterPlaceholder, PlaceholderMargin>): NormalizedSlide {
         const master = this.context.master;
         const headFontFace = this.context.headFontFace();
 
         // PptxGenJS 4.0.1 writes a title placeholder's font as the master's +mj-lt, resolved from theme1.xml when it
         // writes the file, so text added before pres.theme set its headFontFace is drawn again in the new one. Each
         // fill's <a:bodyPr> is written from the placeholder's shared `_bodyProp`, which a later fill may have changed.
+        // slideObjectToXml writes a fill's `margin` onto it just before that <a:bodyPr>, slide by slide, so a fill
+        // without one is written with the last margin an earlier fill wrote, over any inset (#628).
         for (const text of this.placeholderTexts) {
             const fontFace = text.headFont ? headFontFace : text.fontFace;
 
-            if (fontFace !== text.fontFace || text.placeholder.body !== text.body) {
-                this.model.objects[text.index] = text.draw(fontFace, text.placeholder.body);
+            if (text.ownMargin !== undefined) {
+                writtenMargins.set(text.placeholder, text.ownMargin);
+            }
+
+            const margin = writtenMargins.get(text.placeholder);
+
+            if (fontFace !== text.fontFace || text.placeholder.body !== text.body || margin !== text.margin) {
+                this.model.objects[text.index] = text.draw(fontFace, text.placeholder.body, margin);
                 text.fontFace = fontFace;
                 text.body = text.placeholder.body;
+                text.margin = margin;
             }
         }
 
@@ -492,9 +512,8 @@ export class PuppeteerSlide implements PptxSlide {
             const merged = { ...textOptions, ...placeholder?.options };
 
             // addTextDefinition (cleanOpts D, E, 2) on the placeholder's shared `_bodyProp`: anchor, vert, wrap and
-            // autoFit are always written, the inset only when given (slideObjectToXml then writes each fill's `margin`).
-            // shortcut: slideObjectToXml writes a fill's `margin` onto the shared object too, so a later slide's fill
-            // without one takes it over the inset; reproduce that write order if a deck mixes margins on one placeholder (#628).
+            // autoFit are always written, the inset only when given (slideObjectToXml then writes each fill's `margin`,
+            // toModel).
             if (placeholder) {
                 const inset = typeof merged.inset === "number" && !Number.isNaN(merged.inset) ? merged.inset : placeholder.body.inset;
 
@@ -545,8 +564,8 @@ export class PuppeteerSlide implements PptxSlide {
         // (toModel).
         // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
         // says; normalize at write time if a deck needs both.
-        const draw = (fontFace: string, body: PlaceholderBody): NormalizedSlideObject => {
-            const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset } : {};
+        const draw = (fontFace: string, body: PlaceholderBody, margin: PlaceholderMargin): NormalizedSlideObject => {
+            const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset, margin } : {};
             const normalizedText = normalizeText(text, { color, ...textOptions, ...bodyOptions, fontFace: textOptions.fontFace ?? fontFace }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
                 box,
                 shared: this.context.sharedRunOptions,
@@ -571,11 +590,13 @@ export class PuppeteerSlide implements PptxSlide {
         };
         const fontFace = headFont ? this.context.headFontFace() : this.context.bodyFontFace();
         const body = filled ? filled.body : {};
+        // slideObjectToXml writes `margin` onto `_bodyProp` when it is an array or a number (0 and NaN too).
+        const ownMargin = Array.isArray(textOptions.margin) || typeof textOptions.margin === "number" ? textOptions.margin : undefined;
 
         if (filled) {
-            this.placeholderTexts.push({ index: this.model.objects.length, headFont, fontFace, placeholder: filled, body, draw });
+            this.placeholderTexts.push({ index: this.model.objects.length, headFont, fontFace, placeholder: filled, body, ownMargin, margin: ownMargin, draw });
         }
 
-        return this.addObject(draw(fontFace, body));
+        return this.addObject(draw(fontFace, body, ownMargin));
     }
 }

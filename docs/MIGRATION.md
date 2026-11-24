@@ -77,7 +77,8 @@ returns a `.pptx`:
   passed to a second `addText()` or `addTable()` keeps the first box's size, color, alignment and
   spacing there. PdfLapas draws the same, without changing your objects. Pass a fresh object per box
   (`{ ...item }`) to give each box its own options. Boxes are read in call order, PptxGenJS's write
-  order unless you add to a slide after a later one with an object both use.
+  order unless you add to a slide after a later one with an object both use. This is the one place
+  PdfLapas still replays a PptxGenJS write, pending #645.
 - **Chart options shared between charts (intentional difference):** PptxGenJS 4.0.1 keeps the
   options object of each `addChart()`, writes its defaults onto it in place, and writes every chart
   from it only when it writes the file. So all charts given one object take its final state: a pie
@@ -89,6 +90,17 @@ returns a `.pptx`:
   unmeasured). PdfLapas draws each chart from its options as they are at its own call and lists one
   line in `warnings()` when an options object reaches a second `addChart()`. Pass each chart its own
   copy (`{ ...options }`) to get the same charts from both.
+- **Caller data is never modified:** PdfLapas never writes onto, sorts or keeps a live reference to
+  the objects and arrays you pass, so one options object given to several calls draws as copies of it
+  would, and changing it after a call does not change the object that call added. PptxGenJS 4.0.1
+  writes onto some of them, so its output differs for a reused object: a `shadow` object is converted
+  to OOXML units in place on each object it is written for, so from the second object on it is out of
+  range and draws no shadow (#633); chart options are read when the file is written, after each
+  `addChart()` wrote its defaults onto them, so every chart on one object takes its final state (#638);
+  a table options object with a number `colW` carries the first table's width to the next (#642); and
+  text box, shape and table positions and `objectName` are read or written on the object too.
+  `warnings()` notes a reused `shadow` or chart options object. Pass each call its own copy (`{ ...options }`) to get
+  the same output from both.
 - **Text fit and tab stops:** `fit: "shrink"` (`shrinkText`) scales font size and line height in
   0.95 steps until the text fits, close to but not the scale PowerPoint or LibreOffice pick; the HTML
   states the rule on the box (`data-text-fit-step`).

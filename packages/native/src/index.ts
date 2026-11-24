@@ -1,5 +1,5 @@
-// "@pdflapas/native" outside Bun (the default condition): the public types, and a createNativeRenderer() that says
-// what to use instead. The renderer itself is in bun.ts, which loads the Rust library with bun:ffi.
+// "@pdflapas/native" outside Bun and Node (the default condition): the public types, and factories that say what to use
+// instead. The renderer itself is in bun.ts, which loads the Rust library with bun:ffi; node.ts is the Node placeholder.
 import type { MissingFont, MissingFontPolicy, PresentationRenderer } from "@pdflapas/model";
 
 export { type MissingFont, MissingFontError, type MissingFontPolicy } from "@pdflapas/model";
@@ -48,12 +48,23 @@ export type NativeRendererPool = PresentationRenderer & {
     [Symbol.asyncDispose](): Promise<void>;
 };
 
-const NEEDS_BUN = "@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node";
+/** Thrown by the factories of every entry but Bun's: the native library is loaded with bun:ffi, which only Bun has. */
+export class UnsupportedRuntimeError extends Error {
+    readonly runtime: string;
+
+    constructor(runtime: string, message: string) {
+        super(message);
+        this.name = "UnsupportedRuntimeError";
+        this.runtime = runtime;
+    }
+}
+
+const NEEDS_BUN = "@pdflapas/native needs Bun (bun:ffi), which this runtime does not have; use @pdflapas/wasm (createWasmRenderer / createWasmRendererPool) instead.";
 
 export async function createNativeRenderer(_options: NativeRendererOptions): Promise<NativeRenderer> {
-    throw new Error(NEEDS_BUN);
+    throw new UnsupportedRuntimeError("unknown", NEEDS_BUN);
 }
 
 export async function createNativeRendererPool(_options: NativeRendererPoolOptions): Promise<NativeRendererPool> {
-    throw new Error(NEEDS_BUN);
+    throw new UnsupportedRuntimeError("unknown", NEEDS_BUN);
 }

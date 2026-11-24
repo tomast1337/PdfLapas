@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { NativeRenderer, NativeRendererOptions, NativeRendererPool, NativeRendererPoolOptions } from "./index";
 
 export type { MissingFont, MissingFontPolicy, NativeRenderer, NativeRendererOptions, NativeRendererPool, NativeRendererPoolOptions } from "./index";
-export { MissingFontError } from "./index";
+export { MissingFontError, UnsupportedRuntimeError } from "./index";
 
 /** The C ABI of crates/pdf-ffi (lib.rs, pool.rs). `usize` is `u64`: the prototype builds 64-bit Linux only. */
 const SYMBOLS = {

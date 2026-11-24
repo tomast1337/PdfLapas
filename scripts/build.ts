@@ -17,7 +17,7 @@ const PACKAGES = [
     { name: "pdfkit", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "react", entrypoints: ["index"] },
     // bun.ts imports bun:ffi, so its declarations build with Bun's types.
-    { name: "native", entrypoints: ["index", "bun"], types: ["node", "bun"] },
+    { name: "native", entrypoints: ["index", "bun", "node"], types: ["node", "bun"] },
 ] as { name: string; entrypoints: string[]; types?: string[] }[];
 
 /** Bundles only the "bun" export condition loads: they may import bun:* modules. */

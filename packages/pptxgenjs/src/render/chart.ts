@@ -718,31 +718,31 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         }
 
         // A band room (PowerPoint's) swaps the gaps and label bands this layout gives a vertical plot for the target's.
-        // A horizontal axis's band room is the plot's width once ECharts fits the labels in the frame (outerBounds): the
-        // category names left of a plot whose bars start at its left edge, and half the last value label past its right.
+        // A laid-out room is the horizontal axis the target lays out: in from each edge by edgePt and half the end label,
+        // or on the left past the category names (left of a plot whose bars start at its left edge) and namesPt.
         let roomLength = valueAxisLength;
 
         if (room.length?.kind === "band" && !layout && !horizontal && categoryBand === bottomLabelBand) {
             roomLength = valueAxisLength + 2 * gap + valueLabelPx / 2 + bottomLabelBand - pointsToPixels(room.length.pt) - room.length.em * categoryLabelPx;
         } else if (room.length?.kind === "laidOut" && !layout && horizontal) {
-            const labelFont = (size: number, face: string) => `${pointsToPixels(size)}px ${face}`;
-            let namesWidth = 0;
+            const valueFont = `${pointsToPixels(axis.labelFontSize)}px ${axis.labelFontFace}`;
+            const halfLabel = (value: number) => format.getTextRect(formatChartNumber(value / (axis.displayUnit?.divisor ?? 1), axis.labelFormatCode), valueFont).width / 2;
+            const edge = pointsToPixels(room.length.edgePt);
+            let names = 0;
 
             if (automatic.low >= 0 && !categoryAxisModel.hidden && categoryAxisModel.labelPosition !== "none" && categoryAxisModel.labelPosition !== "high") {
                 for (const name of chart.series[0]?.labels ?? []) {
-                    namesWidth = Math.max(namesWidth, format.getTextRect(name, labelFont(categoryAxisModel.labelFontSize, categoryAxisModel.labelFontFace)).width + AXIS_LABEL_MARGIN);
+                    names = Math.max(names, format.getTextRect(name, `${pointsToPixels(categoryAxisModel.labelFontSize)}px ${categoryAxisModel.labelFontFace}`).width + pointsToPixels(room.length.namesPt));
                 }
             }
 
-            const lastLabel = format.getTextRect(formatChartNumber(axis.maximum / (axis.displayUnit?.divisor ?? 1), axis.labelFormatCode), labelFont(axis.labelFontSize, axis.labelFontFace)).width / 2;
-
-            roomLength = width - Math.max(gridLeft, labelBound + leftLegendShift + namesWidth) - Math.max(gridRight, Math.max(labelBound, rightLegendBand) + lastLabel);
+            roomLength = width - leftLegendShift - rightLegendBand - Math.max(edge + halfLabel(axis.minimum), names) - edge - halfLabel(axis.maximum);
         }
 
         const roomSteps = stepRoomIncrements(room, roomLength, { ...axis, divisor: axis.displayUnit?.divisor ?? 1 });
         const fixed = automatic.fixedMinimum ? { kind: "minimum" as const, value: axis.minimum } : automatic.fixedMaximum ? { kind: "maximum" as const, value: axis.maximum } : { kind: "none" as const };
         const scale = automatic.padding
-            ? paddedAxisScale(automatic.low, automatic.high, fixed, automatic.padding, { kind: "room", steps: roomSteps })
+            ? paddedAxisScale(automatic.low, automatic.high, fixed, automatic.padding, { kind: "room", steps: roomSteps + room.rounding })
             : automaticAxisScale(automatic.low, automatic.high, fixed, true, { kind: "automatic", maxIncrements: wholeSteps(room, roomSteps) });
 
         scaledValueAxes.push({ ...axis, minimum: automatic.fixedMinimum ? axis.minimum : scale.minimum, maximum: automatic.fixedMaximum ? axis.maximum : scale.maximum, majorUnit: scale.interval });
@@ -1263,7 +1263,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             xValues.length === 0
                 ? undefined
                 : xPadding
-                  ? paddedAxisScale(xLow, xHigh, xFixed, xPadding, xStep ?? { kind: "room", steps: xRoomSteps })
+                  ? paddedAxisScale(xLow, xHigh, xFixed, xPadding, xStep ?? { kind: "room", steps: xRoomSteps + (xRoom?.rounding ?? 0) })
                   : automaticAxisScale(xLow, xHigh, xFixed, xRoom !== undefined, xStep ?? (xRoom ? { kind: "automatic", maxIncrements: wholeSteps(xRoom, xRoomSteps) } : undefined));
         const xMinimum = fixedX?.minimum ?? automaticX?.minimum;
         const xMaximum = fixedX?.maximum ?? automaticX?.maximum;

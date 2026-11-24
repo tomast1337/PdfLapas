@@ -420,11 +420,10 @@ export type NormalizedChartValueAxis = {
      * `minimum` to `maximum` as they are. `minimum` and `maximum` then hold the scale before that choice. On a bar3D
      * chart `labelHeightsPerStep` is how many label heights of drawn axis each step needs; absent: one. On a 2D chart
      * `stepRoom` sets the most steps, `floor(length / (perStep × label) + rounding)` between 2 and `maxIncrements`, where
-     * `label` is the labels' height or the widest label's width, and `length` the plot's before its labels are laid out;
-     * with `length` "laidOut" a horizontal axis's once they are, and with "band" a vertical axis's frame less its other
-     * bands and less `pt` points and `em` category label font sizes. Absent: the scale before that choice. `padding`: the
+     * `label` is the labels' height or the widest label's width, and `length` the plot's before its labels are laid out,
+     * or the one `length` names (`NormalizedChartStepRoomLength`). Absent: the scale before that choice. `padding`: the
      * scale is PowerPoint's padded one over `low` to `high` (then the data's own ends, 0 not included), in the steps the
-     * room fits, `length / (perStep × label)` or `length / (labelHeightsPerStep × label)`; absent: LibreOffice's.
+     * room fits, `length / (perStep × label) + rounding` or `length / (labelHeightsPerStep × label)`; absent: LibreOffice's.
      */
     automaticScale?: {
         low: number;
@@ -582,8 +581,13 @@ export type NormalizedChartSeriesAxis = {
     titleRotate?: number;
 };
 
-/** How a value axis's step room measures the axis's length (`automaticScale.stepRoom.length`). */
-export type NormalizedChartStepRoomLength = { kind: "laidOut" } | { kind: "band"; pt: number; em: number };
+/**
+ * How a value axis's step room measures the axis's length (`automaticScale.stepRoom.length`). "laidOut": a horizontal
+ * axis's width less `edgePt` points and half its first label at the left and half its last at the right, or at the left
+ * the category names plus `namesPt` points when they are wider. "band": a vertical axis's frame less its other bands and
+ * less `pt` points and `em` category label font sizes.
+ */
+export type NormalizedChartStepRoomLength = { kind: "laidOut"; edgePt: number; namesPt: number } | { kind: "band"; pt: number; em: number };
 
 /**
  * The data table under a chart's plot area (`<c:dTable>`): a row of category names, then one row per series with its

@@ -279,7 +279,7 @@ const valueAxis = z.strictObject({
                     perStep: z.number().positive(),
                     rounding: finite,
                     maxIncrements: z.number().int().min(2),
-                    length: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("laidOut") }), z.strictObject({ kind: z.literal("band"), pt: finite, em: finite })]).optional(),
+                    length: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("laidOut"), edgePt: finite, namesPt: finite }), z.strictObject({ kind: z.literal("band"), pt: finite, em: finite })]).optional(),
                 })
                 .optional(),
             padding: z.strictObject({ ratio: z.number().min(0), maxSteps: z.number().int().min(1), dropsHalfRange: z.boolean(), bubbleRoom: z.number().min(0), count: z.enum(["bounds", "range"]) }).optional(),

@@ -178,11 +178,11 @@ export function bar3DAxisScale(low: number, high: number, fixed: FixedAxisScale,
 /**
  * PowerPoint's automatic scale of an axis whose data runs from low to high, as its PDF export numbers column, bar, line,
  * area, bar3D, scatter, bubble and secondary value axes (#589, #616, #619):
- * 1. A bubble chart's data widens by bubbleRoom of its range on each side.
- * 2. Data at or above 0 (or, negated, at or below it) starts at 0 when its minimum is under 5/6 of its maximum (or the
- *    two are equal); otherwise a value axis (dropsHalfRange) drops it half the range toward 0, and a scatter axis keeps it.
- * 3. Each automatic bound that is not 0 and was not dropped moves out by `ratio` of the range.
- * 4. The step is the smallest 1, 2 or 5 x 10^k that splits the padded range into at most maxSteps steps and leaves at
+ * 1. Data at or above 0 (or, negated, at or below it) starts at 0 when its minimum is under 5/6 of its maximum (or the
+ *    two are equal), unless a bubble chart's room (bubbleRoom of the range) would carry it below 0; otherwise a value axis (dropsHalfRange) drops it half the range toward 0, and a scatter axis keeps it.
+ * 2. Each automatic bound that is not 0 and was not dropped moves out by `ratio` of the range; on a bubble chart
+ *    (bubbleRoom above 0) by bubbleRoom of it, a bound of the data at 0 too.
+ * 3. The step is the smallest 1, 2 or 5 x 10^k that splits the padded range into at most maxSteps steps and leaves at
  *    most roomSteps steps (counted between the rounded bounds, or over the padded range); the bounds round out to it,
  *    counted from a fixed bound (from 0 when none is fixed). A fixed step (valAxisMajorUnit) is the step.
  */
@@ -190,9 +190,9 @@ export function paddedAxisScale(low: number, high: number, fixed: FixedAxisBound
     const { wideRatio } = PPTX_DEFAULTS.chart.automaticScale;
     let autoMinimum = fixed.kind !== "minimum";
     let autoMaximum = fixed.kind !== "maximum";
-    const bubble = padding.bubbleRoom * (high - low);
-    let minimum = fixed.kind === "minimum" ? fixed.value : low - bubble;
-    let maximum = fixed.kind === "maximum" ? fixed.value : high + bubble;
+    const bubble = padding.bubbleRoom > 0;
+    let minimum = fixed.kind === "minimum" ? fixed.value : low;
+    let maximum = fixed.kind === "maximum" ? fixed.value : high;
 
     if (minimum > maximum) {
         if (autoMaximum) {
@@ -209,9 +209,10 @@ export function paddedAxisScale(low: number, high: number, fixed: FixedAxisBound
         [autoMinimum, autoMaximum] = [autoMaximum, autoMinimum];
     }
 
-    let padMinimum = autoMinimum && minimum !== 0;
+    let padMinimum = autoMinimum && (minimum !== 0 || bubble);
 
-    if (autoMinimum && minimum > 0) {
+    // A bubble chart's minimum that its room would carry below 0 stays, to be padded across it.
+    if (autoMinimum && minimum > 0 && !(bubble && minimum < padding.bubbleRoom * (maximum - minimum))) {
         if (minimum === maximum || minimum < maximum * wideRatio) {
             minimum = 0;
             padMinimum = false;
@@ -229,9 +230,9 @@ export function paddedAxisScale(low: number, high: number, fixed: FixedAxisBound
         }
     }
 
-    const range = maximum - minimum;
-    const paddedMinimum = padMinimum ? minimum - padding.ratio * range : minimum;
-    const paddedMaximum = autoMaximum && maximum !== 0 ? maximum + padding.ratio * range : maximum;
+    const pad = (bubble ? padding.bubbleRoom : padding.ratio) * (maximum - minimum);
+    const paddedMinimum = padMinimum ? minimum - pad : minimum;
+    const paddedMaximum = autoMaximum && (maximum !== 0 || bubble) ? maximum + pad : maximum;
     // The intervals count from the fixed bound, so a fixed minimum of 7 draws 7, 12, 17 and not 10, 15.
     const base = !autoMinimum ? minimum : !autoMaximum ? maximum : 0;
     let interval = step.kind === "fixed" ? step.interval : automaticAxisInterval(paddedMinimum, paddedMaximum, padding.maxSteps);

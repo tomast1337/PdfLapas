@@ -247,7 +247,8 @@ export type RenderingTargetProfile = {
     /**
      * How a 2D chart's automatic value axis fits its steps to the drawn axis (#585): at most `floor(length / (perStep ×
      * label) + rounding)` steps, between 2 and `maxIncrements`, where `label` is the labels' height or the widest
-     * label's width, on a vertical axis and on a horizontal one (`NormalizedChartValueAxis.automaticScale.stepRoom`).
+     * label's width, on a vertical axis and on a horizontal one (a horizontal bar chart's,
+     * `NormalizedChartValueAxis.automaticScale.stepRoom`).
      */
     readonly valueAxisStepRoom: {
         /** `length`: the axis's length the room takes (`NormalizedChartStepRoomLength`); absent: the plot's before its labels. */
@@ -260,8 +261,8 @@ export type RenderingTargetProfile = {
      * whose bounds round out and move a step further near the data (`automaticAxisScale`), or PowerPoint's padded one
      * (`paddedAxisScale`), its bounds padded by `ratio` of the range (a bar3D axis's by `bar3DRatio`) before they round, at most `maxSteps` steps over the
      * padded range, a bubble chart's data widened by `bubbleRoom` of its range, and the room's steps counted between the
-     * rounded bounds or over the padded range on a vertical and on a horizontal axis
-     * (`NormalizedChartValueAxis.automaticScale.padding`, `NormalizedChartCatAxis.xScale.padding`).
+     * rounded bounds or over the padded range on a vertical and on a horizontal bar chart's axis
+     * (`NormalizedChartValueAxis.automaticScale.padding`).
      */
     readonly automaticScale:
         | { readonly kind: "borderExpansion" }
@@ -317,10 +318,11 @@ export type RenderingTargetProfile = {
      */
     readonly drawsScatterDataTable: boolean;
     /**
-     * How a scatter or bubble chart's automatic x axis is scaled: to its x values, or as a horizontal value axis, 0
-     * included, in the room `valueAxisStepRoom.horizontal` gives its labels (`NormalizedChartCatAxis.xScale.stepRoom`).
+     * How a scatter or bubble chart's automatic x axis is scaled: to its x values, or as a value axis, 0 included, in
+     * the steps `room` fits along the plot's width before its labels, counted as `count` says
+     * (`NormalizedChartCatAxis.xScale.stepRoom` and `padding`).
      */
-    readonly scatterXAxisScale: { readonly kind: "xValues" } | { readonly kind: "valueAxis" };
+    readonly scatterXAxisScale: { readonly kind: "xValues" } | { readonly kind: "valueAxis"; readonly room: { readonly label: "height" | "width"; readonly perStep: number; readonly rounding: number }; readonly count: "bounds" | "range" };
     /**
      * Where a pie's labels go when PptxGenJS writes no `<c:dLblPos>` (dataLabelPosition unset, or one it drops):
      * "bestFit" near the rim, or "ctr" at mid-radius.

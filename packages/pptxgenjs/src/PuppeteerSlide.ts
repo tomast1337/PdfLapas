@@ -242,6 +242,32 @@ export class PuppeteerSlide implements PptxSlide {
         this.context.shadowsSeen.add(shadow);
     }
 
+    /**
+     * PptxGenJS 4.0.1 genXmlTextBody (STEP 6) writes a box's options onto each run's own `options` object in place, so a
+     * later box given the same object takes the earlier box's size, color, alignment and spacing. PdfLapas draws each
+     * box's runs from their options as given, as copies would draw, and notes the difference. Runs of one call may
+     * share an object: PptxGenJS's writes within one box are drawn (normalizeText).
+     */
+    private noteSharedRunOptions(runs: readonly { options?: object }[], method: "addText" | "addTable"): void {
+        const own = new Set<object>();
+
+        for (const run of runs) {
+            if (typeof run === "object" && run !== null && typeof run.options === "object" && run.options !== null) {
+                own.add(run.options);
+            }
+        }
+
+        for (const options of own) {
+            if (this.context.runOptionsSeen.has(options)) {
+                this.context.warn(
+                    `${method}(): a run's \`options\` object was given to an earlier addText() or addTable() too. PptxGenJS 4.0.1 writes each box's options onto its runs' options objects in place, so a later box sharing that object takes the earlier box's size, color, alignment and spacing. PdfLapas draws each box's runs from their options as given. Pass each run its own copy, e.g. \`options: { ...item }\`.`,
+                );
+            }
+
+            this.context.runOptionsSeen.add(options);
+        }
+    }
+
     private addObject(object: NormalizedSlideObject): this {
         this.model.objects.push(object);
 
@@ -483,7 +509,17 @@ export class PuppeteerSlide implements PptxSlide {
 
     addTable(tableRows: PptxGenJS.TableRow[], options?: PptxGenJS.TableProps | undefined): PptxGenJS.Slide {
         const tableOptions = options ?? {};
+        const runs: Array<{ options?: object }> = [];
 
+        for (const row of Array.isArray(tableRows) ? tableRows : []) {
+            for (const cell of Array.isArray(row) ? row : []) {
+                if (typeof cell === "object" && cell !== null && Array.isArray(cell.text)) {
+                    runs.push(...cell.text);
+                }
+            }
+        }
+
+        this.noteSharedRunOptions(runs, "addTable");
         this.newAutoPagedSlides = [];
         if (tableOptions.autoPage) {
             // addTableDefinition and getSlidesForTableRows take a master's margin over the table's `slideMargin`.
@@ -500,7 +536,7 @@ export class PuppeteerSlide implements PptxSlide {
                     continuationSlides.push(target);
                 }
 
-                target.addTable(page.rows, {
+                target.addTablePage(page.rows, {
                     ...pageOptions,
                     // PptxGenJS 4.0.1 addTableDefinition (step 6 C) adds each page with the caller's options, so its
                     // rows keep the caller's rowH or h and otherwise size to their content.
@@ -514,9 +550,14 @@ export class PuppeteerSlide implements PptxSlide {
             return this;
         }
 
+        return this.addTablePage(tableRows, tableOptions);
+    }
+
+    /** One page of a table: the caller's rows, or an autoPage page of them, which addTable() noted once. */
+    private addTablePage(tableRows: PptxGenJS.TableRow[], tableOptions: PptxGenJS.TableProps): this {
+        this.newAutoPagedSlides = [];
         const table = normalizeTable(tableRows, { ...tableOptions, fontFace: tableOptions.fontFace ?? this.context.bodyFontFace() }, this.pageSize, this.context.target, this.context.fontMetrics, {
             table: tableOptions,
-            shared: this.context.sharedRunOptions,
         });
         const style = normalizeObjectStyle(tableOptions, { x: PPTX_DEFAULTS.table.x, y: PPTX_DEFAULTS.table.y }, this.pageSize, this.nextObjectName("Table", tableOptions.objectName));
         // A table is as wide and tall as its grid, whatever its frame (`w`, `h`) says; set in pixels, as an inch value of
@@ -585,6 +626,7 @@ export class PuppeteerSlide implements PptxSlide {
         }
 
         this.noteSharedShadow(options?.shadow, "addText");
+        this.noteSharedRunOptions(Array.isArray(input) ? input : [], "addText");
 
         // Text transparency is a run color property, not object opacity.
         const { transparency: _textTransparency, ...boxOptions } = textOptions;
@@ -596,9 +638,6 @@ export class PuppeteerSlide implements PptxSlide {
         textStyle.line = normalizeTextLine(textOptions, lineOutline(textOptions.shape ?? "", textStyle.geometry.width ?? 0, textStyle.geometry.height ?? 0));
         // PptxGenJS 4.0.1 addTextDefinition (cleanOpts) gives the box, and each of its runs without one, the box's color,
         // else the slide's, else black, and writes the box's options onto the runs as it writes the slide (RunWriting).
-        // shortcut: PptxGenJS writes slide by slide, and PdfLapas reads what an earlier box wrote onto a run's options in
-        // the order of the addText() and addTable() calls; they differ only when a deck adds to a slide after a later
-        // one with options both share. Normalize at write time if a deck needs that order.
         const box = { ...textOptions, color: textOptions.color || this.color || PPTX_DEFAULTS.text.color };
         const color = this.color;
         // The box's shadow is cast by everything it draws, under it, so its glyphs' share lies under the fill, where
@@ -624,8 +663,6 @@ export class PuppeteerSlide implements PptxSlide {
 
         // Drawn in `fontFace` where the text sets none; a title placeholder's is drawn again when the head font changes
         // (toModel).
-        // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
-        // says; normalize at write time if a deck needs both.
         const draw = (fontFace: string, body: PlaceholderBody, margin: PlaceholderMargin): NormalizedSlideObject => {
             const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset, margin } : {};
             const normalizedText = normalizeText(
@@ -637,7 +674,6 @@ export class PuppeteerSlide implements PptxSlide {
                 this.context.bodyFontFace(),
                 {
                     box,
-                    shared: this.context.sharedRunOptions,
                     ...placeholderSpaceBefore,
                 },
             );

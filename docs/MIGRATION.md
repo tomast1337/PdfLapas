@@ -72,13 +72,14 @@ returns a `.pptx`:
   and `endArrowType`. A `shadow` on a text run (a run's `options`, in a text box or a table cell) draws
   nothing: PptxGenJS writes only a run's `glow`, so PowerPoint shows no run shadow. Put `shadow` on the
   text box instead (`COMPATIBILITY.text.options.runShadow` is `"ignored"`).
-- **Run options shared between boxes:** PptxGenJS writes a box's options onto the `options` object of
-  each of its runs (every option the run leaves falsy, and the box's color), so a run options object
-  passed to a second `addText()` or `addTable()` keeps the first box's size, color, alignment and
-  spacing there. PdfLapas draws the same, without changing your objects. Pass a fresh object per box
-  (`{ ...item }`) to give each box its own options. Boxes are read in call order, PptxGenJS's write
-  order unless you add to a slide after a later one with an object both use. This is the one place
-  PdfLapas still replays a PptxGenJS write, pending #645.
+- **Run options shared between boxes (intentional difference):** PptxGenJS 4.0.1 writes a box's
+  options onto the `options` object of each of its runs (every option the run leaves falsy, and the
+  box's color), so a run options object passed to a second `addText()` or `addTable()` keeps the first
+  box's size, color, alignment and spacing there. PdfLapas draws each box's runs from their options as
+  given at its own call, as copies would draw, and lists one line in `warnings()` when a run's
+  `options` object reaches a later `addText()` or `addTable()`. Runs of one call that share an object
+  still share what the box writes onto it, as in PptxGenJS. Pass each box its own copy (`{ ...item }`)
+  to get the same text from both.
 - **Chart options shared between charts (intentional difference):** PptxGenJS 4.0.1 keeps the
   options object of each `addChart()`, writes its defaults onto it in place, and writes every chart
   from it only when it writes the file. So all charts given one object take its final state: a pie
@@ -97,10 +98,11 @@ returns a `.pptx`:
   to OOXML units in place on each object it is written for, so from the second object on it is out of
   range and draws no shadow (#633); chart options are read when the file is written, after each
   `addChart()` wrote its defaults onto them, so every chart on one object takes its final state (#638);
-  a table options object with a number `colW` carries the first table's width to the next (#642); and
+  a run's `options` object takes the first box's size, color and spacing in a later box (#645); a
+  table options object with a number `colW` carries the first table's width to the next (#642); and
   text box, shape and table positions and `objectName` are read or written on the object too.
-  `warnings()` notes a reused `shadow` or chart options object. Pass each call its own copy (`{ ...options }`) to get
-  the same output from both.
+  `warnings()` notes a reused `shadow`, chart options or run options object. Pass each call its own
+  copy (`{ ...options }`) to get the same output from both.
 - **Text fit and tab stops:** `fit: "shrink"` (`shrinkText`) scales font size and line height in
   0.95 steps until the text fits, close to but not the scale PowerPoint or LibreOffice pick; the HTML
   states the rule on the box (`data-text-fit-step`).

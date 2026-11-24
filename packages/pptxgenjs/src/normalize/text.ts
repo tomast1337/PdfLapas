@@ -12,7 +12,6 @@ import { normalizeTransform } from "./geometry";
 import { paragraphAlign, verticalAlign } from "./alignment";
 import { normalizeHyperlink } from "./link";
 import { textMarginPixels } from "./margin";
-import { recordSharedRun, type SharedRunOptions, sharedRunOptions } from "./sharedRunOptions";
 import { checkedSize } from "./size";
 import { normalizeColor, normalizeShadow } from "./style";
 import { OOXML_PERCENT } from "./shape/path";
@@ -488,8 +487,6 @@ export type RunWriting = {
      * PdfLapas fills in to draw them; the drawn options when unset.
      */
     readonly box?: PptxGenJS.TextPropsOptions;
-    /** What PptxGenJS wrote onto run options objects in earlier boxes; this box's writes are added to it. */
-    readonly shared?: SharedRunOptions;
     /** A table cell's text, which no addTextDefinition cleans. */
     readonly cell?: boolean;
     /**
@@ -497,12 +494,6 @@ export type RunWriting = {
      * ratio of the size, which a paragraph PptxGenJS writes no `<a:spcBef>` for (no `paraSpaceBefore` above 0) takes.
      */
     readonly placeholderSpaceBeforeRatio?: number;
-};
-
-/** A run options record of one box: the options it started from and the copy this box's writes go to. */
-type RunRecord = {
-    readonly start: PptxGenJS.TextPropsOptions;
-    readonly state: PptxGenJS.TextPropsOptions;
 };
 
 /** Box options PptxGenJS 4.0.1 copies onto runs (STEP 6 C) that no run draws. */
@@ -533,11 +524,12 @@ export function normalizeText(
 ): NormalizedTextBox {
     // Refused even when every run sets its own (each paragraph below checks the align it uses).
     paragraphAlign(options.align);
-    const records = new Map<object, RunRecord>();
+    const records = new Map<object, PptxGenJS.TextPropsOptions>();
     // PptxGenJS 4.0.1 genXmlTextBody STEP 4 keeps one mutable options record per run: the run's own options object, or
     // for a run without one, the `{}` addTextDefinition stores on it in a text box and the cell's own options in a table
     // cell. Every piece split from a run shares it, and so do the runs that share it, so a write to one is seen by all of
-    // them. `records` holds them by that object; each starts as a copy of what earlier boxes left on it (sharedRunOptions).
+    // them. `records` holds a copy of each by that object, which this box writes onto. A later box given the same
+    // object starts from the caller's options again, as a copy would: PptxGenJS's writes are not replayed across calls.
     const source = Array.isArray(input) ? input.map(item => ({ text: String(item.text ?? ""), key: item.options ?? item, own: item.options ?? {} })) : [{ text: String(input), key: options, own: options }];
     const pieces: TextPiece[] = [];
     // A run's own `shadow` draws nothing: PptxGenJS 4.0.1 genXmlTextRunProperties writes only `glow` into the run's
@@ -548,7 +540,7 @@ export function normalizeText(
     for (const item of source) {
         const record = records.get(item.key);
         // A copy, so the mutations below never reach the caller's options.
-        const runOptions = record?.state ?? sharedRunOptions(Array.isArray(input) ? writing.shared : undefined, item.key, item.own);
+        const runOptions = record ?? { ...item.own };
 
         if (!record) {
             delete runOptions.shadow;
@@ -557,7 +549,7 @@ export function normalizeText(
                 runOptions.shadow = glyphShadow;
             }
 
-            records.set(item.key, { start: { ...runOptions }, state: runOptions });
+            records.set(item.key, runOptions);
         }
 
         const text = item.text.replace(/\r\n?/g, "\n");
@@ -641,12 +633,7 @@ export function normalizeText(
         }
     }
 
-    for (const [key, { start, state }] of records) {
-        // A string's options and a cell's option-less runs are the box's own, not a run options object.
-        if (writing.shared && Array.isArray(input) && key !== options) {
-            recordSharedRun(writing.shared, key, start, state);
-        }
-
+    for (const state of records.values()) {
         // A table cell gets no addTextDefinition, which turns a text box's `underline: true` into `{ style: "sng" }`:
         // in a cell the boolean writes no `u`. Set after STEP 6, which keeps the cell's underline off the run.
         // `unknown`: PptxGenJS's types declare only the object form; the boolean works at runtime.

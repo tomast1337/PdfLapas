@@ -8,7 +8,6 @@ import { ALIGN_H, ALIGN_V, CHART_TYPE, DEPRECATED_CHART_TYPE, DEPRECATED_SCHEME_
 import { type ImageSourceOptions, imageResolver, resolveRemoteImageSource } from "./normalize/image";
 import { fontMetricsLookup } from "./fontMetrics";
 import { normalizePdfMetadata, type PdfMetadataOptions } from "./normalize/pdfMetadata";
-import type { SharedRunOptions } from "./normalize/sharedRunOptions";
 import { findHtmlTable, normalizeHtmlTable } from "./normalize/table/html";
 import type { TableHtmlLimits } from "./normalize/table/htmlLimits";
 import { paginateTableRows } from "./normalize/table/pagination";
@@ -110,8 +109,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     /** The `slideNumber` set last on any slide, which PptxGenJS's setter also writes to its built-in "DEFAULT" layout. */
     private defaultLayoutSlideNumber: PptxGenJS.SlideNumberProps | null = null;
     private readonly components = new ComponentRegistry();
-    /** What PptxGenJS writes onto run options objects the deck shares between boxes, which its slides read and extend. */
-    private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
+    /** The run `options` objects given to the deck's text boxes and table cells so far, to note one given again. */
+    private readonly runOptionsSeen = new WeakSet<object>();
     /** The `shadow` objects given to the deck's objects so far, to note one given again (PuppeteerSlide.noteSharedShadow). */
     private readonly shadowsSeen = new WeakSet<object>();
     /** The chart options objects the deck's addChart() calls were given, which its slides read and extend. */
@@ -501,7 +500,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             warn: message => this.warningLines.add(message),
             target: this.target,
             fontMetrics: this.fontMetrics,
-            sharedRunOptions: this.sharedRunOptions,
+            runOptionsSeen: this.runOptionsSeen,
             shadowsSeen: this.shadowsSeen,
             chartOptionsSeen: this.chartOptionsSeen,
             getDocument: this.componentDocument,

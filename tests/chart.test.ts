@@ -2495,7 +2495,12 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(bubbleCrossing("powerpoint", "scatter")).toEqual({ kind: "value", value: 2 });
         expect(bubbleCrossing("libreoffice", "bubble")).toEqual({ kind: "value", value: 2 });
         expect(() => normalizeChart("scatter", xy, { catAxisCrossesAt: Number.NaN } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt");
-        expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "in" } as unknown as PptxGenJS.IChartOpts)).toThrow(TypeError);
+        // PptxGenJS writes a tick mark as given, so the OOXML names "in" and "out" are the typed "inside" and "outside".
+        const marks = normalizeChart("bar", quarters, { catAxisMajorTickMark: "in", catAxisMinorTickMark: "out", valAxisMajorTickMark: "out", valAxisMinorTickMark: "in" } as unknown as PptxGenJS.IChartOpts);
+
+        expect([marks.categoryMajorTickMark, marks.categoryAxis.minorTickMark, marks.valueAxes[0]?.majorTickMark, marks.valueAxes[0]?.minorTickMark]).toEqual(["inside", "outside", "outside", "inside"]);
+        expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "inner" } as unknown as PptxGenJS.IChartOpts)).toThrow('catAxisMajorTickMark must be "none", "inside" (or "in")');
+        expect(() => normalizeChart("bar", quarters, { valAxisMinorTickMark: "toString" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisMinorTickMark must be");
         // A date format needs date serials: text categories are not a time line.
         expect(() => normalizeChart("line", quarters, { catLabelFormatCode: "mmm-yy" })).toThrow("catLabelFormatCode[format]");
         expect(() => normalizeChart("line", [{ name: "Lorem", labels: ["45292"], values: [1] }], { catLabelFormatCode: "h:mm" })).toThrow("catLabelFormatCode[format]");

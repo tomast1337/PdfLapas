@@ -50,12 +50,18 @@ export type WasmRendererPoolOptions = Omit<WasmRendererOptions, "wasm"> & {
      * `loadSystemFonts()`'s default set, less with only the faces the decks use). Default: one per core but one, at most 8.
      */
     workers?: number;
+    /**
+     * `true`: `toPdf()` posts the deck's model to a worker, which builds the HTML there (#614): about 1 ms less CPU per
+     * request on the calling thread, for about 30-50 MB more RSS per worker (each loads the HTML builder). Default
+     * `false`: the HTML is built on the calling thread and the workers never load the builder.
+     */
+    buildHtmlInWorkers?: boolean;
 };
 
 /** What createWasmRendererPool() returns (Node/Bun): a renderer whose renders run in worker threads. */
 export type WasmRendererPool = PresentationRenderer & {
-    /** Builds the HTML from the model in a worker, then renders it there; toPdf() uses it when present (#614). */
-    renderModelHtml(request: ModelHtmlRequest): Promise<Uint8Array>;
+    /** Builds the HTML from the model in a worker, then renders it there; toPdf() uses it when present (#614). Only with `buildHtmlInWorkers: true`. */
+    renderModelHtml?: (request: ModelHtmlRequest) => Promise<Uint8Array>;
     /** What the last render to finish could not draw; with several in flight, read the error of the one you need instead. */
     warnings(): string[];
     /** The font faces the last render to finish asked for that none of the fonts provides. */

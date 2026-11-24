@@ -49,15 +49,22 @@ export class WasmWorkerPool implements WasmRendererPool {
     readonly #onMissingFont: MissingFontPolicy;
     readonly #slots: PoolSlot[] = [];
     readonly #queue: PoolJob[] = [];
+    /** Set only with `buildHtmlInWorkers`: absent, toPdf() builds the HTML on its own thread and no worker loads the builder (#634). */
+    readonly renderModelHtml?: (request: ModelHtmlRequest) => Promise<Uint8Array>;
     #closed = false;
     #startError: Error | undefined;
     #warnings: readonly string[] = [];
     #missingFonts: readonly MissingFont[] = [];
 
     /** createWasmRendererPool() is the way in: it builds `spawn`, which starts one worker thread on nodeWorker. */
-    constructor(spawn: () => Worker, workers: number, onMissingFont?: MissingFontPolicy) {
+    constructor(spawn: () => Worker, workers: number, onMissingFont?: MissingFontPolicy, buildHtmlInWorkers = false) {
         this.#spawn = spawn;
         this.#onMissingFont = missingFontPolicy(onMissingFont);
+        if (buildHtmlInWorkers) {
+            // Builds the HTML from the model in the first free worker, with `modelHtml` from `request.htmlModule`, then renders it there; same bytes as render().
+            this.renderModelHtml = async ({ model, images, htmlModule }) => this.#enqueue({ kind: "model", model, images, htmlModule });
+        }
+
         for (let index = 0; index < workers; index++) {
             this.#start();
         }
@@ -181,16 +188,6 @@ export class WasmWorkerPool implements WasmRendererPool {
         return this.#enqueue({ kind: "document", document: { html, pageSize } });
     }
 
-    /**
-     * Builds the HTML from the model in the first free worker, with `modelHtml` from `request.htmlModule`, then renders
-     * it there: toPdf() calls this, so the caller's thread does not build the HTML (#614). Same bytes as render().
-     */
-    async renderModelHtml(request: ModelHtmlRequest): Promise<Uint8Array> {
-        const { model, images, htmlModule } = request;
-
-        return this.#enqueue({ kind: "model", model, images, htmlModule });
-    }
-
     #enqueue(request: PoolRequest): Promise<Uint8Array> {
         if (this.#closed) {
             return Promise.reject(new Error("This WasmRendererPool is closed; create another with createWasmRendererPool()"));
@@ -250,6 +247,10 @@ export async function createWasmRendererPool(options: WasmRendererPoolOptions): 
         throw new Error("createWasmRendererPool() requires at least one font: pass { fonts: [Uint8Array, ...] } (await loadSystemFonts())");
     }
 
+    if (options.buildHtmlInWorkers !== undefined && typeof options.buildHtmlInWorkers !== "boolean") {
+        throw new Error(`createWasmRendererPool() needs buildHtmlInWorkers to be true or false, got ${String(options.buildHtmlInWorkers)}`);
+    }
+
     // One worker per core but one, which is left to the event loop that builds the HTML.
     const workers = options.workers ?? Math.max(1, Math.min(availableParallelism() - 1, MAX_DEFAULT_POOL_WORKERS));
 
@@ -272,7 +273,7 @@ export async function createWasmRendererPool(options: WasmRendererPoolOptions): 
     const workerData: PoolWorkerData = { fonts, wasm, onUnsupported: options.onUnsupported ?? "error" };
     // The worker's file sits next to this one: nodeWorker.ts beside the sources, nodeWorker.js in dist/.
     const script = new URL(`./nodeWorker${extname(fileURLToPath(import.meta.url))}`, import.meta.url);
-    const pool = new WasmWorkerPool(() => new Worker(script, { workerData }), workers, options.onMissingFont);
+    const pool = new WasmWorkerPool(() => new Worker(script, { workerData }), workers, options.onMissingFont, options.buildHtmlInWorkers);
 
     try {
         await pool.started();

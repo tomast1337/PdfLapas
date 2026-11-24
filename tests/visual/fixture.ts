@@ -2359,6 +2359,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartLabelsAtLineFixture(presentation);
     populateChartDateSlotFixture(presentation);
     populateVerticalDecorationFixture(presentation);
+    populateChartComboPercentFixture(presentation);
 }
 
 /**
@@ -3937,4 +3938,38 @@ export function populateVerticalDecorationFixture(presentation: Presentation): v
     for (const { x, runs } of boxes) {
         slide.addText(runs, { x, y: 1, w: 1 / 3, h: 4.2, vert: "vert", fontFace: "Arial", fontSize: 20, color: "363636", align: "center", valign: "middle", margin: 0 });
     }
+}
+
+/**
+ * A combo chart's percentStacked bars (#537): PptxGenJS writes `<c:grouping val="percentStacked"/>` on the bar element
+ * only, and LibreOffice 26.2 stacks those bars by value, as "stacked" (`comboPercentBarStack`), on the axis it shares
+ * with the line; PowerPoint draws each as its share of 1. A parity slide after the others (no page number moves).
+ */
+export function populateChartComboPercentFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    const labels = ["Q1", "Q2", "Q3", "Q4"];
+    const columns: PptxGenJS.IChartMulti = {
+        type: "bar",
+        data: [
+            { name: "Lorem", labels, values: [3, 5, 4, 7] },
+            { name: "Ipsum", labels, values: [5, 2, 6, 4] },
+        ],
+        options: {},
+    };
+    const line: PptxGenJS.IChartMulti = { type: "line", data: [{ name: "Sit", labels, values: [6, 9, 7, 10] }], options: {} };
+
+    slide.addText("Combo chart percentStacked bars", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    (slide.addChart as Function)([columns, line], {
+        x: 0.4,
+        y: 0.9,
+        w: 6,
+        h: 4.4,
+        barGrouping: "percentStacked",
+        catAxisLabelFontFace: "Arial",
+        valAxisLabelFontFace: "Arial",
+        legendFontFace: "Arial",
+        chartColors: ["BDD7EE", "F8CBAD", "A5A5A5"],
+        showLegend: true,
+        legendPos: "b",
+    });
 }

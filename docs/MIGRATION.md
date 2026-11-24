@@ -78,6 +78,17 @@ returns a `.pptx`:
   spacing there. PdfLapas draws the same, without changing your objects. Pass a fresh object per box
   (`{ ...item }`) to give each box its own options. Boxes are read in call order, PptxGenJS's write
   order unless you add to a slide after a later one with an object both use.
+- **Chart options shared between charts (intentional difference):** PptxGenJS 4.0.1 keeps the
+  options object of each `addChart()`, writes its defaults onto it in place, and writes every chart
+  from it only when it writes the file. So all charts given one object take its final state: a pie
+  then a bar on one object are both written as bar charts with the pie's colors and `0%` labels, a
+  bar then a doughnut as two doughnuts, a clustered bar becomes stacked when you set `barGrouping`
+  before the next call, and a line chart's `lineDataSymbolLineSize` is multiplied by 12700 per call,
+  past the largest OOXML line width from the second call on (LibreOffice 26.2.6 draws those markers
+  as usual; PowerPoint's PDF export of that reused-options deck failed, so its behaviour is
+  unmeasured). PdfLapas draws each chart from its options as they are at its own call and lists one
+  line in `warnings()` when an options object reaches a second `addChart()`. Pass each chart its own
+  copy (`{ ...options }`) to get the same charts from both.
 - **Text fit and tab stops:** `fit: "shrink"` (`shrinkText`) scales font size and line height in
   0.95 steps until the text fits, close to but not the scale PowerPoint or LibreOffice pick; the HTML
   states the rule on the box (`data-text-fit-step`).

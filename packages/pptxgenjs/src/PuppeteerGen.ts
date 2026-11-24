@@ -113,6 +113,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
     /** What PptxGenJS writes onto `shadow` objects the deck shares between objects, which its slides read and extend. */
     private readonly sharedShadows: SharedShadows = new WeakMap();
+    /** The chart options objects the deck's addChart() calls were given, which its slides read and extend. */
+    private readonly chartOptionsSeen = new WeakSet<object>();
     private slides: PuppeteerSlide[] = [];
     /** defineSlideMaster() layouts by `title`; the first one defined under a title wins, as PptxGenJS finds it first. */
     private readonly masters = new Map<string, SlideMaster>();
@@ -499,6 +501,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             fontMetrics: this.fontMetrics,
             sharedRunOptions: this.sharedRunOptions,
             sharedShadows: this.sharedShadows,
+            chartOptionsSeen: this.chartOptionsSeen,
             getDocument: this.componentDocument,
             master,
         };

@@ -62,6 +62,11 @@ export type SlideContext = {
     readonly sharedRunOptions: SharedRunOptions;
     /** What PptxGenJS has written onto the `shadow` objects of the presentation's text boxes, shapes and pictures. */
     readonly sharedShadows: SharedShadows;
+    /**
+     * The chart options objects the presentation's addChart() calls were given. PptxGenJS 4.0.1 keeps a reference to
+     * each one and reads it only when it writes the file, so a second chart on one object warns (PuppeteerSlide.addChart).
+     */
+    readonly chartOptionsSeen: WeakSet<object>;
     /** The `context.document` of components rendered to check them when they are added; toHtml() does not use it. */
     readonly getDocument: () => Document;
     /** The slide `offset` places after this one, added when it does not exist yet: where autoPage tables continue. */

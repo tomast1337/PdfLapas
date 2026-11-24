@@ -252,7 +252,9 @@ A renderer that runs in other threads may also implement the optional `renderMod
 under the Node entry, `toPdf()` then hands it the model and the images it resolved, and the renderer builds the HTML
 with `modelHtml(model, images)` from `htmlModule` (the package's `dist/modelHtml.js`) before rendering it. The HTML is
 the same document `toHtml()` returns. A deck with components (`registerComponent`) always goes through `render()`,
-since component definitions cannot leave the caller's thread. `createWasmRendererPool()` implements it.
+since component definitions cannot leave the caller's thread. `createWasmRendererPool({ buildHtmlInWorkers: true })`
+implements it; the default pool does not, so its workers never load the HTML builder: about 1 ms less CPU per request
+on the caller's thread, for 250-400 MB more RSS across the workers.
 
 The default renderer lives in `@pdflapas/puppeteer` and works on any
 `HtmlPresentationDocument`, for example one produced by the `/html` entry:

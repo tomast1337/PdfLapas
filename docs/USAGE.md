@@ -778,12 +778,12 @@ latency (p50, p95, p99), throughput, the process's RSS and heap, and the number 
 (Chromium, read from `/proc`, so Linux only); after each level it waits for the idle browser to close and prints the
 same after a full collection.
 
-| Variable                    | Default          | Meaning                                                               |
-| --------------------------- | ---------------- | --------------------------------------------------------------------- |
-| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool` and `pdfkit` |
-| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                          |
-| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                     |
-| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                               |
+| Variable                    | Default          | Meaning                                                                                                                      |
+| --------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `BENCH_LOAD_ENGINES`        | `puppeteer,wasm` | renderers to load, from `puppeteer`, `wasm`, `wasm-pool`, `wasm-pool-html` (the pool with `buildHtmlInWorkers`) and `pdfkit` |
+| `BENCH_LOAD_CONCURRENCY`    | `1,4,16`         | concurrent requests, one level after another                                                                                 |
+| `BENCH_LOAD_SECONDS`        | `60`             | seconds per level                                                                                                            |
+| `BENCH_LOAD_SAMPLE_SECONDS` | `10`             | seconds between samples                                                                                                      |
 
 ```bash
 BENCH_LOAD_ENGINES=puppeteer BENCH_LOAD_CONCURRENCY=16 BENCH_LOAD_SECONDS=600 BENCH_LOAD_SAMPLE_SECONDS=60 bun run bench:load
@@ -822,9 +822,10 @@ loaded once, and implements `PresentationRenderer` like `createWasmRenderer()`, 
 option. `render()` posts the HTML document to the first free worker (one document in flight per worker, the rest
 wait in one FIFO queue) and resolves with the PDF bytes the worker transfers back. Use it on a server that renders
 with WASM under concurrent requests: renders run on several cores and no longer block the event loop. `toPdf()`
-goes one step further: it posts the deck's model and its resolved images, and the worker builds the HTML (the same
-document `toHtml()` returns) before rendering it. A deck with components builds its HTML on the calling thread,
-since component definitions cannot cross into a worker.
+builds the HTML on the calling thread and posts it. With `buildHtmlInWorkers: true` it goes one step further: it
+posts the deck's model and its resolved images, and the worker builds the HTML (the same document `toHtml()`
+returns, the same PDF bytes) before rendering it. A deck with components still builds its HTML on the calling
+thread, since component definitions cannot cross into a worker.
 
 ```typescript
 import PuppeteerGen from "@pdflapas/pptxgenjs";
@@ -843,7 +844,7 @@ await renderer.close();
 ```
 
 - **Options.** The same as `createWasmRenderer()` (`fonts`, `onUnsupported`, `onMissingFont`) plus `workers`,
-  which defaults to one per core but one, at most 8. A render rejects with the error `WasmRenderer.render()` throws
+  which defaults to one per core but one, at most 8, and `buildHtmlInWorkers` (default `false`, see Limits). A render rejects with the error `WasmRenderer.render()` throws
   for the same document; `onMissingFont` runs on the calling thread, so a function works. `warnings()` and
   `missingFonts()` describe the last render to finish, which with several in flight may not be yours.
 - **Memory.** Each worker keeps its own copy of the fonts in WASM memory; the font bytes passed in are shared once.
@@ -851,12 +852,15 @@ await renderer.close();
   3.2 GB RSS, about 330 MB per worker; load only the faces your decks use to lower it.
 - **Failures.** A worker that dies is replaced; the render it was running rejects and says so, and the others carry
   on. `close()` terminates the workers and rejects what is still queued or in flight.
-- **Limits.** Building the deck (the PptxGenJS calls and normalization), resolving its images and copying its model
-  into the worker still run on the calling thread: about 5.4 ms of CPU per request in the mix below (`bench:load`
-  prints it as "main thread ... ms CPU per request"), from 5.7 ms when the HTML was built there too (#614). Building
-  the HTML costs about 2.2 ms per request, but copying the model to the worker (structured clone) costs about 1 ms,
-  so the gain is about 1 ms (#634). One process stays near 150 renders/s; past that, run more processes. Each worker also
-  loads the HTML builder, about 30 MB of RSS per worker. PDFKit has no pool yet (#608).
+- **Limits.** Building the deck (the PptxGenJS calls and normalization), resolving its images and building its HTML
+  run on the calling thread: about 5.8 ms of CPU per request in the mix below (`bench:load` prints it as "main
+  thread ... ms CPU per request"), which caps one process near 140 renders/s; past that, run more processes. The
+  default keeps memory low: the workers never load the HTML builder. `buildHtmlInWorkers: true` moves the HTML into
+  the workers (#614): building it costs about 2.2 ms per request, copying the model to the worker about 1 ms (#634),
+  so the calling thread saves about 1 ms per request (4.8-5.0 ms) and one process reached 160-170 renders/s at 16 in
+  flight, for 250-400 MB more RSS (each worker loads the HTML builder, charts included, 30-50 MB). Turn it on when the
+  calling thread is the bottleneck and memory is not; keep the default when RSS matters more, or scale with more
+  processes instead. PDFKit has no pool yet (#608).
 
 Measured with `BENCH_LOAD_ENGINES=wasm,wasm-pool BENCH_LOAD_CONCURRENCY=1,4,16,64 BENCH_LOAD_SECONDS=30 bun run bench:load`
 (Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above; the single renderer measured slower here than in

@@ -7,7 +7,7 @@ import { PuppeteerGen, PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from ".
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { createWasmRendererPool as browserCreateWasmRendererPool } from "../packages/wasm/src/browser";
 import { createWasmRenderer, createWasmRendererPool, loadSystemFonts, WasmWorkerPool } from "../packages/wasm/src/node";
-import type { PoolWorkerData } from "../packages/wasm/src/nodeWorker";
+import type { PoolRequest, PoolWorkerData } from "../packages/wasm/src/nodeWorker";
 import { populateParityFixture } from "./visual/fixture";
 import { DECKS } from "./visual/wasm/decks";
 
@@ -27,6 +27,7 @@ if (!wasmBuilt) {
     const options = { fonts, onUnsupported: "warn", onMissingFont: "ignore" } as const;
     const single = await createWasmRenderer(options);
     const pool = await createWasmRendererPool({ ...options, workers: 2 });
+    const htmlPool = await createWasmRendererPool({ ...options, workers: 2, buildHtmlInWorkers: true });
     const documents: HtmlPresentationDocument[] = [];
 
     for (const name of ["text", "tables", "images", "emoji", "shapes"]) {
@@ -50,7 +51,7 @@ if (!wasmBuilt) {
     // HTML outside the profile, which WasmRenderer rejects.
     const brokenDocument: HtmlPresentationDocument = { ...first, html: first.html.replace(/<body[^>]*>[\s\S]*<\/body>/, '<body><section class="pdflapas-slide"><img src="image.png"></section></body>') };
 
-    afterAll(() => pool.close());
+    afterAll(() => Promise.all([pool.close(), htmlPool.close()]));
 
     describe("createWasmRendererPool", () => {
         test("renders the same bytes, warnings and missing fonts as one WasmRenderer", async () => {
@@ -135,20 +136,28 @@ if (!wasmBuilt) {
             await expect(closing.render(first)).rejects.toThrow(/is closed/);
             await expect(createWasmRendererPool({ fonts: [] })).rejects.toThrow(/requires at least one font/);
             await expect(createWasmRendererPool({ fonts, workers: 0 })).rejects.toThrow(/positive integer number of workers, got 0/);
+            // @ts-expect-error: a string where the option is a boolean, as untyped callers pass it.
+            await expect(createWasmRendererPool({ fonts, workers: 1, buildHtmlInWorkers: "yes" })).rejects.toThrow(/buildHtmlInWorkers to be true or false, got yes/);
             await expect(createWasmRendererPool({ fonts: [new Uint8Array(8)], workers: 1 })).rejects.toThrow(/Font #0 contains no usable font faces/);
             await expect(browserCreateWasmRendererPool(options)).rejects.toThrow(/only available under Node\/Bun/);
         });
 
-        test("toPdf() builds the HTML in a worker: the same bytes, warnings and errors as rendering toHtml(), on every deck", async () => {
+        test("toPdf() renders the same bytes, warnings and errors as rendering toHtml(), on every deck, with the HTML built on the caller (default) or in a worker (buildHtmlInWorkers)", async () => {
             let inWorkers = 0;
             let withoutComponents = 0;
-            // The pool, counting the renders whose HTML a worker built.
+            const { renderModelHtml } = htmlPool;
+
+            if (renderModelHtml === undefined) {
+                throw new Error("a pool with buildHtmlInWorkers has no renderModelHtml()");
+            }
+
+            // The opt-in pool, counting the renders whose HTML a worker built.
             const counted: PresentationRenderer = {
-                render: document => pool.render(document),
+                render: document => htmlPool.render(document),
                 renderModelHtml: request => {
                     inWorkers++;
 
-                    return pool.renderModelHtml(request);
+                    return renderModelHtml(request);
                 },
             };
             const populators: [string, (presentation: PuppeteerGen) => void][] = [["fixture", populateParityFixture]];
@@ -161,18 +170,24 @@ if (!wasmBuilt) {
                 for (const [name, populate] of populators) {
                     const before = new Gen(undefined, { renderer: pool });
                     const after = new Gen(undefined, { renderer: counted });
+                    const onCaller = new Gen(undefined, { renderer: pool });
 
                     populate(before);
                     populate(after);
+                    populate(onCaller);
                     const expected = await before
                         .toHtml()
                         .then(document => pool.render(document))
                         .catch((error: unknown) => error);
                     const expectedWarnings = pool.warnings();
+                    const pdfOnCaller = await onCaller.toPdf().catch((error: unknown) => error);
+
+                    expect([name, pdfOnCaller]).toEqual([name, expected]);
+                    expect([name, pool.warnings()]).toEqual([name, expectedWarnings]);
                     const pdf = await after.toPdf().catch((error: unknown) => error);
 
                     expect([name, pdf]).toEqual([name, expected]);
-                    expect([name, pool.warnings()]).toEqual([name, expectedWarnings]);
+                    expect([name, htmlPool.warnings()]).toEqual([name, expectedWarnings]);
                     expect([name, after.warnings()]).toEqual([name, before.warnings()]);
                     if (!after.getModel().slides.some(slide => !slide.hidden && slide.objects.some(object => object.kind === "component"))) {
                         withoutComponents++;
@@ -202,11 +217,41 @@ if (!wasmBuilt) {
             expect(calls).toEqual(["renderModelHtml", "render"]);
         });
 
+        test("a default pool's workers never receive a model, so never load the HTML builder; buildHtmlInWorkers sends them one", async () => {
+            const workerData: PoolWorkerData = { fonts, wasm: await WebAssembly.compile(await readFile(new URL("../packages/wasm/src/pdf_wasm_bg.wasm", import.meta.url))), onUnsupported: "warn" };
+            // Every request a worker receives: nodeWorker imports the module only for a "model" request.
+            const posted: string[] = [];
+            const spawn = () => {
+                const thread = new Worker(new URL("../packages/wasm/src/nodeWorker.ts", import.meta.url), { workerData });
+                const post = thread.postMessage.bind(thread);
+
+                thread.postMessage = (request: PoolRequest) => {
+                    posted.push(request.kind);
+                    post(request);
+                };
+
+                return thread;
+            };
+
+            expect(pool.renderModelHtml).toBeUndefined();
+            for (const buildHtmlInWorkers of [false, true]) {
+                const probed = new WasmWorkerPool(spawn, 1, "ignore", buildHtmlInWorkers);
+                const presentation = new PuppeteerGen(PAGE, { renderer: probed });
+
+                await probed.started();
+                presentation.addSlide().addText("probe", { x: 1, y: 1, w: 2, h: 1 });
+                expect(await presentation.toPdf()).toEqual(await single.render(await presentation.toHtml()));
+                await probed.close();
+            }
+
+            expect(posted).toEqual(["document", "model"]);
+        });
+
         test("renderModelHtml() rejects a module without modelHtml, and keeps rendering", async () => {
             const model = new PuppeteerGen(PAGE).getModel();
 
-            await expect(pool.renderModelHtml({ model, images: new Map(), htmlModule: new URL("../packages/model/src/index.ts", import.meta.url).href })).rejects.toThrow(/has no modelHtml\(model, images\) export/);
-            expect(await pool.render(first)).toEqual(await single.render(first));
+            await expect(htmlPool.renderModelHtml?.({ model, images: new Map(), htmlModule: new URL("../packages/model/src/index.ts", import.meta.url).href })).rejects.toThrow(/has no modelHtml\(model, images\) export/);
+            expect(await htmlPool.render(first)).toEqual(await single.render(first));
         });
 
         test("lets the process exit once idle, without close()", () => {

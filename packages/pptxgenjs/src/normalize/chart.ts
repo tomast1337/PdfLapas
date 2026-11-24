@@ -315,7 +315,10 @@ const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType
 const DATA_TABLE_UNDRAWN_TYPES = new Set<NormalizedChartType>(["doughnut", "pie", "radar"]);
 const XY_TYPES = new Set<NormalizedChartType>(["scatter", "bubble"]);
 const DATA_BORDER_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "bubble", "doughnut", "mixed", "pie"]);
-const TICK_MARKS = new Set(["none", "inside", "outside", "cross"]);
+// PptxGenJS types its tick marks "none", "inside", "outside" and "cross" and writes the value into `<c:majorTickMark>` and
+// `<c:minorTickMark>` as given, so the OOXML names "in" and "out" work too; LibreOffice draws "inside" and "outside" as
+// them (PowerPoint likely cannot open a file with them, #630).
+const TICK_MARKS: Readonly<Record<string, NormalizedChartValueAxis["majorTickMark"]>> = { none: "none", inside: "inside", outside: "outside", cross: "cross", in: "inside", out: "outside" };
 // bar3D draws its value axis on a wall, its line and tick marks where the target draws them (drawsBar3DValueAxisLine);
 // it draws no logarithmic or reversed 3D axis or horizontal 3D bars yet.
 // A radar chart's value axis is its first spoke: LibreOffice draws its labels and rings, the line style on every spoke,
@@ -464,6 +467,20 @@ function positiveNumber(value: number | undefined, name: string, fallback: numbe
     return normalized;
 }
 
+function tickMark(value: unknown, name: string, fallback: NormalizedChartValueAxis["majorTickMark"]): NormalizedChartValueAxis["majorTickMark"] {
+    if (value === undefined) {
+        return fallback;
+    }
+
+    const mark = Object.hasOwn(TICK_MARKS, String(value)) ? TICK_MARKS[String(value)] : undefined;
+
+    if (mark === undefined) {
+        throw new TypeError(`${name} must be "none", "inside" (or "in"), "outside" (or "out") or "cross"; got ${JSON.stringify(value)}`);
+    }
+
+    return mark;
+}
+
 function finiteNumber(value: number | undefined, name: string, fallback: number): number {
     const normalized = value ?? fallback;
 
@@ -602,8 +619,8 @@ function normalizeValueAxis(
         lineWidth: positiveNumber(axisOptions?.valAxisLineSize, "valAxisLineSize", defaults.lineWidthPt),
         lineStyle: axisOptions?.valAxisLineStyle ?? defaults.lineStyle,
         lineVisible: axisOptions?.valAxisLineShow ?? defaults.lineVisible,
-        majorTickMark: axisOptions?.valAxisMajorTickMark ?? defaults.majorTickMark,
-        minorTickMark: axisOptions?.valAxisMinorTickMark ?? defaults.minorTickMark,
+        majorTickMark: tickMark(axisOptions?.valAxisMajorTickMark, "valAxisMajorTickMark", defaults.majorTickMark),
+        minorTickMark: tickMark(axisOptions?.valAxisMinorTickMark, "valAxisMinorTickMark", defaults.minorTickMark),
         gridLineColor: normalizeColor(gridLine.color ?? PPTX_DEFAULTS.chart.gridLine.color),
         gridLineWidth: positiveNumber(gridLine.size, "valGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
         gridLineStyle: gridLine.style ?? PPTX_DEFAULTS.chart.gridLine.style,
@@ -1160,14 +1177,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     const catGridLine = options.catGridLine ?? (normalizedType === "scatter" ? scatterGridLine : undefined);
 
     // The category axis's tick marks, crossing, label skip and number format (makeCatAxis, #566).
-    for (const key of ["catAxisMajorTickMark", "catAxisMinorTickMark"] as const) {
-        const mark: unknown = options[key];
-
-        if (mark !== undefined && !TICK_MARKS.has(String(mark))) {
-            throw new TypeError(`${key} must be "none", "inside", "outside" or "cross"; got ${JSON.stringify(mark)}`);
-        }
-    }
-
+    const catMajorTickMark = tickMark(options.catAxisMajorTickMark, "catAxisMajorTickMark", PPTX_DEFAULTS.chart.categoryMajorTickMark);
+    const catMinorTickMark = tickMark(options.catAxisMinorTickMark, "catAxisMinorTickMark", catDefaults.minorTickMark);
     const categoryCount = series[0]?.labels.length ?? 0;
     // `<c:crossesAt val="${catAxisCrossesAt}"/>` on the value axis is the 1-based category it crosses before; a string
     // is written `<c:crosses val="...">` ("autoZero", "min" or "max").
@@ -1377,7 +1388,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         lineWidth: positiveNumber(options.catAxisLineSize || undefined, "catAxisLineSize", catDefaults.lineWidthPt),
         lineStyle: options.catAxisLineStyle ?? catDefaults.lineStyle,
         // PptxGenJS writes `<c:minorTickMark val="none"/>` on a scatter chart's axes, as its major ones.
-        minorTickMark: normalizedType === "scatter" ? "none" : (options.catAxisMinorTickMark ?? catDefaults.minorTickMark),
+        minorTickMark: normalizedType === "scatter" ? "none" : catMinorTickMark,
         ...(valueAxisCrossing ? { valueAxisCrossing } : {}),
         gridLineColor: normalizeColor(catGridLine?.color ?? PPTX_DEFAULTS.chart.gridLine.color),
         gridLineWidth: positiveNumber(catGridLine?.size, "catGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
@@ -1614,7 +1625,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         axisLineVisible: options.catAxisLineShow ?? PPTX_DEFAULTS.chart.categoryAxisLineVisible,
         // PptxGenJS 4.0.1 writes `<c:majorTickMark val="none"/>` and `<c:minorTickMark val="none"/>` on both scatter
         // axes, whatever catAxisMajorTickMark or valAxisMajorTickMark say.
-        categoryMajorTickMark: normalizedType === "scatter" ? "none" : (options.catAxisMajorTickMark ?? PPTX_DEFAULTS.chart.categoryMajorTickMark),
+        categoryMajorTickMark: normalizedType === "scatter" ? "none" : catMajorTickMark,
         valueAxisMinimum: primaryAxis.minimum,
         valueAxisMaximum: primaryAxis.maximum,
         valueAxes: normalizedType === "scatter" ? valueAxes.map(axis => ({ ...axis, majorTickMark: "none" as const, minorTickMark: "none" as const })) : valueAxes,

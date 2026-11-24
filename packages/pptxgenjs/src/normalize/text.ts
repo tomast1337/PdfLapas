@@ -316,7 +316,7 @@ export function normalizeTextRun(
                   inset: false,
               }
             : undefined,
-        // A string's run shadow is its box's glyph shadow, cast in slide space as the box's (normalizeShadow).
+        // The box's glyph shadow (normalizeText), cast in slide space as the box's (normalizeShadow).
         shadow: options.shadow ? normalizeShadow(options.shadow, normalizeTransform(options)) : undefined,
         language: options.lang ?? PPTX_DEFAULTS.theme.language,
         link,
@@ -540,6 +540,10 @@ export function normalizeText(
     // them. `records` holds them by that object; each starts as a copy of what earlier boxes left on it (sharedRunOptions).
     const source = Array.isArray(input) ? input.map(item => ({ text: String(item.text ?? ""), key: item.options ?? item, own: item.options ?? {} })) : [{ text: String(input), key: options, own: options }];
     const pieces: TextPiece[] = [];
+    // A run's own `shadow` draws nothing: PptxGenJS 4.0.1 genXmlTextRunProperties writes only `glow` into the run's
+    // <a:effectLst> (COMPATIBILITY.text runShadow). The box's shadow (the shape's <a:effectLst>) is cast by everything
+    // the box draws, its glyphs too, so each run carries it as its glyph shadow; a table cell writes none.
+    const glyphShadow = writing.cell ? undefined : options.shadow;
 
     for (const item of source) {
         const record = records.get(item.key);
@@ -547,10 +551,10 @@ export function normalizeText(
         const runOptions = record?.state ?? sharedRunOptions(Array.isArray(input) ? writing.shared : undefined, item.key, item.own);
 
         if (!record) {
-            // A run's own `shadow` draws nothing: PptxGenJS 4.0.1 genXmlTextRunProperties writes only `glow` into the run's
-            // <a:effectLst> (COMPATIBILITY.text runShadow). A string's options are the text box's, whose shadow is written.
-            if (Array.isArray(input)) {
-                delete runOptions.shadow;
+            delete runOptions.shadow;
+
+            if (glyphShadow) {
+                runOptions.shadow = glyphShadow;
             }
 
             records.set(item.key, { start: { ...runOptions }, state: runOptions });

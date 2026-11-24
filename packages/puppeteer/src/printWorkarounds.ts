@@ -23,6 +23,9 @@ const ABSOLUTE = /(?:^|; )position: absolute;/;
 const DASH_SEPARATOR = /\s*,\s*|\s+/;
 // An inner shadow as render/style.ts applyShadow writes it on a box.
 const INSET_SHADOW = /(?:^|; )box-shadow: inset ([^;]+);/;
+// An outer shadow and a fill as render/style.ts applyObjectStyle writes them on a box.
+const OUTER_BOX_SHADOW = /(?:^|; )box-shadow: (?!inset )/;
+const BACKGROUND_COLOR = /(?:^|; )background-color: ([^;]+);/;
 // A box's line as render/style.ts applyLine writes it: color, width, style.
 const TEXT_BORDER = /(?:^|; )border-color: ([^;]+); border-width: ([^;]+)px; border-style: ([^;]+);/;
 // The face and its fallback faces as the profile writes them: CSS strings, `\` and `"` escaped; group 2 is the face, group 3 its fallback faces.
@@ -297,6 +300,14 @@ export function printHtml(html: string): string {
             const border = style.match(TEXT_BORDER);
 
             if (!border || border[3] === "none") {
+                // Glyph shadow: the profile casts a text box's shadow from what it draws, which without a fill or line is
+                // its glyphs alone, drawn by its runs' text-shadow; Chromium would cast the whole box (#626).
+                const background = style.match(BACKGROUND_COLOR)?.[1];
+
+                if (OUTER_BOX_SHADOW.test(style) && (background === undefined || background === "transparent")) {
+                    edits.push(addStyle(element, "box-shadow: none;"));
+                }
+
                 continue;
             }
 

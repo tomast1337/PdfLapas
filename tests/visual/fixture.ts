@@ -598,6 +598,8 @@ export const PARITY_REGIONS = [
     ...PAGINATION_CASES,
     ...HTML_TABLE_CASES,
     ...SHAPED_TEXT_CASES,
+    // A text box without a fill casts its shadow from its glyphs (#626).
+    { page: 7, name: "unfilled-text-shadow", x: 0.65, y: 3.05, w: 4.2, h: 1.1 },
     ...TEXT_CASES,
     { page: 59, name: "html-react-component-bars", x: 1, y: 1, w: 6, h: 2 },
     { page: 12, name: "dashed-arrow-line", x: 6.55, y: 1.6, w: 2.6, h: 0 },
@@ -1027,6 +1029,19 @@ export function populateParityFixture(presentation: Presentation): void {
             margin: 4,
         },
     );
+    // No fill: the box's shadow falls from its glyphs, as PowerPoint and LibreOffice draw it (#626).
+    effectsSlide.addText("Shadowed glyphs, no fill", {
+        x: 0.75,
+        y: 3.15,
+        w: 4,
+        h: 0.9,
+        fontFace: "Arial",
+        fontSize: 24,
+        bold: true,
+        color: "17365D",
+        shadow: { type: "outer", color: "000000", opacity: 0.5, blur: 2, offset: 3, angle: 45 },
+        margin: 4,
+    });
 
     const directionSlide = presentation.addSlide();
 

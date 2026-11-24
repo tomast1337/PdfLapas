@@ -2,7 +2,7 @@
 // renderer could not draw and the faces it had no font for.
 import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, checkProfileVersion, PROFILE_META_PREFIX } from "@pdflapas/model";
 import PDFDocument from "pdfkit";
-import { attribute, children, descendants, hasAttribute, hasClass, parseDocument, textContent } from "./dom";
+import { attribute, children, descendants, hasAttribute, hasClass, MAX_DEPTH, parseTree, textContent } from "./dom";
 import type { Face } from "./fonts";
 import { drawSlide } from "./slide";
 import { Effects } from "./effect/index";
@@ -27,7 +27,13 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 export async function renderHtml(html: string, faces: readonly Face[]): Promise<RenderResult> {
     const { pageSize } = htmlDocument(html);
-    const root = parseDocument(html).find(element => element.tagName === "html");
+    const tree = parseTree(html, "document");
+
+    if (tree.kind === "too-deep") {
+        throw new Error(`invalid PdfLapas HTML: elements nest deeper than ${MAX_DEPTH} levels (toHtml() nests about a dozen)`);
+    }
+
+    const root = tree.elements.find(element => element.tagName === "html");
     const [head, body] = [root && children(root).find(element => element.tagName === "head"), root && children(root).find(element => element.tagName === "body")];
     const profile = head && children(head).find(element => element.tagName === "meta" && attribute(element, "name", "") === `${PROFILE_META_PREFIX}profile`);
 

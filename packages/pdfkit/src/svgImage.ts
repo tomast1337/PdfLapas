@@ -2,9 +2,8 @@
 // `circle`, `ellipse`, `line`, `polyline` and `polygon`, with SVG's inherited fill and stroke (colours, opacities,
 // width, caps, joins, miter limit, dashes, fill rule), `opacity` and `transform`, sized into the picture box by its
 // viewBox and preserveAspectRatio as Chromium sizes an `<img>`. Anything else in the file is reported, not dropped.
-import { parseFragment } from "parse5";
 import { type Color, color as cssColor, readStyle, type Style, take } from "./css";
-import { attribute, children, type Element, hasAttribute } from "./dom";
+import { attribute, children, type Element, hasAttribute, MAX_DEPTH, parseTree } from "./dom";
 import { opacityGroup } from "./internals";
 import { dash, fill, type Paint, stroke } from "./paint";
 import { flatten, IDENTITY, record, replay, type Segment } from "./path";
@@ -473,7 +472,15 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
 /** Draws the SVG file `text` into `box` (px) with `paint`; problems name the picture through `paint.report`. */
 export function drawSvgImage(text: string, paint: Paint, box: Frame): void {
     const report = (what: string) => paint.report(what);
-    const [svg, ...rest] = children(parseFragment(text) as unknown as Element); // `as`: a parse5 fragment has childNodes like an element; only they are read
+    const tree = parseTree(text, "fragment");
+
+    if (tree.kind === "too-deep") {
+        report(`an SVG image's elements nest deeper than ${MAX_DEPTH} levels; the picture is not drawn`);
+
+        return;
+    }
+
+    const [svg, ...rest] = tree.elements;
 
     if (!svg || rest.length) {
         report("an SVG image must hold one root <svg> element; the picture is not drawn");

@@ -2,7 +2,8 @@
 // rendering it through toPdf(), as a service does. Puppeteer uses the Node entry's default renderer (one shared
 // Chromium through withBrowser); WASM and PDFKit use one long-lived renderer for every request, wasm-pool one
 // long-lived createWasmRendererPool() (wasm-pool-html: with buildHtmlInWorkers), pdfkit-pool one createPdfkitRendererPool();
-// native and native-pool the same over @pdflapas/native (Bun, `bun run build:native`). Prints, every sample
+// native and native-pool (createNativeRendererPool(), threads in the library, its default thread count) the same over
+// @pdflapas/native (Bun, `bun run build:native`). Prints, every sample
 // interval, per-render latency (p50, p95, p99), throughput, the process's RSS and heap, and the count and RSS of its
 // child processes (Chromium); after each level, the same once the load has stopped and the idle browser has closed.
 import { readdirSync, readFileSync } from "node:fs";
@@ -50,13 +51,12 @@ const MS_PER_S = 1000;
 const US_PER_MS = 1000;
 // Longer than IDLE_CLOSE_MS in packages/puppeteer/src/browser.ts, so the shared browser has closed when the after-load sample runs.
 const SETTLE_MS = 3000;
+// The event loop lag probe's period: short against a render, long against a timer's own jitter.
+const LAG_TICK_MS = 10;
 // A PNG cut after its IHDR chunk: its header passes checkImagePixels, so the render fails inside the renderer (in
 // Chromium's browser context for Puppeteer) and exercises the error path under load.
 const BROKEN_PNG_BYTES = 40;
 const BROKEN_RENDERED = "the broken image rendered without an error";
-// The workers createWasmRendererPool() starts by default on a machine with 9 cores or more (MAX_DEFAULT_POOL_WORKERS in
-// packages/wasm/src/node.ts), so native-pool and wasm-pool compare at the same width there.
-const NATIVE_POOL_WORKERS = 8;
 
 /** This process's RSS and heap, and the count and RSS of its descendants (Chromium and its helpers) from /proc. */
 function memoryLine(): string {
@@ -149,22 +149,9 @@ if (import.meta.main) {
 
             renderer = await createNativeRenderer({ fonts: await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") }), onUnsupported: "warn" });
         } else if (engine === "native-pool") {
-            // The WASM pool's queue and worker handling over native renderers (scripts/benchNativeWorker.ts).
-            const [{ WasmWorkerPool, loadSystemFonts }, { Worker }] = await Promise.all([import("../packages/wasm/src/node"), import("node:worker_threads")]);
-            const workerData: { fonts: Uint8Array[] } = { fonts: [] };
+            const [{ createNativeRendererPool }, { loadSystemFonts }] = await Promise.all([import("../packages/native/src/bun"), import("../packages/wasm/src/node")]);
 
-            // As createWasmRendererPool() does: the font bytes once, in shared memory, not a copy per worker.
-            for (const font of await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") })) {
-                const shared = new Uint8Array(new SharedArrayBuffer(font.byteLength));
-
-                shared.set(font);
-                workerData.fonts.push(shared);
-            }
-
-            const pool = new WasmWorkerPool(() => new Worker(new URL("./benchNativeWorker.ts", import.meta.url), { workerData }), NATIVE_POOL_WORKERS);
-
-            await pool.started();
-            renderer = pool;
+            renderer = await createNativeRendererPool({ fonts: await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") }), onUnsupported: "warn" });
         }
 
         console.log(`${engine} ready: ${memoryLine()}`);
@@ -187,6 +174,15 @@ if (import.meta.main) {
                 window = [];
                 windowStart = now;
             }, config.sampleSeconds * MS_PER_S);
+            // Event loop lag: how late a LAG_TICK_MS timer fires, so a renderer that blocks the loop shows here.
+            const lags: number[] = [];
+            let tickDue = performance.now() + LAG_TICK_MS;
+            const lagTimer = setInterval(() => {
+                const now = performance.now();
+
+                lags.push(Math.max(0, now - tickDue));
+                tickDue = now + LAG_TICK_MS;
+            }, LAG_TICK_MS);
             const workers: Promise<void>[] = [];
 
             for (let worker = 0; worker < concurrency; worker++) {
@@ -230,12 +226,15 @@ if (import.meta.main) {
 
             await Promise.all(workers);
             clearInterval(sampler);
+            clearInterval(lagTimer);
+            const [lagFirst = 0, ...lagRest] = lags.toSorted((a, b) => a - b);
+            const lagLine = `event loop lag p50 ${percentile([lagFirst, ...lagRest], 0.5).toFixed(0)} ms, p99 ${percentile([lagFirst, ...lagRest], 0.99).toFixed(0)} ms, max ${(lagRest.at(-1) ?? lagFirst).toFixed(0)} ms`;
             const elapsed = (performance.now() - start) / MS_PER_S;
             const mainThread = process.threadCpuUsage(mainThreadStart);
             const mainThreadMs = (mainThread.user + mainThread.system) / US_PER_MS / Math.max(1, request);
 
             console.log(
-                `${engine} x${concurrency} total: ${latencyLine(all, elapsed)}, main thread ${mainThreadMs.toFixed(1)} ms CPU per request, ${expectedFailures} broken-image requests failed as expected, ${errors.size === 0 ? "no other errors" : "other errors:"}`,
+                `${engine} x${concurrency} total: ${latencyLine(all, elapsed)}, main thread ${mainThreadMs.toFixed(1)} ms CPU per request, ${lagLine}, ${expectedFailures} broken-image requests failed as expected, ${errors.size === 0 ? "no other errors" : "other errors:"}`,
             );
             for (const [message, count] of errors) {
                 console.log(`  ${count} x ${message}`);

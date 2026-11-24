@@ -1245,10 +1245,13 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartCatAxis.dateSlots`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.dateSlots.labels`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.dateSlots.categorySlots`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.dateSlots.categoryLabels`                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.dateSlots.minorTicks`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.minimum`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.maximum`                          | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.majorUnit`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartCatAxis.xScale.minorUnit`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.stepRoom`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.stepRoom.label`                   | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartCatAxis.xScale.stepRoom.perStep`                 | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
@@ -1290,6 +1293,7 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartDataTable.valueFormatCode`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.horizontalBorder`                      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.verticalBorder`                        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartDataTable.dateColumns`                           | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.outline`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.keys`                                  | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartDataTable.fontFace`                              | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

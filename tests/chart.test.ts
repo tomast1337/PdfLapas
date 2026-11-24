@@ -2469,7 +2469,6 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
 
     test("rejects the category-axis options a chart type cannot draw, naming them", () => {
         expect(() => normalizeChart("radar", quarters, { catAxisLabelRotate: 45 })).toThrow("catAxisLabelRotate[radar]");
-        expect(() => normalizeChart("bar3D", quarters, { catAxisBaseTimeUnit: "days" } as PptxGenJS.IChartOpts)).toThrow("catAxisBaseTimeUnit[bar3D]");
         // A scatter chart's x axis is a value axis: the y axis crosses it at that x value (#591).
         const xy = [
             { name: "X", values: [1, 2, 3, 4, 5, 6] },
@@ -2610,7 +2609,7 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 1, catAxisMajorTimeUnit: "years" }).categoryAxis.dateSlots?.labels).toEqual(["Jan-24", "", "", "", "", ""]);
         expect<unknown>(normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinVal: 45323, catAxisMaxVal: 45413 }).categoryAxis.dateSlots).toEqual({
             labels: ["Feb-24", "Mar-24", "Apr-24", "May-24"],
-            categorySlots: [null, 0, 1, 2, 3, null],
+            categorySlots: [-1, 0, 1, 2, 3, 4],
         });
         // catAxisBaseTimeUnit days puts monthly serials a day per slot; years 2-digit, full names and weekdays format.
         expect(normalizeChart("line", dates(months.slice(0, 2)), { catLabelFormatCode: "dddd d mmmm yyyy", catAxisBaseTimeUnit: "days" }).categoryAxis.dateSlots?.labels).toHaveLength(32);
@@ -2618,18 +2617,45 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         // Consecutive serials with a number format stay the categories, formatted as numbers.
         expect(normalizeChart("line", dates(["1", "2", "3"]), { catLabelFormatCode: "0.0" }).categoryAxis).toMatchObject({ labelFormatCode: "0.0" });
         expect(normalizeChart("line", dates(["1", "2", "3"]), { catLabelFormatCode: "0.0" }).categoryAxis.dateSlots).toBeUndefined();
-        // Several dates in one slot, a bad time unit, a fractional major unit.
-        expect(() => normalizeChart("line", dates(["45292", "45293"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months" })).toThrow("catAxisBaseTimeUnit[several dates in one month]");
+        // Several dates share their month's slot (#593); stacked, ECharts would stack them by slot, so they throw.
+        expect(normalizeChart("line", dates(["45292", "45293", "45323"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months" }).categoryAxis.dateSlots?.categorySlots).toEqual([0, 0, 1]);
+        expect(() => normalizeChart("area", dates(["45292", "45293"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months", barGrouping: "stacked" })).toThrow("catAxisBaseTimeUnit[stacked, several dates in one slot]");
+        // A bad time unit, a fractional major unit.
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "weeks" })).toThrow("catAxisBaseTimeUnit");
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 1.5 })).toThrow("whole number");
-        expect(() => normalizeChart("bar3D", dates(months), { catAxisMinVal: 1 })).toThrow("catAxisMinVal[bar3D]");
-        // A data table on a slot per category names its columns by date (#593); one with empty slots is not measured.
-        expect(normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", showDataTable: true }).dataTable).toBeDefined();
-        expect(() => normalizeChart("line", dates(["45292", "45352"]), { catLabelFormatCode: "mmm-yy", showDataTable: true })).toThrow("showDataTable[date axis with empty slots]");
+        expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinorUnit: 0.5 })).toThrow("whole number");
+        // bar3D lays its bars on the time line too; a data table under it throws.
+        expect(normalizeChart("bar3D", dates(["45292", "45352"]), { catLabelFormatCode: "mmm-yy" }).categoryAxis.dateSlots).toEqual({ labels: ["Jan-24", "Feb-24", "Mar-24"], categorySlots: [0, 2] });
+        expect(() => normalizeChart("bar3D", dates(months), { catLabelFormatCode: "mmm-yy", showDataTable: true })).toThrow("showDataTable[bar3D date axis]");
+        // A data table has a column per slot in LibreOffice and per category in PowerPoint (T01..T08, #593).
+        const gapped = dates(["45292", "45352"]);
+        const table = { catLabelFormatCode: "mmm-yy", showDataTable: true };
+
+        expect(normalizeChart("line", gapped, table, "libreoffice").dataTable?.dateColumns).toBe("slots");
+        expect(normalizeChart("line", gapped, table, "powerpoint").dataTable?.dateColumns).toBe("categories");
+        expect(normalizeChart("line", gapped, table).categoryAxis.dateSlots?.categoryLabels).toEqual(["Jan-24", "Mar-24"]);
+        // Minor ticks: LibreOffice steps catAxisMinorUnit in days (Jan 1, 16, 31, Feb 15, Mar 1), PowerPoint in the base
+        // unit (M03); none unless marked.
+        const minor = { catLabelFormatCode: "mmm-yy", catAxisMinorTickMark: "outside", catAxisMinorUnit: 15 } satisfies PptxGenJS.IChartOpts;
+
+        expect(normalizeChart("line", dates(months.slice(0, 2)), { catLabelFormatCode: "mmm-yy" }).categoryAxis.dateSlots?.minorTicks).toBeUndefined();
+        expect(normalizeChart("line", dates(months.slice(0, 2)), minor, "libreoffice").categoryAxis.dateSlots?.minorTicks).toEqual([0, 15 / 31, 30 / 31, 1 + 14 / 29, 2]);
+        expect(normalizeChart("line", dates(months.slice(0, 2)), { ...minor, catAxisMinorUnit: 1 }, "powerpoint").categoryAxis.dateSlots?.minorTicks).toEqual([0, 1, 2]);
         // On a text axis catAxisMinVal, catAxisMaxVal and catAxisMultiLevelLabels change nothing in LibreOffice.
         expect(normalizeChart("bar", quarters, { catAxisMinVal: 2, catAxisMaxVal: 3, catAxisMultiLevelLabels: true }).categoryAxis.dateSlots).toBeUndefined();
         // A scatter chart's x axis takes the bounds and the step.
         expect(normalizeChart("scatter", pair, { catAxisMinVal: 0, catAxisMaxVal: 8, catAxisMajorUnit: 2 }).categoryAxis.xScale).toEqual({ minimum: 0, maximum: 8, majorUnit: 2 });
+        expect(normalizeChart("bubble", bubbleData, { catAxisMinorUnit: 0.25 }).categoryAxis.xScale).toEqual({ minorUnit: 0.25 });
+
+        // A radar chart names its spokes by date; PowerPoint names every catAxisMajorUnit-th and rejects bounds (R05, R06).
+        const radarMonths = { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 2 };
+
+        expect(normalizeChart("radar", dates(months), radarMonths, "powerpoint")).toMatchObject({ categoryAxis: { labelSkip: 2 }, series: [{ labels: ["Jan-24", "Feb-24", "Mar-24", "Apr-24", "May-24", "Jun-24"] }] });
+        expect(normalizeChart("radar", dates(months), radarMonths, "libreoffice").categoryAxis.labelSkip).toBeUndefined();
+        expect(() => normalizeChart("radar", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinVal: 45323 }, "powerpoint")).toThrow("catAxisMinVal[radar]");
+        expect(normalizeChart("radar", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinVal: 45323 }, "libreoffice").series[0]?.labels).toHaveLength(6);
+        // A line runs on toward a point outside catAxisMinVal..catAxisMaxVal, cut at the plot's edge (O01).
+        expect(textsOf(chartSvg("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinVal: 45323, catAxisMaxVal: 45413 }))).not.toContain("Jan-24");
 
         // The drawn axis has a category per slot, the empty ones unlabelled, and each point in its slot.
         const texts = textsOf(chartSvg("line", dates(["45292", "45295"]), { catLabelFormatCode: "d-mmm" }));

@@ -9,6 +9,7 @@ import { type ImageSourceOptions, imageResolver, resolveRemoteImageSource } from
 import { fontMetricsLookup } from "./fontMetrics";
 import { normalizePdfMetadata, type PdfMetadataOptions } from "./normalize/pdfMetadata";
 import type { SharedRunOptions } from "./normalize/sharedRunOptions";
+import type { SharedShadows } from "./normalize/sharedShadow";
 import { findHtmlTable, normalizeHtmlTable } from "./normalize/table/html";
 import type { TableHtmlLimits } from "./normalize/table/htmlLimits";
 import { paginateTableRows } from "./normalize/table/pagination";
@@ -110,6 +111,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly components = new ComponentRegistry();
     /** What PptxGenJS writes onto run options objects the deck shares between boxes, which its slides read and extend. */
     private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
+    /** What PptxGenJS writes onto `shadow` objects the deck shares between objects, which its slides read and extend. */
+    private readonly sharedShadows: SharedShadows = new WeakMap();
     private slides: PuppeteerSlide[] = [];
     /** defineSlideMaster() layouts by `title`; the first one defined under a title wins, as PptxGenJS finds it first. */
     private readonly masters = new Map<string, SlideMaster>();
@@ -495,6 +498,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             target: this.target,
             fontMetrics: this.fontMetrics,
             sharedRunOptions: this.sharedRunOptions,
+            sharedShadows: this.sharedShadows,
             getDocument: this.componentDocument,
             master,
         };

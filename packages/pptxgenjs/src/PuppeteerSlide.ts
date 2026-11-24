@@ -10,6 +10,7 @@ import { normalizeImage } from "./normalize/image";
 import { slideMarginInches } from "./normalize/margin";
 import { normalizeObjectStyle } from "./normalize/object";
 import { normalizeShape, normalizeShapeTextBox } from "./normalize/shape";
+import { writeShadow } from "./normalize/sharedShadow";
 import { lineOutline, normalizeShapeLine, normalizeTextLine } from "./normalize/shape/line";
 import { normalizeSlideNumber } from "./normalize/slideNumber";
 import { innerShadowError, normalizeColor, normalizeLine } from "./normalize/style";
@@ -219,6 +220,24 @@ export class PuppeteerSlide implements PptxSlide {
         return explicit ?? `${kind} ${index}`;
     }
 
+    /**
+     * The `shadow` PptxGenJS writes for this object, which may share the options object with earlier ones (writeShadow);
+     * `{ type: "none" }` when what it writes is out of range, which adds a warnings() line.
+     */
+    private writtenShadow(shadow: PptxGenJS.ShadowProps, method: "addText" | "addShape" | "addImage"): PptxGenJS.ShadowProps {
+        const written = writeShadow(this.context.sharedShadows, shadow);
+
+        if (written.kind === "drawn") {
+            return written.shadow;
+        }
+
+        this.context.warn(
+            `${method}({ shadow }): the \`shadow\` object was given to an earlier object too, and PptxGenJS 4.0.1 converts it to OOXML units in place each time it writes an object, so each later object writes its \`dir\` and \`alpha\` out of range and draws no shadow, as LibreOffice draws none. Give each call its own object, e.g. \`shadow: { ...shadow }\`.`,
+        );
+
+        return { type: "none" };
+    }
+
     private addObject(object: NormalizedSlideObject): this {
         this.model.objects.push(object);
 
@@ -418,8 +437,9 @@ export class PuppeteerSlide implements PptxSlide {
         const image = normalizeImage(options, this.pageSize);
         const { transparency: _imageTransparency, ...opaqueOptions } = options;
         const geometryOptions = options.sizing ? { ...opaqueOptions, w: options.sizing.w, h: options.sizing.h } : opaqueOptions;
+        const written = options.shadow ? this.writtenShadow(options.shadow, "addImage") : undefined;
         // PptxGenJS writes a picture's inner shadow well-formed, but not every target draws it (drawsPictureInnerShadow).
-        const shadow = options.shadow?.type === "inner" && !RENDERING_TARGETS[this.context.target].drawsPictureInnerShadow ? undefined : options.shadow;
+        const shadow = written?.type === "inner" && !RENDERING_TARGETS[this.context.target].drawsPictureInnerShadow ? undefined : written;
         const style = normalizeObjectStyle({ ...geometryOptions, shadow }, PPTX_DEFAULTS.image, this.pageSize, this.nextObjectName("Image", options.objectName), {
             shadow: true,
         });
@@ -437,7 +457,7 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     addShape(shapeName: PptxGenJS.SHAPE_NAME | "custGeom", options?: PptxGenJS.ShapeProps | undefined): PptxGenJS.Slide {
-        const shapeOptions = options ?? {};
+        const shapeOptions = options?.shadow ? { ...options, shadow: this.writtenShadow(options.shadow, "addShape") } : (options ?? {});
         const style = normalizeObjectStyle(shapeOptions, PPTX_DEFAULTS.shape, this.pageSize, this.nextObjectName("Shape", shapeOptions.objectName ?? shapeOptions.shapeName), { fill: true, shadow: true });
 
         style.line = normalizeShapeLine(shapeOptions, line => normalizeLine(line, lineOutline(shapeName, style.geometry.width ?? 0, style.geometry.height ?? 0)));
@@ -546,6 +566,10 @@ export class PuppeteerSlide implements PptxSlide {
             throw innerShadowError(textOptions.shape ? `shape "${textOptions.shape}"` : "a text box");
         }
 
+        if (textOptions.shadow) {
+            textOptions = { ...textOptions, shadow: this.writtenShadow(textOptions.shadow, "addText") };
+        }
+
         // Text transparency is a run color property, not object opacity.
         const { transparency: _textTransparency, ...boxOptions } = textOptions;
         const textStyle = normalizeObjectStyle(boxOptions, PPTX_DEFAULTS.text, this.pageSize, this.nextObjectName("Text", textOptions.objectName), {
@@ -561,11 +585,27 @@ export class PuppeteerSlide implements PptxSlide {
         // one with options both share. Normalize at write time if a deck needs that order.
         const box = { ...textOptions, color: textOptions.color || this.color || PPTX_DEFAULTS.text.color };
         const color = this.color;
-        // The box's shadow is cast by everything it draws, under it: an opaque fill hides its glyphs' share, so the runs
-        // carry no glyph shadow, which Chromium would paint over the fill (#626). The object's shadow stays the box's.
-        // shortcut: under a semi-transparent fill the glyph shadow is drawn over the fill, at full strength, by Chromium
-        // (LibreOffice, WASM and PDFKit show it through the fill); draw it under the fill if a deck needs that.
-        const fillHidesGlyphs = textStyle.fill?.visible === true && cssColorParts(textStyle.fill.color).form === "hex" ? { shadow: undefined } : {};
+        // The box's shadow is cast by everything it draws, under it, so its glyphs' share lies under the fill, where
+        // Chromium paints the runs' text-shadow over it (#626). An opaque fill hides that share: the runs carry none. A
+        // translucent fill of alpha a shows it through: the runs carry it in a * fill + (1 - a) * shadow, at the shadow's
+        // opacity, which laid over the fill gives the fill laid over the shadow. The object's shadow stays the box's;
+        // WASM and PDFKit draw it under the object and read no run's, and Puppeteer's print step lays the fill's share
+        // under the fill too.
+        // shortcut: over that share a shadow with opacity below 1 comes out a little dark (exact at opacity 1); mix
+        // against it too if a deck needs that.
+        const fill = textStyle.fill?.visible === true ? cssColorParts(textStyle.fill.color) : ({ form: "transparent" } as const);
+        const shadowColor = textStyle.shadow?.visible === true ? cssColorParts(textStyle.shadow.color) : ({ form: "transparent" } as const);
+        let glyphShadow: { shadow?: PptxGenJS.ShadowProps } = {};
+
+        if (fill.form === "hex") {
+            glyphShadow = { shadow: undefined };
+        } else if (fill.form === "rgba" && shadowColor.form !== "transparent" && textOptions.shadow) {
+            const alpha = Number(fill.alpha);
+            const channels = shadowColor.channels.map((channel, index) => Math.round(alpha * (fill.channels[index] ?? channel) + (1 - alpha) * channel));
+
+            glyphShadow = { shadow: { ...textOptions.shadow, color: channels.map(channel => channel.toString(16).padStart(2, "0")).join("") } };
+        }
+
         // Drawn in `fontFace` where the text sets none; a title placeholder's is drawn again when the head font changes
         // (toModel).
         // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
@@ -574,7 +614,7 @@ export class PuppeteerSlide implements PptxSlide {
             const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset, margin } : {};
             const normalizedText = normalizeText(
                 text,
-                { color, ...textOptions, ...bodyOptions, ...fillHidesGlyphs, fontFace: textOptions.fontFace ?? fontFace },
+                { color, ...textOptions, ...bodyOptions, ...glyphShadow, fontFace: textOptions.fontFace ?? fontFace },
                 this.context.target,
                 this.context.fontMetrics,
                 this.context.bodyFontFace(),

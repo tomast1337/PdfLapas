@@ -23,6 +23,8 @@ export const PPTX_DEFAULTS = Object.freeze({
         pointsPerInch: POINTS_PER_INCH,
         emuPerInch: 914400,
         emuPerPoint: 12700,
+        // ST_Angle: DrawingML angles (`dir`, `rot`) are in 60000ths of a degree.
+        angleUnitsPerDegree: 60000,
         // PptxGenJS 4.0.1 reads a length number below this as inches and any other as EMU: getSmartParseNumber keeps
         // 100 itself as EMU, inch2Emu reads 100 as inches and only a number above it as EMU.
         inchesBelow: 100,

@@ -9,7 +9,6 @@ import { type ImageSourceOptions, imageResolver, resolveRemoteImageSource } from
 import { fontMetricsLookup } from "./fontMetrics";
 import { normalizePdfMetadata, type PdfMetadataOptions } from "./normalize/pdfMetadata";
 import type { SharedRunOptions } from "./normalize/sharedRunOptions";
-import type { SharedShadows } from "./normalize/sharedShadow";
 import { findHtmlTable, normalizeHtmlTable } from "./normalize/table/html";
 import type { TableHtmlLimits } from "./normalize/table/htmlLimits";
 import { paginateTableRows } from "./normalize/table/pagination";
@@ -97,6 +96,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     /** `defineLayout()` sizes by name, which `layout` can then select (PptxGenJS's `LAYOUTS`). */
     private readonly definedLayouts = new Map<string, PageSize>();
     private themeProps: PptxGenJS.ThemeProps | undefined;
+    /** The theme's fonts, copied when it is set: a later change to the caller's object must not reach the deck. */
+    private themeFonts: PptxGenJS.ThemeProps = {};
     private rtl: boolean = PPTX_DEFAULTS.presentation.rtlMode;
     // PptxGenJS writes these to docProps/core.xml and app.xml; toHtml() writes them to <head> and the renderers to the PDF.
     // Only what the caller sets: PptxGenJS's defaults ("PptxGenJS", "PptxGenJS Presentation", "1") are its branding,
@@ -111,8 +112,8 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly components = new ComponentRegistry();
     /** What PptxGenJS writes onto run options objects the deck shares between boxes, which its slides read and extend. */
     private readonly sharedRunOptions: SharedRunOptions = new WeakMap();
-    /** What PptxGenJS writes onto `shadow` objects the deck shares between objects, which its slides read and extend. */
-    private readonly sharedShadows: SharedShadows = new WeakMap();
+    /** The `shadow` objects given to the deck's objects so far, to note one given again (PuppeteerSlide.noteSharedShadow). */
+    private readonly shadowsSeen = new WeakSet<object>();
     /** The chart options objects the deck's addChart() calls were given, which its slides read and extend. */
     private readonly chartOptionsSeen = new WeakSet<object>();
     private slides: PuppeteerSlide[] = [];
@@ -229,6 +230,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
         }
 
         this.themeProps = value;
+        this.themeFonts = { headFontFace: value?.headFontFace, bodyFontFace: value?.bodyFontFace };
     }
 
     /**
@@ -331,7 +333,7 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     }
 
     private bodyFontFace(): string {
-        return this.themeProps?.bodyFontFace || PPTX_DEFAULTS.theme.bodyFontFace;
+        return this.themeFonts.bodyFontFace || PPTX_DEFAULTS.theme.bodyFontFace;
     }
 
     registerComponent<Props extends object = ComponentProps>(type: string, version: number, definition: ComponentDefinition<Props>): this {
@@ -495,12 +497,12 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             slideIndex,
             components: this.components,
             bodyFontFace: () => this.bodyFontFace(),
-            headFontFace: () => this.themeProps?.headFontFace || PPTX_DEFAULTS.theme.headFontFace,
+            headFontFace: () => this.themeFonts.headFontFace || PPTX_DEFAULTS.theme.headFontFace,
             warn: message => this.warningLines.add(message),
             target: this.target,
             fontMetrics: this.fontMetrics,
             sharedRunOptions: this.sharedRunOptions,
-            sharedShadows: this.sharedShadows,
+            shadowsSeen: this.shadowsSeen,
             chartOptionsSeen: this.chartOptionsSeen,
             getDocument: this.componentDocument,
             master,

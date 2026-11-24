@@ -13,9 +13,9 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "5f787dd06984f4cd9086c0269a69d23824ef858cad4f2e4f8f9c51e90466ba67",
+    fixture: "813961ece0836b533068c66f886969a44f9d43921183e95b7cb809eae0d9395a",
     "cross-runtime": "f91873120d39362618c9a6e5fec29d9353be09d25dd9c718bb7af8dfc7e7a9fd",
-    "wasm-text": "e7c59b101340d61a84632a68fd5f524c1adb3bfb793257f05000afb27139cf6a",
+    "wasm-text": "3143b9fbc1a7de90d8fc32821a74a7c46dbd7b5c59726de5e7c255b9532cccfc",
     "wasm-emoji": "0170f6d0e30f8fb4961eda77afac9a9ab91bd91534aaa2c394c68edd9d332fc0",
     "wasm-layout": "0b7400fe7c531e7e1a092763ab73f5ed77d2a19390322c20206bdde835708ec9",
     "wasm-shapes": "49e9b04634be853f1287413585ac62e6483f3ab31fadf4038809337db36d896e",

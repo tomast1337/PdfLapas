@@ -1068,12 +1068,12 @@ export function populateParityFixture(presentation: Presentation): void {
         shadow: { type: "outer", color: "000000", opacity: 1, blur: 1, offset: 4, angle: 90 },
         margin: 4,
     });
-    // One shadow object for two boxes: PptxGenJS converts it in place, so the second writes it out of range and LibreOffice
-    // draws no shadow there (#633).
+    // A copy of one shadow per box: PptxGenJS converts a shadow object in place, so a second box given the same object
+    // writes it out of range and LibreOffice draws none, where PdfLapas draws it as given (#633, tests/sharedShadow.test.ts).
     const sharedShadow = { type: "outer", color: "000000", opacity: 0.5, blur: 2, offset: 3, angle: 45 } as const;
 
     for (const [index, x] of [0.75, 5.25].entries()) {
-        effectsSlide.addText(`Shared shadow ${index + 1}`, { x, y: 4.35, w: 4, h: 0.8, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", shadow: sharedShadow, margin: 4 });
+        effectsSlide.addText(`Shared shadow ${index + 1}`, { x, y: 4.35, w: 4, h: 0.8, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", shadow: { ...sharedShadow }, margin: 4 });
     }
 
     const directionSlide = presentation.addSlide();

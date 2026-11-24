@@ -39,6 +39,8 @@ export type BoxLayout = {
     readonly bullets: readonly PlacedBullet[];
     readonly width: number;
     readonly height: number;
+    /** Whether text on a right, center or decimal tab stop wraps: it is then aligned by its whole width (see `tabSegments`). */
+    readonly tabWraps: boolean;
 };
 
 /** Characters that take part in breaking but draw nothing: U+200B (an empty run's text) and U+2060 (the profile's no-break). */
@@ -90,6 +92,7 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
     const bullets: PlacedBullet[] = [];
     let y = 0;
     let width = 0;
+    let tabWraps = false;
 
     for (const paragraph of box.paragraphs) {
         y += paragraph.spaceBefore;
@@ -219,7 +222,7 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
             // trailing spaces) and how far into it the first '.' is, for right, center and decimal stops.
             // shortcut: pdf-core aligns the text up to the line's end and re-breaks a line the widened tab overflows; here the
             // text runs to the next tab even when it wraps. Measure per line if a deck aligns wrapping text on a stop.
-            const tabSegments = new Map<Piece, { width: number; dot?: number }>();
+            const tabSegments = new Map<Piece, { width: number; dot?: number; last?: Piece }>();
             const pieces = words.flat();
 
             for (const [index, tab] of pieces.entries()) {
@@ -229,6 +232,7 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
 
                 let segmentWidth = 0;
                 let dot: number | undefined;
+                let last: Piece | undefined;
 
                 for (let next = index + 1; next < pieces.length; next++) {
                     const piece = pieces[next];
@@ -244,11 +248,15 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
                     }
 
                     segmentWidth += next === pieces.length - 1 ? piece.inkWidth : piece.width;
+                    last = piece;
                 }
 
-                tabSegments.set(tab, { width: segmentWidth, ...(dot === undefined ? {} : { dot }) });
+                tabSegments.set(tab, { width: segmentWidth, ...(dot === undefined ? {} : { dot }), ...(last ? { last } : {}) });
             }
 
+            // The line each piece went to, and the tabs on a right, center or decimal stop with theirs.
+            const lineOf = new Map<Piece, number>();
+            const alignedTabs: { tab: Piece; line: number }[] = [];
             const place = (word: Word) => {
                 const line = drafts.at(-1);
 
@@ -258,6 +266,8 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
 
                 for (const piece of word) {
                     let advance = piece.width;
+
+                    lineOf.set(piece, drafts.length - 1);
 
                     if (piece.tab) {
                         // The width of a tab at `pos` that brings its text to its stop: left starts it there, right ends it,
@@ -274,6 +284,9 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
                             const lead = stop.alignment === "right" ? aligned : stop.alignment === "center" ? aligned / 2 : stop.alignment === "decimal" ? (segment?.dot ?? aligned) : 0;
 
                             advance = Math.max(0, stop.position - pos - lead);
+                            if (stop.alignment !== "left") {
+                                alignedTabs.push({ tab: piece, line: drafts.length - 1 });
+                            }
                         }
                     }
 
@@ -342,6 +355,15 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
                 }
             }
 
+            for (const { tab, line } of alignedTabs) {
+                const last = tabSegments.get(tab)?.last;
+
+                // Pieces are placed in order, so the text stayed on the stop's line when its last piece did.
+                if (last && lineOf.get(last) !== line) {
+                    tabWraps = true;
+                }
+            }
+
             for (const [index, draft] of drafts.entries()) {
                 const lastOfChunk = index === drafts.length - 1;
                 const lastOfParagraph = lastOfChunk && chunkIndex === chunks.length - 1;
@@ -389,5 +411,5 @@ export function layoutText(box: TextBox, innerWidth: number, scale: number, shap
         y += paragraph.spaceAfter;
     }
 
-    return { lines, bullets, width, height: y };
+    return { lines, bullets, width, height: y, tabWraps };
 }

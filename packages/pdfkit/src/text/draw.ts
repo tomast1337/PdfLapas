@@ -207,6 +207,10 @@ export function drawLayout(paint: Paint, layout: BoxLayout, left: number, top: n
         }
     }
 
+    if (layout.tabWraps) {
+        paint.report("text on a right, center or decimal tab stop wraps; it is aligned by its whole width, not by the part on the stop's line");
+    }
+
     if (glows.length > MAX_GLOWS_PER_BOX) {
         paint.report(`${glows.length - MAX_GLOWS_PER_BOX} glows past the first ${MAX_GLOWS_PER_BOX} in one text box are not drawn`);
     }

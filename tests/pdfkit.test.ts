@@ -767,6 +767,17 @@ describe("PDFKit renderer", () => {
         expect((decimal?.x ?? 0) + width("12")).toBeCloseTo(96 + 288, 2);
     });
 
+    test("reports text on a right tab stop that wraps, which it aligns by its whole width (#460)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ }), onUnsupported: "warn" });
+        const tabStops = [{ position: 1.5, alignment: "r" }] as PptxGenJS.TextPropsOptions["tabStops"]; // `as`: as above
+        const options = { x: 1, y: 1, w: 2, h: 1, fontFace: "Arial", fontSize: 18, margin: 0, tabStops };
+
+        await render(renderer, pres => pres.addSlide().addText("a\tbb", options));
+        expect(renderer.warnings()).toEqual([]);
+        await render(renderer, pres => pres.addSlide().addText("a\tbb cc dd ee ff gg hh ii jj kk", options));
+        expect(renderer.warnings()).toEqual(["slide 1: object 'Text 0': text on a right, center or decimal tab stop wraps; it is aligned by its whole width, not by the part on the stop's line"]);
+    });
+
     test("refuses elements nested past the renderer's depth instead of exhausting the stack (#448)", async () => {
         const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
         const pres = new PuppeteerGen(PAGE, { renderer, createDocument });

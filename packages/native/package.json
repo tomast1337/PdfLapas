@@ -11,6 +11,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "bun": "./dist/bun.js",
+      "node": "./dist/node.js",
       "default": "./dist/index.js"
     }
   },

@@ -397,7 +397,7 @@ presentation.addSlide().addText("Native package consumer", { x: 1, y: 1, w: 4, h
 const document = await presentation.toHtml();
 const native = await createNativeRenderer({ fonts }).then(renderer => renderer, (error: Error) => error);
 if (!("Bun" in globalThis)) {
-    if (!(native instanceof Error) || native.message !== "@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node") throw new Error(\`@pdflapas/native under Node: \${native}\`);
+    if (!(native instanceof Error) || native.name !== "UnsupportedRuntimeError" || native.message !== "@pdflapas/native needs Bun (bun:ffi); on Node use @pdflapas/wasm (createWasmRenderer / createWasmRendererPool). Node support waits on node:ffi (#612 phase 4).") throw new Error(\`@pdflapas/native under Node: \${native}\`);
 } else if (native instanceof Error) {
     if (!native.message.startsWith("No @pdflapas/native library for")) throw native;
 } else {

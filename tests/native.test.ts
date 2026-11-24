@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { createNativeRenderer, createNativeRendererPool } from "../packages/native/src/bun";
-import { createNativeRenderer as createOutsideBun } from "../packages/native/src/index";
+import { createNativeRenderer as createOutsideBun, createNativeRendererPool as createPoolOutsideBun } from "../packages/native/src/index";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { createWasmRenderer, loadSystemFonts } from "../packages/wasm/src/node";
@@ -20,8 +20,22 @@ if (!canRender) {
 }
 
 describe("native backend outside Bun", () => {
+    test("the Node entry imports and its factories say to use @pdflapas/wasm until node:ffi", async () => {
+        const node = await import("../packages/native/src/node");
+        const message = "@pdflapas/native needs Bun (bun:ffi); on Node use @pdflapas/wasm (createWasmRenderer / createWasmRendererPool). Node support waits on node:ffi (#612 phase 4).";
+
+        for (const create of [node.createNativeRenderer, node.createNativeRendererPool]) {
+            const error: unknown = await create({ fonts: [new Uint8Array(1)] }).catch((thrown: unknown) => thrown);
+
+            expect(error).toBeInstanceOf(node.UnsupportedRuntimeError);
+            expect(error).toMatchObject({ runtime: "node", message });
+        }
+    });
+
     test("the default entry says what to use instead", async () => {
-        await expect(createOutsideBun({ fonts: [new Uint8Array(1)] })).rejects.toThrow("@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node");
+        for (const create of [createOutsideBun, createPoolOutsideBun]) {
+            await expect(create({ fonts: [new Uint8Array(1)] })).rejects.toThrow("@pdflapas/native needs Bun (bun:ffi), which this runtime does not have; use @pdflapas/wasm");
+        }
     });
 });
 

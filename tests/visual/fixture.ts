@@ -3587,9 +3587,10 @@ export function populateChartAutomaticScaleFixture(presentation: Presentation): 
 }
 
 /**
- * Date category axes (#580): monthly serials labelled every two months, daily serials with empty days between them,
- * a time line trimmed by catAxisMinVal and catAxisMaxVal (no point outside it, as PdfLapas draws no line to one, #593),
- * and a scatter x axis with its own bounds and step. A parity slide after the others (no page number moves) and the
+ * Date category axes (#580): monthly serials labelled every two months with a minor tick each month, daily serials
+ * with empty days between them, a time line trimmed by catAxisMinVal and catAxisMaxVal whose lines run on toward the
+ * points outside it (#593), and a scatter x axis with its own bounds and step. The minor tick mark is spelled "out":
+ * LibreOffice 26.2.6 draws no tick for PptxGenJS's typed "outside" (#630); the cast is for that untyped OOXML name. A parity slide after the others (no page number moves) and the
  * WASM chartDateAxis deck, which crops each chart.
  */
 export function populateChartDateAxisFixture(presentation: Presentation): void {
@@ -3606,9 +3607,19 @@ export function populateChartDateAxisFixture(presentation: Presentation): void {
     // As on the category options slide: no gridlines and a fixed unit.
     const shared: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, valAxisMajorUnit: 2 };
 
-    slide.addChart("line", series(months), { ...shared, x: 0.4, y: 0.8, catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 2, catAxisMajorTimeUnit: "months" });
+    slide.addChart("line", series(months), {
+        ...shared,
+        x: 0.4,
+        y: 0.8,
+        catLabelFormatCode: "mmm-yy",
+        catAxisMajorUnit: 2,
+        catAxisMajorTimeUnit: "months",
+        catAxisMinorTickMark: "out" as PptxGenJS.ChartAxisTickMark,
+        catAxisMinorUnit: 1,
+        catAxisMinorTimeUnit: "months",
+    });
     slide.addChart("bar", series(days), { ...shared, x: 5.2, y: 0.8, catLabelFormatCode: "d-mmm" });
-    slide.addChart("line", series(months.slice(1, 5)), { ...shared, x: 0.4, y: 3.2, catLabelFormatCode: "yyyy-mm", catAxisMinVal: 45292, catAxisMaxVal: 45444 });
+    slide.addChart("line", series(months), { ...shared, x: 0.4, y: 3.2, catLabelFormatCode: "yyyy-mm", catAxisMinVal: 45323, catAxisMaxVal: 45413 });
     slide.addChart(
         "scatter",
         [

@@ -336,6 +336,18 @@ export type RenderingTargetProfile = {
      */
     readonly readsCategoryLabelSkip: boolean;
     /**
+     * Whether a radar chart with date categories labels a spoke every `catAxisMajorUnit` and rejects `catAxisMinVal` and
+     * `catAxisMaxVal`, or labels every spoke and ignores the bounds (`NormalizedChartCatAxis.labelSkip`).
+     */
+    readonly radarReadsDateAxisScale: boolean;
+    /** The time unit of a date axis's `catAxisMinorUnit` without `catAxisMinorTimeUnit`: days, or the base unit (`dateSlots.minorTicks`). */
+    readonly dateAxisMinorTimeUnit: "days" | "baseUnit";
+    /**
+     * A data table's columns on a date axis: a time-line slot wide from the plot's left, the axis labels dropped, or the
+     * plot's width shared by the categories under the axis labels (`NormalizedChartDataTable.dateColumns`).
+     */
+    readonly dateAxisDataTableColumns: "slots" | "categories";
+    /**
      * Whether a bar3D depth axis prints a series name every `serAxisLabelFrequency` series (`<c:tickLblSkip>`), or
      * every name (`NormalizedChartSeriesAxis.labelSkip`).
      */

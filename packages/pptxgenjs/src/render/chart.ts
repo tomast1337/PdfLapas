@@ -605,8 +605,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
     // LibreOffice 26.2 does.
     const noBottomLabels = !horizontal && chart.type !== "scatter" && chart.type !== "bubble" && (categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (categoryAxisModel.labelPosition === "high" && !firstAxis?.reversed));
     const bottomLabelBand = bottomLabelMargin + (bottomLabelPx * (plotBand.labelLineEm + 1)) / 2;
-    // A horizontal bar chart's data table goes below its value labels, as LibreOffice 26.2.6 draws it (#583).
-    const tableOffset = table && horizontal ? bottomLabelBand : 0;
+    // A horizontal bar chart's data table goes below its value labels, as LibreOffice 26.2.6 draws it (#583), and a date
+    // axis's below its labels where they stay (dateColumns "categories", #593).
+    const tableOffset = table && (horizontal || table.dateColumns === "categories") ? bottomLabelBand : 0;
     const categoryBand = table ? (chart.series.length + 1) * tableRowPx + tableOffset : noBottomLabels ? 0 : bottomLabelBand;
     // A column chart's value axis on the right (catAxisCrossesAt max, or a reversed category axis) takes the gutter there.
     const valueAxisRight =
@@ -716,7 +717,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         axisLabel: {
             // A deleted axis, `none` and a column chart's data table (whose first row names the categories) print no
             // labels; a horizontal bar chart keeps them left of the plot, as LibreOffice 26.2.6 does (#583).
-            ...(categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (chart.dataTable && !horizontal) ? { show: false } : {}),
+            // PowerPoint keeps a date axis's labels above its table (dateColumns "categories").
+            ...(categoryAxisModel.hidden || categoryAxisModel.labelPosition === "none" || (chart.dataTable && !horizontal && chart.dataTable.dateColumns !== "categories") ? { show: false } : {}),
             // catAxisLabelRotate turns clockwise, ECharts' rotate counterclockwise.
             ...(categoryAxisModel.labelRotate ? { rotate: -categoryAxisModel.labelRotate } : {}),
             ...(categoryAxisModel.labelSkip ? { interval: categoryAxisModel.labelSkip - 1 } : {}),
@@ -740,7 +742,10 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         },
         // LibreOffice 26.2 draws a category axis's minor ticks at the category boundaries, as its major ones, so either
         // draws them there.
-        axisTick: categoryAxisModel.hidden ? { show: false } : tickOption(chart.categoryMajorTickMark !== "none" ? chart.categoryMajorTickMark : categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth),
+        // A date axis draws its minor ticks where its minor unit puts them (dateSlots.minorTicks).
+        axisTick: categoryAxisModel.hidden
+            ? { show: false }
+            : tickOption(chart.categoryMajorTickMark !== "none" || categoryAxisModel.dateSlots?.minorTicks ? chart.categoryMajorTickMark : categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth),
         name: categoryAxisModel.showTitle && !categoryAxisModel.hidden ? categoryAxisModel.title : undefined,
         nameLocation: "middle",
         nameGap: horizontal ? AXIS_LABEL_MARGIN : TICK_LENGTH + AXIS_LABEL_MARGIN + categoryLabelPx * lineEm + gap + (secondaryHigh ? 0 : secondaryLabelBand),
@@ -1112,7 +1117,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // LibreOffice 26.2.6 numbers the spoke a numeric catAxisCrossesAt names (the first by default, and for `max`).
         const valueSpoke = categoryAxisModel.valueAxisCrossing?.kind === "category" ? categoryAxisModel.valueAxisCrossing.index : 0;
         const indicators = Array.from({ length: categoryCount }, (_, index) => ({
-            name: chart.series[0]?.labels[index] ?? String(index + 1),
+            // labelSkip names every nth spoke (PowerPoint's catAxisMajorUnit over date spokes, #593).
+            name: categoryAxisModel.labelSkip && index % categoryAxisModel.labelSkip !== 0 ? "" : (chart.series[0]?.labels[index] ?? String(index + 1)),
             min: axis.minimum,
             max: axis.maximum,
             ...(index === valueSpoke ? { axisLabel: valueLabel } : {}),
@@ -1279,6 +1285,11 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             ...(xAxisPlacement.kind === "high" ? { position: yAxisModel?.reversed ? "bottom" : "top" } : {}),
             ...(xAxisPlacement.kind === "default" ? {} : { axisLine: { ...axisStyle.axisLine, onZero: xAxisPlacement.kind === "on-zero", ...(xAxisPlacement.kind === "on-zero" ? { onZeroAxisIndex: 1 } : {}) } }),
             splitLine: gridLineOption(categoryAxisModel),
+            // Minor ticks every catAxisMinorUnit, or five to a step (PptxGenJS writes none on a scatter chart).
+            minorTick: {
+                ...tickOption(categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth),
+                splitNumber: xScale && fixedX?.minorUnit !== undefined ? Math.max(1, Math.round(xScale.interval / fixedX.minorUnit)) : 5,
+            },
         };
         const firstYAxis = yAxisModel ? valueAxisOption(yAxisModel, 0, yAxisModel.minimum, yAxisModel.maximum, { kind: "default" }) : undefined;
         const yAxis = firstYAxis
@@ -1341,16 +1352,20 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         // A date axis draws a category per time-line slot, each series' points in their dates' slots (#580).
         const dateSlots = categoryAxisModel.dateSlots;
         const categories = dateSlots?.labels ?? chart.series[0]?.labels ?? [];
-        const slotCategory: number[] = [];
+        // A point outside the time line takes a slot of its own past the axis's ends (`min` and `max`), so a line runs
+        // toward it and each stack keeps a slot per date.
+        let slotsBefore = 0;
+        let slotsAfter = 0;
 
-        for (const [category, slot] of (dateSlots?.categorySlots ?? []).entries()) {
-            if (slot !== null) {
-                slotCategory[slot] = category;
-            }
+        for (const slot of dateSlots?.categorySlots ?? []) {
+            slotsBefore = Math.max(slotsBefore, -slot);
+            slotsAfter = Math.max(slotsAfter, slot - categories.length + 1);
         }
 
+        const axisCategories = dateSlots ? [...Array.from({ length: slotsBefore }, () => ""), ...categories, ...Array.from({ length: slotsAfter }, () => "")] : categories;
+        const slotRange = dateSlots ? { min: slotsBefore, max: slotsBefore + categories.length - 1 } : {};
         // Only the slots a major unit labels get a label and a tick.
-        const majorSlots = dateSlots?.labels.includes("") ? (index: number) => dateSlots.labels[index] !== "" : undefined;
+        const majorSlots = dateSlots?.labels.includes("") ? (index: number) => dateSlots.labels[index - slotsBefore] !== "" : undefined;
         const valueAxes: ReturnType<typeof valueAxisOption>[] = [];
         // The value range each axis draws: a percent-stacked axis 0 to 100.
         const ranges: [number, number][] = [];
@@ -1390,7 +1405,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         const shiftedIndex = valueAxes.length;
         const categoryAxis = {
             type: "category",
-            data: categories,
+            data: axisCategories,
+            ...slotRange,
             ...axisStyle,
             ...categoryAxisText,
             ...(majorSlots ? { axisLabel: { ...categoryAxisText.axisLabel, interval: majorSlots }, axisTick: { ...categoryAxisText.axisTick, interval: majorSlots } } : {}),
@@ -1413,7 +1429,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
         if (labelsApart) {
             categoryAxes.push({
                 type: "category",
-                data: categories,
+                data: axisCategories,
+                ...slotRange,
                 position: labelSide,
                 ...(categoryAxisModel.reversed ? { inverse: true } : {}),
                 ...categoryAxisText,
@@ -1467,7 +1484,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
 
             categoryAxes.push({
                 type: "category",
-                data: categories,
+                data: axisCategories,
+                ...slotRange,
                 position: secondaryHigh ? highSide : lowSide,
                 offset: rowOffset,
                 ...(secondaryCategory.reversed ? { inverse: true } : {}),
@@ -1499,7 +1517,8 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             if (titled && !secondaryRow) {
                 categoryAxes.push({
                     type: "category",
-                    data: categories,
+                    data: axisCategories,
+                    ...slotRange,
                     position: highSide,
                     axisLine: { show: false, onZero: false },
                     axisTick: { show: false },
@@ -1568,7 +1587,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             // dataLabelBkgrdColors.
             const label = showsPointLabel(labels)
                 ? {
-                      ...dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dateSlots ? (slotCategory[dataIndex] ?? -1) : dataIndex] ?? 0, { kind: "none" })),
+                      ...dataLabelOption(labels, labelPosition, dataIndex => pointLabelText(labels, series.name, series.values[dataIndex] ?? 0, { kind: "none" })),
                       ...(labels.seriesColorBackground ? { backgroundColor: color } : {}),
                   }
                 : undefined;
@@ -1594,16 +1613,18 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 data = points;
             }
 
-            // A slot without a date is empty, and LibreOffice joins a line across it (displayBlanksAs span).
+            // Each point at its date's slot, in category order: a line joins the points across empty slots, through the
+            // points of one slot, and toward a point outside the time line as far as the plot's edge; bars of one slot
+            // overlap, and a stack adds each series' point to the same point of the series before it (#593).
             if (dateSlots) {
-                const slotted: unknown[] = Array.from({ length: categories.length }, () => "-");
+                const slotted: unknown[] = [];
 
                 for (const [category, item] of data.entries()) {
-                    const slot = dateSlots.categorySlots[category];
+                    const slot = slotsBefore + (dateSlots.categorySlots[category] ?? 0);
+                    const point = typeof item === "object" && item !== null && "value" in item ? item : { value: item };
+                    const value: unknown = point.value;
 
-                    if (slot !== null && slot !== undefined) {
-                        slotted[slot] = item;
-                    }
+                    slotted.push({ ...point, value: horizontal ? [value, slot] : [slot, value] });
                 }
 
                 data = slotted;
@@ -1614,7 +1635,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 name: series.name,
                 type: seriesType,
                 data,
-                ...(dateSlots && lineLike ? { connectNulls: true, showAllSymbol: true } : {}),
+                ...(dateSlots && lineLike ? { showAllSymbol: true } : {}),
                 // Each type stacks apart from the others, as each is its own chart element.
                 stack: series.stack ? `pptx-${series.type}-${series.valueAxisIndex}` : undefined,
                 barWidth: seriesType === "bar" ? barWidth : undefined,
@@ -1681,7 +1702,9 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             const tableTop = (layout ? (layout.y + layout.h) * height : height - gridBottom) + tableOffset;
             const tableLeft = plotLeft - tableNameColumn;
             const tableBottom = tableTop + (chart.series.length + 1) * tableRowPx;
-            const column = (plotRight - plotLeft) / Math.max(1, categories.length);
+            // On a date axis a column per category, named by its date: a slot wide, or sharing the plot (dateColumns).
+            const tableColumns = categoryAxisModel.dateSlots?.categoryLabels ?? categories;
+            const column = (plotRight - plotLeft) / Math.max(1, table.dateColumns === "slots" ? categories.length : tableColumns.length);
             const text = (value: string, x: number, row: number, align: "center" | "left") => ({
                 type: "text",
                 x,
@@ -1691,7 +1714,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             });
             const rule = (x1: number, y1: number, x2: number, y2: number) => ({ type: "line", silent: true, shape: { x1, y1, x2, y2 }, style: { stroke: table.borderColor, lineWidth: pointsToPixels(table.borderWidth) } });
 
-            for (const [index, category] of categories.entries()) {
+            for (const [index, category] of tableColumns.entries()) {
                 graphics.push(text(categoryLabelFormat && Number.isFinite(Number(category)) && category.trim() !== "" ? formatChartNumber(Number(category), categoryLabelFormat) : category, plotLeft + (index + 0.5) * column, 0, "center"));
             }
 
@@ -1715,7 +1738,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 graphics.push(rule(tableLeft, tableTop + row * tableRowPx, plotRight, tableTop + row * tableRowPx));
             }
 
-            for (let index = 0; table.verticalBorder && index < categories.length; index++) {
+            for (let index = 0; table.verticalBorder && index < tableColumns.length; index++) {
                 graphics.push(rule(plotLeft + index * column, index === 0 ? tableTop + tableRowPx : tableTop, plotLeft + index * column, tableBottom));
             }
 
@@ -1727,6 +1750,24 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                     style: { fill: "none", stroke: table.borderColor, lineWidth: pointsToPixels(table.borderWidth) },
                 });
             }
+        }
+
+        // A date axis's minor ticks (dateSlots.minorTicks), where a slot's start is its index: on a hidden value axis over
+        // the slots that lies on the category axis, as ECharts ticks a category axis only between categories.
+        if (dateSlots?.minorTicks && categoryAxisModel.minorTickMark !== "none" && !categoryAxisModel.hidden) {
+            const ticksOnPoints = chart.categoriesOnTicks ? 0.5 : 0;
+
+            categoryAxes.push({
+                type: "value",
+                min: -ticksOnPoints,
+                max: categories.length - ticksOnPoints,
+                ...(categoryAxisModel.reversed ? { inverse: true } : {}),
+                position: "position" in categoryAxis ? categoryAxis.position : lowSide,
+                axisLine: { ...categoryAxis.axisLine, show: false },
+                axisTick: { ...tickOption(categoryAxisModel.minorTickMark, categoryAxisModel.lineColor, categoryAxisModel.lineWidth), customValues: dateSlots.minorTicks.map(tick => tick - ticksOnPoints) },
+                axisLabel: { show: false },
+                splitLine: { show: false },
+            });
         }
 
         const categoryAxisOption = categoryAxes.length === 1 ? categoryAxis : categoryAxes;

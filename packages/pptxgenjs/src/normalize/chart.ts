@@ -282,32 +282,20 @@ const SUPPORTED_VALUE_AXIS_OPTIONS = new Set([
     "valAxisTitleRotate",
     "valGridLine",
 ]);
-// A date axis's time line (#580): drawn on line, column, bar, area and combo charts, not measured on radar or bar3D ones.
+// A date axis's time line (#580, #593): drawn on line, column, bar, area, bar3D and combo charts. A radar chart draws a
+// spoke per category whatever its time options, its labels in catLabelFormatCode (radarReadsDateAxisScale).
 const DATE_AXIS_OPTIONS = ["catAxisBaseTimeUnit", "catAxisMajorTimeUnit", "catAxisMinorTimeUnit", "catAxisMajorUnit", "catAxisMinorUnit", "catAxisMinVal", "catAxisMaxVal"] as const;
-const DATE_AXIS_TYPES = new Set<NormalizedChartType>(["area", "bar", "line", "mixed"]);
+const DATE_AXIS_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "line", "mixed"]);
 const TIME_UNITS = new Set(["days", "months", "years"]);
 // The category-axis options a chart type does not draw (#566, #582). A radar chart's category axis is its spokes:
 // LibreOffice 26.2.6 draws its labels in catAxisLabel* (none for catAxisHidden or catAxisLabelPos none), runs them
 // counterclockwise for catAxisOrientation maxMin and numbers the value axis on the spoke a numeric catAxisCrossesAt
-// names, and draws neither a catAxisTitle nor the catGridLine (#479); the line, tick, rotation, skip and format options
-// are not measured there. A bar3D chart draws its crossings as LibreOffice 26.2.6 and PowerPoint do (#591): the bars grow
-// from valAxisCrossesAt and the value labels stand at catAxisCrossesAt.
+// names, and draws neither a catAxisTitle nor the catGridLine (#479); the line, tick, rotation and skip options are not
+// measured there. LibreOffice 26.2.6 and PowerPoint format its spoke names in catLabelFormatCode and draw no time line on
+// it, nor its minor ticks (#593). A bar3D chart draws its crossings as LibreOffice 26.2.6 and PowerPoint do (#591): the
+// bars grow from valAxisCrossesAt and the value labels stand at catAxisCrossesAt.
 const CATEGORY_AXIS_UNDRAWN_OPTIONS: Readonly<Partial<Record<NormalizedChartType, ReadonlySet<string>>>> = Object.freeze({
-    radar: new Set<string>([
-        ...DATE_AXIS_OPTIONS,
-        "catAxisLabelFrequency",
-        "catLabelFormatCode",
-        "valAxisCrossesAt",
-        "catGridLine",
-        "catAxisLabelRotate",
-        "catAxisLineColor",
-        "catAxisLineShow",
-        "catAxisLineSize",
-        "catAxisLineStyle",
-        "catAxisMajorTickMark",
-        "catAxisMinorTickMark",
-    ]),
-    bar3D: new Set<string>(DATE_AXIS_OPTIONS),
+    radar: new Set<string>(["catAxisLabelFrequency", "valAxisCrossesAt", "catGridLine", "catAxisLabelRotate", "catAxisLineColor", "catAxisLineShow", "catAxisLineSize", "catAxisLineStyle", "catAxisMajorTickMark", "catAxisMinorTickMark"]),
 });
 // PptxGenJS 4.0.1 writes `<c:dTable>` on every chart type with showDataTable. LibreOffice 26.2.6 draws none on a pie,
 // doughnut or radar chart (#583); it draws a scatter or bubble chart's as one malformed row (drawsScatterDataTable).
@@ -1265,27 +1253,52 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // PptxGenJS 4.0.1 writes a `<c:dateAx>` for catLabelFormatCode, its categories as numbers. LibreOffice 26.2.6 lays
     // date serials out on a time line (dateAxisLayout); the time units and catAxisMajorUnit and catAxisMinorUnit are
     // written with catLabelFormatCode only. catAxisMinVal and catAxisMaxVal on a text axis, and catAxisMultiLevelLabels on
-    // single-level labels (`<c:noMultiLvlLbl>`), change nothing there. shortcut: catAxisMinorUnit and
-    // catAxisMinorTimeUnit draw no minor ticks between the slots yet; draw them when a fixture shows them.
+    // single-level labels (`<c:noMultiLvlLbl>`), change nothing there.
     const serials = (series[0]?.labels ?? []).map(label => (label.trim() === "" ? NaN : Number(label)));
-    const dateAxis = requestedFormatCode !== undefined && DATE_AXIS_TYPES.has(normalizedType) && serials.length > 0 && serials.every(serial => Number.isFinite(serial) && serial >= 1);
+    const dateSerials = serials.length > 0 && serials.every(serial => Number.isFinite(serial) && serial >= 1);
+    const dateAxis = requestedFormatCode !== undefined && DATE_AXIS_TYPES.has(normalizedType) && dateSerials;
     const dateFormat = requestedFormatCode !== undefined && isSupportedChartDateFormat(requestedFormatCode);
+    // A radar chart's spokes are its categories, named in the date format (#593).
+    const radarDates = normalizedType === "radar" && requestedFormatCode !== undefined && dateSerials && dateFormat;
 
-    if (requestedFormatCode !== undefined && !isSupportedChartNumberFormat(requestedFormatCode) && !(dateAxis && dateFormat)) {
+    if (requestedFormatCode !== undefined && !isSupportedChartNumberFormat(requestedFormatCode) && !((dateAxis || radarDates) && dateFormat)) {
         throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["catLabelFormatCode[format]"] });
     }
 
-    if (dateAxis && axisNumbers.catAxisMajorUnit !== undefined && !Number.isInteger(axisNumbers.catAxisMajorUnit)) {
-        throw new TypeError(`catAxisMajorUnit must be a whole number of time units on a date axis; got ${axisNumbers.catAxisMajorUnit}`);
+    for (const key of ["catAxisMajorUnit", "catAxisMinorUnit"] as const) {
+        const unit = axisNumbers[key];
+
+        if ((dateAxis || radarDates) && unit !== undefined && !Number.isInteger(unit)) {
+            throw new TypeError(`${key} must be a whole number of time units on a date axis; got ${unit}`);
+        }
     }
 
     let dateSlots: NormalizedChart["categoryAxis"]["dateSlots"];
+    let radarLabels: { names: string[]; skip?: number } | undefined;
+
+    if (radarDates) {
+        // PowerPoint labels a spoke every catAxisMajorUnit and draws catAxisMinVal..catAxisMaxVal as a spoke per day
+        // (R05, R06); LibreOffice 26.2.6 labels every spoke and ignores the bounds.
+        // shortcut: the major unit counts spokes, as on the measured monthly radar; measure other time units when a
+        // deck needs them.
+        if (profile.radarReadsDateAxisScale && (axisNumbers.catAxisMinVal !== undefined || axisNumbers.catAxisMaxVal !== undefined)) {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`${axisNumbers.catAxisMinVal !== undefined ? "catAxisMinVal" : "catAxisMaxVal"}[radar]`] });
+        }
+
+        const skip = profile.radarReadsDateAxisScale && axisNumbers.catAxisMajorUnit !== undefined && axisNumbers.catAxisMajorUnit > 1 ? axisNumbers.catAxisMajorUnit : undefined;
+
+        radarLabels = { names: serials.map(serial => formatChartDate(serial, requestedFormatCode)), ...(skip !== undefined ? { skip } : {}) };
+    }
 
     // Consecutive whole serials with nothing else set are a slot each, the categories as they are.
     const consecutive = serials.every((serial, index) => Number.isInteger(serial) && (index === 0 || serial === (serials[index - 1] ?? 0) + 1));
     const timeLine = dateFormat || !consecutive || Object.keys(timeUnits).length > 0 || axisNumbers.catAxisMajorUnit !== undefined || axisNumbers.catAxisMinVal !== undefined || axisNumbers.catAxisMaxVal !== undefined;
 
     if (dateAxis && requestedFormatCode !== undefined && timeLine) {
+        // A minor tick every catAxisMinorUnit catAxisMinorTimeUnit; without a unit, one a slot. LibreOffice 26.2.6 takes
+        // catAxisMinorUnit alone in days, PowerPoint in the base unit (dateAxisMinorTimeUnit).
+        const minorTicks = catMinorTickMark !== "none" && normalizedType !== "bar3D";
+        const minorTimeUnit = timeUnits.catAxisMinorTimeUnit ?? (axisNumbers.catAxisMinorUnit !== undefined && profile.dateAxisMinorTimeUnit === "days" ? "days" : timeUnits.catAxisBaseTimeUnit);
         const layout = dateAxisLayout({
             serials,
             ...(timeUnits.catAxisBaseTimeUnit ? { baseUnit: timeUnits.catAxisBaseTimeUnit } : {}),
@@ -1293,12 +1306,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             ...(timeUnits.catAxisMajorTimeUnit ? { majorTimeUnit: timeUnits.catAxisMajorTimeUnit } : {}),
             ...(axisNumbers.catAxisMinVal !== undefined ? { minimum: axisNumbers.catAxisMinVal } : {}),
             ...(axisNumbers.catAxisMaxVal !== undefined ? { maximum: axisNumbers.catAxisMaxVal } : {}),
+            ...(minorTicks ? { minor: { unit: axisNumbers.catAxisMinorUnit ?? 1, ...(minorTimeUnit ? { timeUnit: minorTimeUnit } : {}) } } : {}),
         });
-
-        // LibreOffice 26.2.6 draws the points of one slot (daily dates on a months base unit) at one x (#593).
-        if (layout.kind === "shared-slot") {
-            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catAxisBaseTimeUnit[several dates in one ${layout.unit.slice(0, -1)}]`] });
-        }
 
         if (layout.kind === "too-many-slots") {
             throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catLabelFormatCode[time line of ${layout.count} slots, at most ${DATE_AXIS_SLOT_LIMIT}]`] });
@@ -1308,30 +1317,39 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             throw new TypeError("catAxisMinVal must not be after catAxisMaxVal on a date axis");
         }
 
-        // A data table on a time line of a labelled slot per category, in order, names each column by its slot's date:
-        // LibreOffice 26.2.6 draws Jan-24..Apr-24 over monthly serials with `mmm-yy` (#593). shortcut: one with empty
-        // slots or a slot shared by several dates is not measured; measure it when a deck needs one.
-        const slotPerCategory = layout.labelSerials.length === serials.length && layout.labelSerials.every(serial => serial !== null) && layout.categorySlots.every((slot, index) => slot === index);
-
-        if (options.showDataTable && !slotPerCategory) {
-            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[date axis with empty slots]"] });
+        // shortcut: a stack over several dates in one slot adds each series' point to the same point of the series before
+        // it in LibreOffice 26.2.6 and PowerPoint (A04), where ECharts adds the points of one slot together; draw it when a
+        // deck needs one.
+        if (series.some(item => item.stack !== undefined) && new Set(layout.categorySlots).size < layout.categorySlots.length) {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catAxisBaseTimeUnit[stacked, several dates in one slot]`] });
         }
 
+        // shortcut: a bar3D chart's data table on a time line is not measured; measure it when a deck needs one.
+        if (options.showDataTable && normalizedType === "bar3D") {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[bar3D date axis]"] });
+        }
+
+        const dateLabel = (serial: number) => (dateFormat ? formatChartDate(serial, requestedFormatCode) : formatChartNumber(serial, requestedFormatCode));
+
         dateSlots = {
-            labels: layout.labelSerials.map(serial => (serial === null ? "" : dateFormat ? formatChartDate(serial, requestedFormatCode) : formatChartNumber(serial, requestedFormatCode))),
+            labels: layout.labelSerials.map(serial => (serial === null ? "" : dateLabel(serial))),
             categorySlots: layout.categorySlots,
+            ...(options.showDataTable ? { categoryLabels: serials.map(dateLabel) } : {}),
+            ...(minorTicks ? { minorTicks: layout.minorTicks } : {}),
         };
     }
 
     // A time line's labels are formatted already.
     const labelFormatCode = dateSlots ? undefined : requestedFormatCode;
-    // A scatter or bubble chart's x axis takes catAxisMinVal, catAxisMaxVal and catAxisMajorUnit as a value axis's bounds
-    // and step (PptxGenJS writes them on its c:valAx); shortcut: catAxisMinorUnit draws no minor ticks there yet.
+    // A scatter or bubble chart's x axis takes catAxisMinVal, catAxisMaxVal, catAxisMajorUnit and catAxisMinorUnit as a
+    // value axis's bounds, step and minor step (PptxGenJS writes them on its c:valAx): PowerPoint and LibreOffice 26.2.6
+    // draw a bubble chart's catAxisMinorTickMark every 0.25 for catAxisMinorUnit 0.25 (X05, #593).
     const xScale = XY_TYPES.has(normalizedType)
         ? {
               ...(axisNumbers.catAxisMinVal !== undefined ? { minimum: axisNumbers.catAxisMinVal } : {}),
               ...(axisNumbers.catAxisMaxVal !== undefined ? { maximum: axisNumbers.catAxisMaxVal } : {}),
               ...(axisNumbers.catAxisMajorUnit !== undefined ? { majorUnit: axisNumbers.catAxisMajorUnit } : {}),
+              ...(axisNumbers.catAxisMinorUnit !== undefined ? { minorUnit: axisNumbers.catAxisMinorUnit } : {}),
           }
         : {};
 
@@ -1379,7 +1397,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         // PptxGenJS writes `nextTo` on a scatter chart's x axis whatever catAxisLabelPos says.
         labelPosition: normalizedType === "scatter" ? "nextTo" : (options.catAxisLabelPos ?? (options.barDir === "bar" ? catDefaults.barLabelPosition : catDefaults.columnLabelPosition)),
         labelRotate: finiteNumber(options.catAxisLabelRotate, "catAxisLabelRotate", catDefaults.labelRotate),
-        ...(labelSkip ? { labelSkip } : {}),
+        ...(labelSkip ? { labelSkip } : radarLabels?.skip ? { labelSkip: radarLabels.skip } : {}),
         ...(labelFormatCode !== undefined ? { labelFormatCode } : {}),
         ...(dateSlots ? { dateSlots } : {}),
         ...(Object.keys(xScale).length > 0 ? { xScale } : {}),
@@ -1508,6 +1526,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         options.showDataTable && !DATA_TABLE_UNDRAWN_TYPES.has(normalizedType) && !XY_TYPES.has(normalizedType)
             ? {
                   ...(tableFormatCode !== undefined ? { valueFormatCode: tableFormatCode } : {}),
+                  ...(dateSlots ? { dateColumns: profile.dateAxisDataTableColumns } : {}),
                   horizontalBorder: tableBorders && options.showDataTableHorzBorder === true,
                   verticalBorder: tableBorders && options.showDataTableVertBorder === true,
                   outline: tableBorders && options.showDataTableOutline === true,
@@ -1564,7 +1583,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
 
     return {
         type: normalizedType,
-        series,
+        series: radarLabels ? series.map(entry => ({ ...entry, labels: radarLabels.names })) : series,
         colors: [...palette, ...typePalette].map(color => normalizeColor(color)),
         colorOpacity: chartStyle.colorOpacity,
         // Text options.

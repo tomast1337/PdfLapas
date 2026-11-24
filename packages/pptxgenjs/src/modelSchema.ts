@@ -414,12 +414,13 @@ const chart = z.strictObject({
         labelRotate: finite,
         labelSkip: integerFrom(1).optional(),
         labelFormatCode: z.string().optional(),
-        dateSlots: z.strictObject({ labels: z.array(z.string()), categorySlots: z.array(integerFrom(0).nullable()) }).optional(),
+        dateSlots: z.strictObject({ labels: z.array(z.string()), categorySlots: z.array(z.number().int()), categoryLabels: z.array(z.string()).optional(), minorTicks: z.array(finite).optional() }).optional(),
         xScale: z
             .strictObject({
                 minimum: finite.optional(),
                 maximum: finite.optional(),
                 majorUnit: z.number().positive().optional(),
+                minorUnit: z.number().positive().optional(),
                 stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
                 padding: z.strictObject({ ratio: z.number().min(0), maxSteps: z.number().int().min(1), dropsHalfRange: z.boolean(), bubbleRoom: z.number().min(0), count: z.enum(["bounds", "range"]) }).optional(),
             })
@@ -460,6 +461,7 @@ const chart = z.strictObject({
     dataTable: z
         .strictObject({
             valueFormatCode: z.string().optional(),
+            dateColumns: z.enum(["slots", "categories"]).optional(),
             horizontalBorder: z.boolean(),
             verticalBorder: z.boolean(),
             outline: z.boolean(),

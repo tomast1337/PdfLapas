@@ -283,6 +283,16 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // Its PDF export of a synthetic PptxGenJS 4.0.1 column chart with eight categories and `catAxisLabelFrequency: 2`
     // (`<c:tickLblSkip val="2"/>`) prints all eight labels (#566).
     readsCategoryLabelSkip: false,
+    // Its PDF export of synthetic radar charts over monthly date serials with `catLabelFormatCode` (#593) names every
+    // spoke for `catAxisMajorUnit: 2` months (R05) and draws the six spokes for catAxisMinVal..catAxisMaxVal (R06).
+    radarReadsDateAxisScale: false,
+    // Its export of an eight-month column chart with `catAxisMinorUnit: 1` and no catAxisMinorTimeUnit (M03) ticks
+    // daily, a band of ticks under each month (#593).
+    dateAxisMinorTimeUnit: "days" as const,
+    // Its export of line and column charts on a time line with `showDataTable` (T01..T08, #593) prints no axis labels
+    // and a column per category, each a slot wide from the plot's left: five columns under the first five of eight
+    // monthly slots, past the plot's right when there are more categories than slots.
+    dateAxisDataTableColumns: "slots" as const,
     // Its PDF export of a bar3D chart with four series and `serAxisLabelFrequency: 2` names all four (#581).
     readsSeriesLabelSkip: false,
     // Its PDF export of column and line charts with `showDataTable` and `dataTableFormatCode` "0.00" or "$#,##0.0" prints

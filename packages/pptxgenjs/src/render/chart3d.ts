@@ -77,10 +77,16 @@ function boxBounds(camera: (x: number, y: number, z: number) => CameraPoint) {
 
 /** Deterministic, browser-independent 3D bar projection used instead of WebGL. */
 export function renderBar3DSvg(width: number, height: number, chart: NormalizedChart): Html {
-    const labels = chart.series[0]?.labels ?? [];
-    const categoryCount = Math.max(1, labels.length, ...chart.series.map(series => series.values.length));
-    // catAxisOrientation maxMin runs the categories right to left.
-    const categorySlot = (category: number): number => (chart.categoryAxis.reversed ? categoryCount - 1 - category : category);
+    // A date axis lays its categories out on a time line, a bar in its date's slot (#593), as LibreOffice 26.2.6 and
+    // PowerPoint draw it: empty slots between, the bars of one slot over each other, none outside the time line.
+    const dateSlots = chart.categoryAxis.dateSlots;
+    const labels = dateSlots?.labels ?? chart.series[0]?.labels ?? [];
+    const valueCount = Math.max(0, ...chart.series.map(series => series.values.length));
+    const categoryCount = Math.max(1, labels.length, dateSlots ? 0 : valueCount);
+    // catAxisOrientation maxMin runs the slots right to left.
+    const slotPosition = (slot: number): number => (chart.categoryAxis.reversed ? categoryCount - 1 - slot : slot);
+    const categorySlot = (category: number): number => slotPosition(dateSlots ? (dateSlots.categorySlots[category] ?? -1) : category);
+    const drawnCategory = (category: number): boolean => categorySlot(category) >= 0 && categorySlot(category) < categoryCount;
     const seriesCount = Math.max(1, chart.series.length);
     const stacked = chart.grouping === "stacked" || chart.grouping === "percentStacked";
     // The same text bands as the 2D plot area (chart.ts chartGrid): the legend and the category labels below the box.
@@ -438,7 +444,11 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     const bars: Bar[] = [];
 
     if (chart.grouping === "stacked" || chart.grouping === "percentStacked") {
-        for (let category = 0; category < categoryCount; category++) {
+        for (let category = 0; category < valueCount; category++) {
+            if (!drawnCategory(category)) {
+                continue;
+            }
+
             let positive = 0;
             let negative = 0;
             let total = 0;
@@ -472,7 +482,11 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         const base = crossing === undefined ? 0 : crossing.kind === "min" ? minimum : crossing.kind === "max" ? maximum : Math.max(minimum, Math.min(maximum, crossing.value));
 
         for (let series = seriesCount - 1; series >= 0; series--) {
-            for (let category = 0; category < categoryCount; category++) {
+            for (let category = 0; category < valueCount; category++) {
+                if (!drawnCategory(category)) {
+                    continue;
+                }
+
                 bars.push({ category, series, base, value: chart.series[series]?.values[category] ?? 0 });
             }
         }
@@ -643,6 +657,9 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
     ];
     let categoryBottom = 0;
     const categoryLabels: Html[] = [];
+    // A time line's slot labels that would run into the one before are left out, as LibreOffice 26.2.6 and PowerPoint
+    // label a 61-day bar3D axis every few days (B04, #593); an unrotated label's right end so far.
+    let labelEnd = -Infinity;
 
     // A deleted axis (catAxisHidden) draws no labels or title, `none` no labels; catAxisLabelRotate turns each label
     // clockwise about its anchor. A data table's header row names the categories instead, as LibreOffice 26.2.6 draws it.
@@ -655,13 +672,28 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             continue;
         }
 
-        const edge = project((categorySlot(index) + 0.5) / categoryCount, labelsHigh ? backDepth : frontDepth, labelsHigh ? maximum : minimum);
+        // A date axis labels only the slots its major unit names.
+        if (dateSlots && labels[index] === "") {
+            continue;
+        }
+
+        const edge = project((slotPosition(index) + 0.5) / categoryCount, labelsHigh ? backDepth : frontDepth, labelsHigh ? maximum : minimum);
         // A high label sits above the edge: its anchor 20px lower is the same distance below a low label's.
         const point = labelsHigh ? { ...edge, y: edge.y - 20 - categoryLabelPx * 0.6 } : edge;
         const text = labels[index] ?? String(index + 1);
         const number = Number(text);
         const label = categoryAxisModel.labelFormatCode && text.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryAxisModel.labelFormatCode) : text;
         const rotate: Attribute[] = categoryAxisModel.labelRotate ? [["transform", `rotate(${n(categoryAxisModel.labelRotate)} ${n(point.x)} ${n(point.y + 20)})`]] : [];
+
+        if (dateSlots && !categoryAxisModel.labelRotate) {
+            const halfWidth = format.getTextRect(label, `${categoryLabelPx}px ${categoryAxisModel.labelFontFace}`).width / 2;
+
+            if (point.x - halfWidth < labelEnd) {
+                continue;
+            }
+
+            labelEnd = point.x + halfWidth + categoryLabelPx / 2;
+        }
 
         categoryBottom = Math.max(categoryBottom, point.y + 20);
         categoryLabels.push(element("text", [["x", n(point.x)], ["y", n(point.y + 20)], ["text-anchor", "middle"], ...rotate, ...categoryLabelStyle], escapeText(label)));

@@ -524,16 +524,20 @@ export type NormalizedChartCatAxis = {
     labelFormatCode?: string;
     /**
      * A date axis's time line (`catLabelFormatCode` on date serials): each slot's formatted label, empty between two
-     * major units, and each category's slot, null outside `catAxisMinVal`..`catAxisMaxVal`; absent: a slot per category.
+     * major units, and each category's slot, several categories sharing one where their dates do, before the first or
+     * past the last outside `catAxisMinVal`..`catAxisMaxVal` (a line runs toward it, cut at the plot's edge). With a data
+     * table, `categoryLabels` names each category by its date. `minorTicks`: each minor tick, in slots from the time
+     * line's start. Absent: a slot per category.
      */
-    dateSlots?: { labels: string[]; categorySlots: (number | null)[] };
+    dateSlots?: { labels: string[]; categorySlots: number[]; categoryLabels?: string[]; minorTicks?: number[] };
     /**
-     * A scatter or bubble chart's x-axis bounds and step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`).
+     * A scatter or bubble chart's x-axis bounds, step and minor step (`catAxisMinVal`, `catAxisMaxVal`, `catAxisMajorUnit`,
+     * `catAxisMinorUnit`).
      * `stepRoom`: the axis scales as a value axis, 0 included, in the steps that fit along it (as
      * `NormalizedChartValueAxis.automaticScale.stepRoom`); absent: to its x values, not toward 0. `padding`: by PowerPoint's
      * padded scale, as `NormalizedChartValueAxis.automaticScale.padding`.
      */
-    xScale?: { minimum?: number; maximum?: number; majorUnit?: number; stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number }; padding?: NormalizedChartAxisPadding };
+    xScale?: { minimum?: number; maximum?: number; majorUnit?: number; minorUnit?: number; stepRoom?: { label: "height" | "width"; perStep: number; rounding: number; maxIncrements: number }; padding?: NormalizedChartAxisPadding };
     /** Whether the categories run from the last (`<c:orientation val="maxMin"/>`); absent: from the first. */
     reversed?: boolean;
     lineColor: CssColor;
@@ -588,6 +592,11 @@ export type NormalizedChartStepRoomLength = { kind: "laidOut" } | { kind: "band"
 export type NormalizedChartDataTable = {
     /** The values' number format (`dataTableFormatCode`); absent: each series' data-label format. */
     valueFormatCode?: string;
+    /**
+     * On a date axis (`categoryAxis.dateSlots`), a column per category: "slots" a time-line slot wide from the plot's
+     * left, without the axis labels; "categories" sharing the plot's width, under the axis labels. Absent: no date axis.
+     */
+    dateColumns?: "slots" | "categories";
     horizontalBorder: boolean;
     verticalBorder: boolean;
     outline: boolean;

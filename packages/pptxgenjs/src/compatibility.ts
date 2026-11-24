@@ -224,9 +224,10 @@ const PARTIAL_CHART_OPTIONS = new Set<string>([
     "catAxisMajorTickMark", // `cross` is drawn outside the axis at twice the length
     "catAxisMinorTickMark", // as catAxisMajorTickMark
     "catLabelFormatCode", // numeric and date formats (years, months, days), not on radar, scatter or bubble charts (#580)
-    // A date axis's time line on line, column, bar, area and combo charts, not on radar or bar3D charts; no minor ticks
-    // (#593). A scatter or bubble chart's x axis takes catAxisMinVal, catAxisMaxVal and catAxisMajorUnit.
-    "catAxisBaseTimeUnit", // not with several dates in one slot
+    // A date axis's time line on line, column, bar, area, bar3D and combo charts, its minor ticks (not on bar3D), lines
+    // toward points outside catAxisMinVal..catAxisMaxVal, and spoke names on radar charts (#593). A scatter or bubble
+    // chart's x axis takes catAxisMinVal, catAxisMaxVal, catAxisMajorUnit and catAxisMinorUnit.
+    "catAxisBaseTimeUnit", // not with several dates in one slot of a stacked chart
     "catAxisMajorTimeUnit",
     "catAxisMajorUnit",
     "catAxisMaxVal",

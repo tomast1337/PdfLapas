@@ -472,6 +472,16 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // PowerPoint's PDF export of synthetic PptxGenJS 4.0.1 decks (6 x 4.4in charts, Arial; #586):
     // A column chart with eight categories A..H and `catAxisLabelFrequency: 2` labels A, C, E and G only (#566).
     readsCategoryLabelSkip: true,
+    // Its PDF export of synthetic radar charts over monthly date serials with `catLabelFormatCode` (#593): R05
+    // (`catAxisMajorUnit: 2` months) names every other spoke, and R06 (catAxisMinVal..catAxisMaxVal over four months)
+    // draws about a hundred unnamed spokes, one a day, which PdfLapas does not draw.
+    radarReadsDateAxisScale: true,
+    // Its export of an eight-month column chart with `catAxisMinorUnit: 1` and no catAxisMinorTimeUnit (M03) ticks
+    // monthly, as with `months` (#593).
+    dateAxisMinorTimeUnit: "baseUnit" as const,
+    // Its export of line and column charts on a time line with `showDataTable` (T01..T08, #593) keeps the axis labels and
+    // shares the plot's width among one column per category, named by its date: five columns under eight monthly slots.
+    dateAxisDataTableColumns: "categories" as const,
     // shortcut: not measured on PowerPoint, so LibreOffice's values (#581, #583); measure them with the copt decks.
     readsSeriesLabelSkip: false,
     readsDataTableFormatCode: false,

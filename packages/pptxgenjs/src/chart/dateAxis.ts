@@ -170,6 +170,8 @@ export type DateAxisOptions = {
     /** catAxisMinVal and catAxisMaxVal: the time line's first and last dates as serials. */
     minimum?: number;
     maximum?: number;
+    /** catAxisMinorUnit and its time unit, where the axis draws minor ticks: a tick every that many units. */
+    minor?: { unit: number; timeUnit?: ChartTimeUnit };
 };
 
 export type DateAxisLayout =
@@ -177,13 +179,11 @@ export type DateAxisLayout =
           kind: "slots";
           /** Each slot's date serial, null for a slot between two major units, which has no label. */
           labelSerials: (number | null)[];
-          /**
-           * Each category's slot, null when it is outside catAxisMinVal..catAxisMaxVal. shortcut: LibreOffice draws a line
-           * to such a point as far as the plot's edge, PdfLapas not at all; draw it when a deck needs it.
-           */
-          categorySlots: (number | null)[];
+          /** Each category's slot, before the first or past the last when it is outside catAxisMinVal..catAxisMaxVal. */
+          categorySlots: number[];
+          /** With `minor`: each minor tick, in slots from the time line's start (a slot's start is its index). */
+          minorTicks: number[];
       }
-    | { kind: "shared-slot"; unit: ChartTimeUnit }
     | { kind: "too-many-slots"; count: number };
 
 /**
@@ -218,18 +218,37 @@ export function dateAxisLayout(options: DateAxisOptions): DateAxisLayout {
         return { kind: "too-many-slots", count: slotCount };
     }
 
-    const categorySlots: (number | null)[] = [];
-    const taken = new Set<number>();
+    // LibreOffice 26.2.6 and PowerPoint draw the dates of one slot at its place, each line point in turn (#593).
+    const categorySlots: number[] = [];
 
     for (const date of dates) {
-        const slot = unitIndex(date, baseUnit) - startIndex;
+        categorySlots.push(unitIndex(date, baseUnit) - startIndex);
+    }
 
-        if (taken.has(slot)) {
-            return { kind: "shared-slot", unit: baseUnit };
+    // LibreOffice 26.2.6 and PowerPoint tick every minor unit from the first slot's start (#593): monthly ticks under
+    // quarterly labels, daily or 15-day ones within monthly slots, at its share of the slot.
+    const minorTicks: number[] = [];
+
+    if (options.minor) {
+        const first = baseUnit === "days" ? start : { year: start.year, month: baseUnit === "years" ? 0 : start.month, day: 1 };
+
+        for (let step = 0; ; step++) {
+            const date = addUnits(first, step * options.minor.unit, options.minor.timeUnit ?? baseUnit);
+            const slot = unitIndex(date, baseUnit) - startIndex;
+            // A date's share of its slot: its day of the month, or its month and day of the year.
+            const share = baseUnit === "days" ? 0 : baseUnit === "months" ? (date.day - 1) / new Date(Date.UTC(date.year, date.month + 1, 0)).getUTCDate() : (date.month + (date.day - 1) / new Date(Date.UTC(date.year, date.month + 1, 0)).getUTCDate()) / 12;
+            const position = slot + share;
+
+            if (position > slotCount || minorTicks.length > DATE_AXIS_SLOT_LIMIT) {
+                break;
+            }
+
+            minorTicks.push(position);
         }
 
-        taken.add(slot);
-        categorySlots.push(slot >= 0 && slot < slotCount ? slot : null);
+        if (minorTicks.length > DATE_AXIS_SLOT_LIMIT) {
+            return { kind: "too-many-slots", count: minorTicks.length };
+        }
     }
 
     const labelled = new Set<number>();
@@ -257,5 +276,5 @@ export function dateAxisLayout(options: DateAxisOptions): DateAxisLayout {
         labelSerials.push(labelled.has(slot) ? dateToSerial(addUnits(start, slot, baseUnit)) : null);
     }
 
-    return { kind: "slots", labelSerials, categorySlots };
+    return { kind: "slots", labelSerials, categorySlots, minorTicks };
 }

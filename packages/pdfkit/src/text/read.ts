@@ -99,6 +99,8 @@ export type TextBox = {
     readonly anchor: "flex-start" | "center" | "flex-end";
     readonly wrap: boolean;
     readonly fit: Fit;
+    /** `.text-content` `transform: scaleX(-1)`: the text mirrors back inside a box flipped one way. */
+    readonly mirrored: boolean;
 };
 
 export type Report = (what: string) => void;
@@ -336,6 +338,11 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
     }
 
     const contentStyle = readStyle(content);
+    const transform = take(contentStyle, "transform", "none");
+
+    if (transform !== "none" && transform !== "scaleX(-1)") {
+        throw new Error(`invalid PdfLapas HTML: a .text-content's transform is '${transform}', expected scaleX(-1)`);
+    }
 
     reportUnread(content, contentStyle, [], report, LAYOUT_ONLY.content);
     const paragraphs: Paragraph[] = [];
@@ -717,6 +724,7 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
             anchor: ANCHORS.has(anchor) ? (anchor as TextBox["anchor"]) : "center", // `as`: checked against ANCHORS
             wrap: whiteSpace !== "pre",
             fit,
+            mirrored: transform === "scaleX(-1)",
         },
     };
 }

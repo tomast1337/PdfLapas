@@ -29,7 +29,7 @@ pub(crate) const BOX_CSS: &[&str] = &[
     "border-radius",
     "overflow",
 ];
-const CONTENT_CSS: &[&str] = &["width", "writing-mode", "text-orientation", "height"];
+const CONTENT_CSS: &[&str] = &["width", "writing-mode", "text-orientation", "height", "transform"];
 const PARAGRAPH_ATTRS: &[&str] = &[
     "data-line-baseline",
     "data-mark-baseline",
@@ -148,6 +148,11 @@ pub(crate) fn text_box(dom: &Dom<'_>, element: &Element<'_>, style: &Style<'_>, 
     }
     let content_style = Style::of(content)?;
     allow(content, &content_style, &[], &[CONTENT_CSS])?;
+    let mirrored = match content_style.get("transform") {
+        None => false,
+        Some("scaleX(-1)") => true,
+        Some(other) => return Err(format!("CSS property 'transform' on .text-content: '{other}' is not scaleX(-1)")),
+    };
     let paragraphs = dom
         .elements_of(&content.children)?
         .into_iter()
@@ -173,6 +178,7 @@ pub(crate) fn text_box(dom: &Dom<'_>, element: &Element<'_>, style: &Style<'_>, 
                 ("stacked", TextDirection::Stacked),
             ],
         )?,
+        mirrored,
     })
 }
 
@@ -630,6 +636,22 @@ mod tests {
             Some(SlideObject::Text(object)) => Ok(object),
             _ => Err("not a text object".into()),
         }
+    }
+
+    #[test]
+    fn reads_a_mirrored_text_content_and_rejects_other_transforms() {
+        let content = |style: &str| {
+            let html = document(&format!(
+                r#"<div class="slide-element slide-text" data-object-name="T" data-text-fit="none" data-text-direction="horizontal" style="left: 0px; top: 0px; width: 100px; height: 50px; padding: 0px 0px 0px 0px; align-items: flex-end; white-space: pre-wrap; overflow-wrap: break-word; direction: ltr; border-radius: 0%;"><div class="text-content" style="{style}"></div></div>"#
+            ));
+            parse(&html).map(|mut p| match p.slides.pop().and_then(|mut s| s.objects.pop()) {
+                Some(SlideObject::Text(object)) => object.text.is_some_and(|t| t.mirrored),
+                _ => false,
+            })
+        };
+        assert_eq!(content("width: 100%;"), Ok(false));
+        assert_eq!(content("width: 100%; transform: scaleX(-1);"), Ok(true));
+        assert!(content("width: 100%; transform: rotate(1deg);").unwrap_err().contains("is not scaleX(-1)"));
     }
 
     #[test]

@@ -268,6 +268,14 @@ const SHAPED_TEXT_CASES = [
     { page: 53, name: "text-right-arrow", shape: "rightArrow", text: "Next", x: 5.35, y: 1.2, w: 1.8, h: 1.4 },
     { page: 53, name: "text-cloud", shape: "cloud", text: "Idea", x: 7.7, y: 1.2, w: 1.8, h: 1.4 },
 ] as const;
+// Flipped text under the shaped text (#627): PowerPoint and LibreOffice flip the shape and its text area, never the
+// glyphs, so flipH text reads as written and flipV text turns 180 degrees, both flips together being a 180-degree turn.
+const FLIPPED_TEXT_CASES = [
+    { page: 53, name: "flipped-text-box-flip-h", shape: "rect", flip: { flipH: true }, x: 0.65, y: 3.4, w: 1.8, h: 1.2 },
+    { page: 53, name: "flipped-text-box-flip-v", shape: "rect", flip: { flipV: true }, x: 3.0, y: 3.4, w: 1.8, h: 1.2 },
+    { page: 53, name: "flipped-text-arrow-flip-h", shape: "rightArrow", flip: { flipH: true }, x: 5.35, y: 3.4, w: 1.8, h: 1.2 },
+    { page: 53, name: "flipped-text-arrow-flip-v-rotated", shape: "rightArrow", flip: { flipV: true, rotate: 30 }, x: 7.7, y: 3.4, w: 1.8, h: 1.2 },
+] as const;
 // Baseline placement and line pitch of plain text boxes (#49): the paragraph slide's title and its
 // single and exact line spacing paragraphs with paragraph spacing, and two lines at 1.5x spacing
 // (LibreOffice puts the extra leading above each baseline).
@@ -598,6 +606,8 @@ export const PARITY_REGIONS = [
     ...PAGINATION_CASES,
     ...HTML_TABLE_CASES,
     ...SHAPED_TEXT_CASES,
+    // A turned box reaches past its own corners: the crop takes the turned arrow whole.
+    ...FLIPPED_TEXT_CASES.map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.25, y: y - 0.4, w: w + 0.5, h: h + 0.8 })),
     // A text box without a fill casts its shadow from its glyphs (#626).
     { page: 7, name: "unfilled-text-shadow", x: 0.65, y: 3.05, w: 4.2, h: 1.1 },
     ...TEXT_CASES,
@@ -1958,6 +1968,10 @@ export function populateParityFixture(presentation: Presentation): void {
             fill: { color: "5B9BD5", transparency: 5 },
             line: { color: "843C0C", width: 1.15 },
         });
+    }
+
+    for (const { shape, flip, x, y, w, h } of FLIPPED_TEXT_CASES) {
+        shapedTextSlide.addText("Left top\nsecond line", { shape, x, y, w, h, ...flip, fontFace: "Arial", fontSize: 14, color: "17365D", valign: "top", fill: { color: "A9D18E" }, line: { color: "385723", width: 1 } });
     }
 
     populateChartFixture(presentation);

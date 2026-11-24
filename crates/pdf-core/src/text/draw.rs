@@ -292,6 +292,13 @@ impl Renderer {
             TextDirection::Vertical270 => (Transform::from_row(0.0, -1.0, 1.0, 0.0, ix, iy + ih), iw),
             TextDirection::Horizontal | TextDirection::Stacked => (Transform::from_translate(ix, iy), ih),
         };
+        // `.text-content` `transform: scaleX(-1)`: the frame mirrored about the text area's middle, x to 2cx - x.
+        let frame = if text.mirrored {
+            let cx = ix + iw / 2.0;
+            Transform::from_row(-frame.sx(), frame.ky(), -frame.kx(), frame.sy(), 2.0 * cx - frame.tx(), frame.ty())
+        } else {
+            frame
+        };
         let v0 = match text.vertical_align {
             VerticalAlign::Top => 0.0,
             VerticalAlign::Middle => (block - layout.height) / 2.0,

@@ -1024,6 +1024,34 @@ describe("text DOM rendering", () => {
         expect(box?.querySelector(".text-run")?.textContent).toBe("Decision");
     });
 
+    test("flips a text box's shape and text area but never mirrors its glyphs, as PowerPoint and LibreOffice draw it (#627)", () => {
+        const presentation = new PuppeteerGen();
+        const flips = [
+            { flipH: false, flipV: false },
+            { flipH: true, flipV: false },
+            { flipH: false, flipV: true },
+            { flipH: true, flipV: true },
+        ];
+
+        for (const flip of flips) {
+            presentation.addSlide().addText("Flip", { x: 1, y: 1, w: 3, h: 1, shape: "rightArrow", rotate: 30, ...flip });
+        }
+
+        const transforms: string[][] = [];
+
+        for (const box of renderedPage(presentation).querySelectorAll<HTMLElement>(".slide-text")) {
+            transforms.push([box.style.transform, box.querySelector<HTMLElement>(":scope > .text-content")?.style.transform ?? "missing"]);
+        }
+
+        // One flip mirrors the content back about its own middle; flipV then reads as a 180-degree turn, flipH as none.
+        expect(transforms).toEqual([
+            ["rotate(30deg)", ""],
+            ["rotate(30deg) scaleX(-1)", "scaleX(-1)"],
+            ["rotate(30deg) scaleY(-1)", "scaleX(-1)"],
+            ["rotate(30deg) scaleX(-1) scaleY(-1)", ""],
+        ]);
+    });
+
     test("preserves the pinned textDirection quirk", () => {
         expect(normalizeText("ignored", { textDirection: "vert" }).direction).toBe("horizontal");
     });

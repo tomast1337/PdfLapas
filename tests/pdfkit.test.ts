@@ -87,6 +87,23 @@ describe("PDFKit renderer", () => {
         expect(renderer.warnings()).toEqual([]);
     });
 
+    test("mirrors the text back inside a box flipped one way, about its text area's middle (#627)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const options = { x: 1, y: 1, w: 4, h: 1, fontFace: "Arial", fontSize: 18, margin: 0, valign: "top" } as const;
+        const pdf = await render(renderer, pres => {
+            pres.addSlide().addText("Hello", { ...options, flipH: true });
+            pres.addSlide().addText("Hello", { ...options, flipH: true, flipV: true });
+        });
+        const [mirrored = "", turned = ""] = pageContents(pdf);
+        // The text area runs from 96 to 480 px, so x maps to 576 - x; under both flips the box only turns.
+        const mirror = /\n-1 0 -?0 1 576 0 cm\n/;
+
+        expect(mirrored).toMatch(mirror);
+        expect(turned).not.toMatch(mirror);
+        expect(texts(mirrored)).toEqual([{ x: 96, baseline: 120, size: 24 }]);
+        expect(renderer.warnings()).toEqual([]);
+    });
+
     test("wraps a paragraph onto line boxes one line-height apart, and centres each line", async () => {
         const renderer = await createPdfkitRenderer({ fonts: systemFonts });
         const words = "one two three four five six seven eight nine ten eleven twelve";
@@ -326,7 +343,7 @@ describe("PDFKit renderer", () => {
         const paragraph = { runs: [run], align: "left", rtl: false, lineHeight: 19.2, baseline: 15, markBaseline: 15, breakBaseline: 15, spaceBefore: 0, spaceAfter: 0, tabSize: 48, tabStops: [], indent: 0, textIndent: 0 } as const;
         const missing: string[] = [];
         // No faces at all: the renderer refuses an empty font list, so only a direct call reaches an empty chain.
-        const layout = layoutText({ paragraphs: [paragraph], padding: [0, 0, 0, 0], anchor: "flex-start", wrap: true, fit: { kind: "none" } }, 200, 1, createShaper([]), missed => missing.push(missed.text));
+        const layout = layoutText({ paragraphs: [paragraph], padding: [0, 0, 0, 0], anchor: "flex-start", wrap: true, fit: { kind: "none" }, mirrored: false }, 200, 1, createShaper([]), missed => missing.push(missed.text));
 
         expect(layout.lines.flatMap(line => line.fragments)).toEqual([]);
         // "a" and "b" are text in a missing face; the tab between them is not.

@@ -70,7 +70,7 @@ function renderCell(cell: NormalizedTableCell, rowHeight: RowHeight, slack: numb
         textBox = { ...cell.text, margin: [marginTop + above, marginRight, marginBottom + slack - above, marginLeft] };
     }
 
-    const text = renderText(textCss, textBox);
+    const text = renderText(textCss, textBox, false);
     const textElement = element("div", [["class", "table-cell-text"], ...text.attributes, styleAttribute(textCss)], text.content);
 
     return element("td", [["colspan", String(cell.colspan)], ["rowspan", String(cell.rowspan)], ...dashArrays, styleAttribute(css)], textElement);

@@ -107,7 +107,17 @@ function drawBox(element: Element, style: Style, paint: Paint, box: Box): void {
         }
 
         if (laid && text.kind === "text") {
-            drawLayout(paint, laid.layout, box.x + text.box.padding[3], laid.top);
+            const [, right, , left] = text.box.padding;
+
+            // The mirrored text area flips about its middle, as `.text-content` `transform: scaleX(-1)` does.
+            if (text.box.mirrored) {
+                doc.save();
+                doc.transform(-1, 0, 0, 1, 2 * box.x + left + box.width - right, 0);
+                drawLayout(paint, laid.layout, box.x + left, laid.top);
+                doc.restore();
+            } else {
+                drawLayout(paint, laid.layout, box.x + left, laid.top);
+            }
         }
     } else if (hasClass(element, "slide-shape")) {
         const svg = children(element).find(child => hasClass(child, "shape-svg"));

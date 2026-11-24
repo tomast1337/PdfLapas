@@ -3,7 +3,6 @@ import type { ComponentRegistry } from "./components/registry";
 import type { FontMetricsLookup } from "./defaults";
 import type { RenderingTarget } from "./target";
 import type { SharedRunOptions } from "./normalize/sharedRunOptions";
-import type { SharedShadows } from "./normalize/sharedShadow";
 import type { PageSize } from "./pageLayouts";
 import type { PuppeteerSlide } from "./PuppeteerSlide";
 
@@ -60,8 +59,8 @@ export type SlideContext = {
     readonly fontMetrics: FontMetricsLookup;
     /** What PptxGenJS has written onto the run options objects of the presentation's text boxes and table cells. */
     readonly sharedRunOptions: SharedRunOptions;
-    /** What PptxGenJS has written onto the `shadow` objects of the presentation's text boxes, shapes and pictures. */
-    readonly sharedShadows: SharedShadows;
+    /** The `shadow` objects the presentation's text boxes, shapes and pictures were given so far. */
+    readonly shadowsSeen: WeakSet<object>;
     /**
      * The chart options objects the presentation's addChart() calls were given. PptxGenJS 4.0.1 keeps a reference to
      * each one and reads it only when it writes the file, so a second chart on one object warns (PuppeteerSlide.addChart).

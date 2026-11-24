@@ -10,7 +10,6 @@ import { normalizeImage } from "./normalize/image";
 import { slideMarginInches } from "./normalize/margin";
 import { normalizeObjectStyle } from "./normalize/object";
 import { normalizeShape, normalizeShapeTextBox } from "./normalize/shape";
-import { writeShadow } from "./normalize/sharedShadow";
 import { lineOutline, normalizeShapeLine, normalizeTextLine } from "./normalize/shape/line";
 import { normalizeSlideNumber } from "./normalize/slideNumber";
 import { innerShadowError, normalizeColor, normalizeLine } from "./normalize/style";
@@ -49,6 +48,7 @@ export class PuppeteerSlide implements PptxSlide {
         this.ownBackground = false;
         // PptxGenJS's Slide constructor copies the layout's slide number props, without the setter that writes them to the master.
         this._slideNumber = context.master?.slideNumber ?? null;
+        this.slideNumberProps = this._slideNumber;
     }
     pageSize: PageSize;
     private _background: PptxGenJS.BackgroundProps = { color: PPTX_DEFAULTS.slide.backgroundColor };
@@ -56,6 +56,8 @@ export class PuppeteerSlide implements PptxSlide {
     private _color: string = PPTX_DEFAULTS.slide.color;
     private _hidden: boolean = PPTX_DEFAULTS.slide.hidden;
     private _slideNumber: PptxGenJS.SlideNumberProps | null = null;
+    /** A copy of `_slideNumber`, drawn when the deck is: a later change to the caller's object must not reach it. */
+    private slideNumberProps: PptxGenJS.SlideNumberProps | null = null;
     /** Whether the caller set a background color or picture, which replaces the master's as the slide's <p:bg> does. */
     private ownBackground = false;
     /** The background picture, checked when it is set; drawn under every object over the whole slide. */
@@ -155,7 +157,8 @@ export class PuppeteerSlide implements PptxSlide {
 
     set slideNumber(value: PptxGenJS.SlideNumberProps) {
         this._slideNumber = value;
-        this.context.setMasterSlideNumber(value);
+        this.slideNumberProps = structuredClone(value);
+        this.context.setMasterSlideNumber(this.slideNumberProps);
     }
 
     /**
@@ -195,7 +198,7 @@ export class PuppeteerSlide implements PptxSlide {
         const masterObjects = master?.layer ? master.layer.model.objects : [];
         // The slide's number placeholder inherits what its props leave out from its layout's, then from the master's.
         const inherited = { ...masterSlideNumber, ...master?.slideNumber };
-        const slideNumber = this._slideNumber ? [normalizeSlideNumber(this._slideNumber, inherited, this.context.slideIndex + 1, this.pageSize, this.context.bodyFontFace(), this.context.target, this.context.fontMetrics)] : [];
+        const slideNumber = this.slideNumberProps ? [normalizeSlideNumber(this.slideNumberProps, inherited, this.context.slideIndex + 1, this.pageSize, this.context.bodyFontFace(), this.context.target, this.context.fontMetrics)] : [];
 
         return { ...this.model, background: background.color, objects: [...background.objects, ...masterObjects, ...this.model.objects, ...slideNumber] };
     }
@@ -221,21 +224,22 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     /**
-     * The `shadow` PptxGenJS writes for this object, which may share the options object with earlier ones (writeShadow);
-     * `{ type: "none" }` when what it writes is out of range, which adds a warnings() line.
+     * PptxGenJS 4.0.1 slideObjectToXml converts a `shadow` object to OOXML units in place each time it writes an object
+     * (#633), so from the second object given the same one it writes `dir` and `alpha` out of range and LibreOffice
+     * draws no shadow. PdfLapas draws each object's shadow as given, as copies would draw, and notes the difference.
      */
-    private writtenShadow(shadow: PptxGenJS.ShadowProps, method: "addText" | "addShape" | "addImage"): PptxGenJS.ShadowProps {
-        const written = writeShadow(this.context.sharedShadows, shadow);
-
-        if (written.kind === "drawn") {
-            return written.shadow;
+    private noteSharedShadow(shadow: PptxGenJS.ShadowProps | undefined, method: "addText" | "addShape" | "addImage"): void {
+        if (!shadow || shadow.type === "none") {
+            return;
         }
 
-        this.context.warn(
-            `${method}({ shadow }): the \`shadow\` object was given to an earlier object too, and PptxGenJS 4.0.1 converts it to OOXML units in place each time it writes an object, so each later object writes its \`dir\` and \`alpha\` out of range and draws no shadow, as LibreOffice draws none. Give each call its own object, e.g. \`shadow: { ...shadow }\`.`,
-        );
+        if (this.context.shadowsSeen.has(shadow)) {
+            this.context.warn(
+                `${method}({ shadow }): the \`shadow\` object was given to an earlier object too. PptxGenJS 4.0.1 converts a shadow object to OOXML units in place each time it writes an object, so from the second object on it writes it out of range and draws no shadow. PdfLapas draws each object's shadow as given. Pass each object its own copy, e.g. \`shadow: { ...shadow }\`.`,
+            );
+        }
 
-        return { type: "none" };
+        this.context.shadowsSeen.add(shadow);
     }
 
     private addObject(object: NormalizedSlideObject): this {
@@ -445,9 +449,10 @@ export class PuppeteerSlide implements PptxSlide {
         const image = normalizeImage(options, this.pageSize);
         const { transparency: _imageTransparency, ...opaqueOptions } = options;
         const geometryOptions = options.sizing ? { ...opaqueOptions, w: options.sizing.w, h: options.sizing.h } : opaqueOptions;
-        const written = options.shadow ? this.writtenShadow(options.shadow, "addImage") : undefined;
+
+        this.noteSharedShadow(input.shadow, "addImage");
         // PptxGenJS writes a picture's inner shadow well-formed, but not every target draws it (drawsPictureInnerShadow).
-        const shadow = written?.type === "inner" && !RENDERING_TARGETS[this.context.target].drawsPictureInnerShadow ? undefined : written;
+        const shadow = options.shadow?.type === "inner" && !RENDERING_TARGETS[this.context.target].drawsPictureInnerShadow ? undefined : options.shadow;
         const style = normalizeObjectStyle({ ...geometryOptions, shadow }, PPTX_DEFAULTS.image, this.pageSize, this.nextObjectName("Image", options.objectName), {
             shadow: true,
         });
@@ -465,7 +470,9 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     addShape(shapeName: PptxGenJS.SHAPE_NAME | "custGeom", options?: PptxGenJS.ShapeProps | undefined): PptxGenJS.Slide {
-        const shapeOptions = options?.shadow ? { ...options, shadow: this.writtenShadow(options.shadow, "addShape") } : (options ?? {});
+        const shapeOptions = options ?? {};
+
+        this.noteSharedShadow(shapeOptions.shadow, "addShape");
         const style = normalizeObjectStyle(shapeOptions, PPTX_DEFAULTS.shape, this.pageSize, this.nextObjectName("Shape", shapeOptions.objectName ?? shapeOptions.shapeName), { fill: true, shadow: true });
 
         style.line = normalizeShapeLine(shapeOptions, line => normalizeLine(line, lineOutline(shapeName, style.geometry.width ?? 0, style.geometry.height ?? 0)));
@@ -521,8 +528,11 @@ export class PuppeteerSlide implements PptxSlide {
         return this.addObject({ kind: "table", style: tableStyle, table });
     }
 
-    addText(text: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
-        let textOptions = options ?? {};
+    addText(input: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
+        // A placeholder fill is drawn again when the deck is (toModel), so it keeps a copy: a later change to the caller's
+        // runs must not reach it. One clone of both keeps runs that share an options object sharing it (normalizeText).
+        const [text, ownOptions] = options?.placeholder ? structuredClone([input, options] as const) : [input, options];
+        let textOptions = ownOptions ?? {};
         let placeholderSpaceBefore = {};
         let headFont = false;
         let filled: MasterPlaceholder | undefined;
@@ -574,9 +584,7 @@ export class PuppeteerSlide implements PptxSlide {
             throw innerShadowError(textOptions.shape ? `shape "${textOptions.shape}"` : "a text box");
         }
 
-        if (textOptions.shadow) {
-            textOptions = { ...textOptions, shadow: this.writtenShadow(textOptions.shadow, "addText") };
-        }
+        this.noteSharedShadow(options?.shadow, "addText");
 
         // Text transparency is a run color property, not object opacity.
         const { transparency: _textTransparency, ...boxOptions } = textOptions;

@@ -1070,7 +1070,7 @@ describe("text DOM rendering", () => {
 
     // PptxGenJS 4.0.1 genXmlTextRunProperties writes only `glow` into a run's <a:effectLst>: a run's shadow (outer or
     // inner) is in no OOXML, so PowerPoint and LibreOffice draw none. The text box's own shadow is written and drawn.
-    test("draws no run shadow, as PptxGenJS writes none, and keeps the text box's", () => {
+    test("draws no run's own shadow, as PptxGenJS writes none, and casts the text box's from every run's glyphs (#626)", () => {
         const runShadow = { type: "outer", color: "0000FF", blur: 3, offset: 3, angle: 45, opacity: 0.8 } as const;
         const deck = (runOptions: object) => {
             const presentation = new PuppeteerGen();
@@ -1092,13 +1092,13 @@ describe("text DOM rendering", () => {
 
         const [object] = shadowed.getModel().slides[0]?.objects ?? [];
 
-        expect(object?.kind === "text" && object.text.paragraphs[0]?.runs.map(run => run.shadow)).toEqual([undefined, undefined]);
         expect(object?.style.shadow?.visible).toBe(true);
+        expect(object?.kind === "text" && object.text.paragraphs[0]?.runs.map(run => run.shadow)).toEqual([object?.style.shadow, object?.style.shadow]);
 
         const page = renderedPage(shadowed);
         const runs = [...page.querySelectorAll<HTMLElement>(".text-run")];
 
-        expect(runs.map(run => run.dataset.textShadow)).toEqual([undefined, "glow"]);
+        expect(runs.map(run => run.dataset.textShadow)).toEqual(["shadow", "glow shadow"]);
         expect(runs.some(run => run.hasAttribute("data-shadow-inset"))).toBe(false);
         expect(page.querySelector<HTMLElement>(".slide-text")?.style.boxShadow).not.toBe("");
     });

@@ -1,5 +1,6 @@
 import type PptxGenJS from "pptxgenjs";
 import type { CssColor, NormalizedChartSeries, NormalizedImage, NormalizedSlide, NormalizedSlideObject } from "@pdflapas/model";
+import { cssColorParts } from "./color";
 import type { ChartExtensionInput, ChartExtensionOptions } from "./chart/types";
 import { normalizeComponent } from "./components/normalize";
 import type { ComponentInput, ComponentOptions } from "./components/types";
@@ -560,17 +561,30 @@ export class PuppeteerSlide implements PptxSlide {
         // one with options both share. Normalize at write time if a deck needs that order.
         const box = { ...textOptions, color: textOptions.color || this.color || PPTX_DEFAULTS.text.color };
         const color = this.color;
+        // The box's shadow is cast by everything it draws, under it: an opaque fill hides its glyphs' share, so the runs
+        // carry no glyph shadow, which Chromium would paint over the fill (#626). The object's shadow stays the box's.
+        // shortcut: under a semi-transparent fill the glyph shadow is drawn over the fill, at full strength, by Chromium
+        // (LibreOffice, WASM and PDFKit show it through the fill); draw it under the fill if a deck needs that.
+        const fillHidesGlyphs = textStyle.fill?.visible === true && cssColorParts(textStyle.fill.color).form === "hex" ? { shadow: undefined } : {};
         // Drawn in `fontFace` where the text sets none; a title placeholder's is drawn again when the head font changes
         // (toModel).
         // shortcut: drawing again reads the run options later boxes wrote meanwhile (RunWriting), as the order note above
         // says; normalize at write time if a deck needs both.
         const draw = (fontFace: string, body: PlaceholderBody, margin: PlaceholderMargin): NormalizedSlideObject => {
             const bodyOptions = filled ? { valign: body.valign ?? PPTX_DEFAULTS.placeholder.valign, vert: body.vert, wrap: body.wrap, autoFit: body.autoFit, inset: body.inset, margin } : {};
-            const normalizedText = normalizeText(text, { color, ...textOptions, ...bodyOptions, fontFace: textOptions.fontFace ?? fontFace }, this.context.target, this.context.fontMetrics, this.context.bodyFontFace(), this.context.bodyFontFace(), {
-                box,
-                shared: this.context.sharedRunOptions,
-                ...placeholderSpaceBefore,
-            });
+            const normalizedText = normalizeText(
+                text,
+                { color, ...textOptions, ...bodyOptions, ...fillHidesGlyphs, fontFace: textOptions.fontFace ?? fontFace },
+                this.context.target,
+                this.context.fontMetrics,
+                this.context.bodyFontFace(),
+                this.context.bodyFontFace(),
+                {
+                    box,
+                    shared: this.context.sharedRunOptions,
+                    ...placeholderSpaceBefore,
+                },
+            );
             // A filled placeholder has no space before its first paragraph: LibreOffice's editeng spaces a first paragraph
             // only in plain text boxes (EEControlBits::ULSPACEFIRSTPARA), and PowerPoint in none (spacesFirstParagraph).
             const [firstParagraph, ...laterParagraphs] = normalizedText.paragraphs;

@@ -464,6 +464,42 @@ describe("Puppeteer print workarounds", () => {
         expect(image?.style.borderRadius).toBe("50%");
     });
 
+    // LibreOffice, WASM and PDFKit cast a text box's shadow from everything it draws, under it (#626).
+    test("casts a text box's shadow from its fill, or from its glyphs alone where it has no fill", async () => {
+        const presentation = new PuppeteerGenPowerPoint();
+        const slide = presentation.addSlide();
+        const shadow = (): PptxGenJS.ShadowProps => ({ type: "outer", blur: 1, offset: 8, angle: 180, color: "000000", opacity: 1 });
+
+        slide.addText("Solid", { x: 1, y: 1, w: 2, h: 1, fill: { color: "70AD47" }, shadow: shadow() });
+        slide.addText("Half", { x: 4, y: 1, w: 2, h: 1, fill: { color: "70AD47", transparency: 50 }, shadow: shadow() });
+        slide.addText("None", { x: 1, y: 3, w: 2, h: 1, shadow: shadow() });
+        slide.addText([{ text: "Runs", options: { bold: true } }], { x: 4, y: 3, w: 2, h: 1, rotate: 30, shadow: shadow() });
+        const boxes = [...(await printedPage(presentation)).querySelectorAll<HTMLElement>(".slide-text")].map(box => ({
+            box: box.style.boxShadow === "none" ? "none" : "cast",
+            glyphs: [...box.querySelectorAll<HTMLElement>(".text-run")].map(run => run.dataset.textShadow),
+        }));
+
+        // An opaque fill hides the glyphs' share; a run array casts the box's shadow as a string does.
+        expect(boxes).toEqual([
+            { box: "cast", glyphs: [undefined] },
+            { box: "cast", glyphs: ["shadow"] },
+            { box: "none", glyphs: ["shadow"] },
+            { box: "none", glyphs: ["shadow"] },
+        ]);
+        const model = presentation.getModel().slides[0]?.objects ?? [];
+        const glyphShadow = (index: number) => {
+            const object = model[index];
+
+            return object?.kind === "text" ? object.text.paragraphs[0]?.runs[0]?.shadow : undefined;
+        };
+
+        // The rotated array box's glyph shadow is cast in slide space, as the box's own.
+        const boxShadow = model[3]?.style.shadow;
+
+        expect(boxShadow).toBeDefined();
+        expect(glyphShadow(3) ?? "none").toEqual(boxShadow ?? "none");
+    });
+
     // addText rejects an inner shadow (tests/shape.test.ts): hand-written HTML can still write one on a text box or run,
     // where Chromium would draw it differently from the WASM renderer, or outside the glyphs.
     test("fails on an inner shadow on a text box or a run", async () => {

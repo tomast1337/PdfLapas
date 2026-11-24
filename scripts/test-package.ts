@@ -388,7 +388,7 @@ console.log(\`WASM package consumer generated a PDF under \${"Bun" in globalThis
     // carries the library (bun run build:native before packing), else names the missing library.
     const nativeConsumerSource = `
 import PuppeteerGen, { PAGE_SIZES } from "${names.main}";
-import { createNativeRenderer } from "@pdflapas/native";
+import { createNativeRenderer, createNativeRendererPool } from "@pdflapas/native";
 import { createWasmRenderer, loadSystemFonts } from "${names.wasm}";
 
 const fonts = await loadSystemFonts();
@@ -401,8 +401,12 @@ if (!("Bun" in globalThis)) {
 } else if (native instanceof Error) {
     if (!native.message.startsWith("No @pdflapas/native library for")) throw native;
 } else {
-    const [a, b] = [await native.render(document), await (await createWasmRenderer({ fonts })).render(document)];
-    if (a.length !== b.length || a.some((byte, index) => byte !== b[index])) throw new Error("@pdflapas/native rendered other bytes than @pdflapas/wasm");
+    const pool = await createNativeRendererPool({ fonts, threads: 2 });
+    const [a, b, c] = [await native.render(document), await (await createWasmRenderer({ fonts })).render(document), await pool.render(document)];
+    await pool.close();
+    for (const other of [a, c]) {
+        if (other.length !== b.length || other.some((byte, index) => byte !== b[index])) throw new Error("@pdflapas/native rendered other bytes than @pdflapas/wasm");
+    }
 }
 console.log(\`native package consumer passed under \${"Bun" in globalThis ? "Bun" : "Node.js"}\${native instanceof Error ? \`: \${native.message}\` : ", byte-identical to WASM"}\`);
 `;

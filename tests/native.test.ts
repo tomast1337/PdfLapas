@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { createNativeRenderer } from "../packages/native/src/bun";
+import { createNativeRenderer, createNativeRendererPool } from "../packages/native/src/bun";
 import { createNativeRenderer as createOutsideBun } from "../packages/native/src/index";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
@@ -26,9 +26,12 @@ describe("native backend outside Bun", () => {
 });
 
 describe.skipIf(!canRender)("native backend render", () => {
-    test("renders every visual deck and the shared fixture to the same bytes as the WASM renderer", async () => {
-        using native = await createNativeRenderer({ fonts: systemFonts, onUnsupported: "warn", onMissingFont: "ignore" });
-        const wasm = await createWasmRenderer({ fonts: systemFonts, onUnsupported: "warn", onMissingFont: "ignore" });
+    test("renders every visual deck and the shared fixture to the same bytes as the WASM renderer, alone and on pool threads", async () => {
+        const options = { fonts: systemFonts, onUnsupported: "warn", onMissingFont: "ignore" } as const;
+
+        using native = await createNativeRenderer(options);
+        await using pool = await createNativeRendererPool({ ...options, threads: 4 });
+        const wasm = await createWasmRenderer(options);
         const decks: [string, PuppeteerGen][] = [["fixture", new PuppeteerGen()]];
 
         populateParityFixture(decks[0]![1]);
@@ -37,6 +40,7 @@ describe.skipIf(!canRender)("native backend render", () => {
         }
 
         const different: string[] = [];
+        const pooled: Promise<void>[] = [];
 
         for (const [name, deck] of decks) {
             const document = await deck.toHtml();
@@ -45,10 +49,62 @@ describe.skipIf(!canRender)("native backend render", () => {
             if (Buffer.compare(fromWasm, fromNative) !== 0 || JSON.stringify([wasm.warnings(), wasm.missingFonts()]) !== JSON.stringify([native.warnings(), native.missingFonts()])) {
                 different.push(name);
             }
+
+            // All decks in flight at once, so the threads render them interleaved.
+            pooled.push(
+                pool.render(document).then(fromPool => {
+                    if (Buffer.compare(fromWasm, fromPool) !== 0) {
+                        different.push(`${name} (pool)`);
+                    }
+                }),
+            );
         }
 
+        await Promise.all(pooled);
         expect(different).toEqual([]);
     }, 120_000);
+
+    test("the pool fails each document with the WASM renderer's error and goes on", async () => {
+        await using pool = await createNativeRendererPool({ fonts: systemFonts, threads: 2 });
+        const wasm = await createWasmRenderer({ fonts: systemFonts });
+        const pres = new PuppeteerGen(PAGE);
+
+        pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1, objectName: "Title" });
+        const document = await pres.toHtml();
+        const tampered = { ...document, html: document.html.replace('style="left: 96px;', 'style="filter: blur(2px); left: 96px;') };
+        const wasmError = await wasm.render(tampered).then(
+            () => "",
+            (error: Error) => error.message,
+        );
+        const [failed, rendered] = await Promise.allSettled([pool.render(tampered), pool.render(document)]);
+
+        expect(failed).toMatchObject({ status: "rejected", reason: { message: wasmError } });
+        expect(rendered).toMatchObject({ status: "fulfilled", value: await wasm.render(document) });
+    });
+
+    test("the pool applies onMissingFont, frees the event loop and rejects what is in flight when closed", async () => {
+        const pool = await createNativeRendererPool({ fonts: systemFonts, threads: 1, onMissingFont: "throw" });
+        const pres = new PuppeteerGen(PAGE);
+
+        pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1, fontFace: "No Such Face", objectName: "Body" });
+        await expect(pool.render(await pres.toHtml())).rejects.toThrow("No Such Face");
+        expect(pool.missingFonts()).toMatchObject([{ face: "No Such Face", objects: ["slide 1 'Body'"] }]);
+        // render() returns before the thread has drawn anything: a timer queued after it fires first.
+        const big = DECKS.shapes!.populate(new PuppeteerGen(PAGE));
+        const order: string[] = [];
+        const rendering = pool.render(await big.toHtml()).then(() => order.push("rendered"));
+
+        await new Promise(resolve => setTimeout(resolve, 0)).then(() => order.push("timer"));
+        await rendering;
+        expect(order).toEqual(["timer", "rendered"]);
+        const inFlight = pool.render(await big.toHtml());
+
+        await pool.close();
+        await expect(inFlight).rejects.toThrow("closed before this document rendered");
+        await expect(pool.render(await big.toHtml())).rejects.toThrow("This native renderer pool is closed");
+        await expect(createNativeRendererPool({ fonts: systemFonts, threads: 0 })).rejects.toThrow("positive integer number of threads");
+        await expect(createNativeRendererPool({ fonts: [new Uint8Array([1, 2, 3])] })).rejects.toThrow("Font #0 contains no usable font faces");
+    });
 
     test("fails with the WASM renderer's errors", async () => {
         using native = await createNativeRenderer({ fonts: systemFonts });

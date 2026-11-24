@@ -2,6 +2,7 @@ import type PptxGenJS from "pptxgenjs";
 import type { ComponentRegistry } from "./components/registry";
 import type { FontMetricsLookup } from "./defaults";
 import type { RenderingTarget } from "./target";
+import type { SharedRunOptions } from "./normalize/sharedRunOptions";
 import type { PageSize } from "./pageLayouts";
 import type { PuppeteerSlide } from "./PuppeteerSlide";
 
@@ -56,8 +57,8 @@ export type SlideContext = {
     readonly target: RenderingTarget;
     /** The faces' metrics (`fontMetrics`, `resolveFontMetrics`, FONT_WIN_METRICS) the target may place baselines from. */
     readonly fontMetrics: FontMetricsLookup;
-    /** The run `options` objects the presentation's text boxes and table cells were given so far. */
-    readonly runOptionsSeen: WeakSet<object>;
+    /** What PptxGenJS has written onto the run options objects of the presentation's text boxes and table cells. */
+    readonly sharedRunOptions: SharedRunOptions;
     /** The `shadow` objects the presentation's text boxes, shapes and pictures were given so far. */
     readonly shadowsSeen: WeakSet<object>;
     /**

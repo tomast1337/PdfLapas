@@ -248,6 +248,12 @@ const remoteRenderer: PresentationRenderer = {
 const pres = new PuppeteerGen(PAGE_SIZES.SCREEN_16X9.landscape, { renderer: remoteRenderer });
 ```
 
+A renderer that runs in other threads may also implement the optional `renderModelHtml({ model, images, htmlModule })`:
+under the Node entry, `toPdf()` then hands it the model and the images it resolved, and the renderer builds the HTML
+with `modelHtml(model, images)` from `htmlModule` (the package's `dist/modelHtml.js`) before rendering it. The HTML is
+the same document `toHtml()` returns. A deck with components (`registerComponent`) always goes through `render()`,
+since component definitions cannot leave the caller's thread. `createWasmRendererPool()` implements it.
+
 The default renderer lives in `@pdflapas/puppeteer` and works on any
 `HtmlPresentationDocument`, for example one produced by the `/html` entry:
 

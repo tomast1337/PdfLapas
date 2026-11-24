@@ -1,6 +1,6 @@
 // Browser-safe WASM text renderer ("@pdflapas/wasm" under the browser/default conditions).
 // Must not load node:* modules, puppeteer or jsdom (enforced by tests/wasm.test.ts and scripts/build.ts).
-import { assertHtmlPresentationDocument, type HtmlPresentationDocument, type MissingFont, type MissingFontPolicy, missingFontPolicy, type PresentationRenderer, reportMissingFonts } from "@pdflapas/model";
+import { assertHtmlPresentationDocument, type HtmlPresentationDocument, type MissingFont, type MissingFontPolicy, type ModelHtmlRequest, missingFontPolicy, type PresentationRenderer, reportMissingFonts } from "@pdflapas/model";
 import init, { Renderer } from "./pdf_wasm.js";
 
 export { type MissingFont, MissingFontError, type MissingFontPolicy } from "@pdflapas/model";
@@ -54,6 +54,8 @@ export type WasmRendererPoolOptions = Omit<WasmRendererOptions, "wasm"> & {
 
 /** What createWasmRendererPool() returns (Node/Bun): a renderer whose renders run in worker threads. */
 export type WasmRendererPool = PresentationRenderer & {
+    /** Builds the HTML from the model in a worker, then renders it there; toPdf() uses it when present (#614). */
+    renderModelHtml(request: ModelHtmlRequest): Promise<Uint8Array>;
     /** What the last render to finish could not draw; with several in flight, read the error of the one you need instead. */
     warnings(): string[];
     /** The font faces the last render to finish asked for that none of the fonts provides. */

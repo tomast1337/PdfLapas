@@ -1,13 +1,13 @@
 // Node/Bun WASM text renderer ("@pdflapas/wasm" under the node/bun conditions):
 // reads the .wasm next to this module, can load fonts from the system font directories, and renders in worker threads.
-import { assertHtmlPresentationDocument, type HtmlPresentationDocument, type MissingFont, type MissingFontPolicy, missingFontPolicy, reportMissingFonts } from "@pdflapas/model";
+import { assertHtmlPresentationDocument, type HtmlPresentationDocument, type MissingFont, type ModelHtmlRequest, type MissingFontPolicy, missingFontPolicy, reportMissingFonts } from "@pdflapas/model";
 import { readdir, readFile } from "node:fs/promises";
 import { availableParallelism, homedir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createWasmRenderer as createBrowserWasmRenderer, type SystemFontOptions, type WasmRenderer, type WasmRendererOptions, type WasmRendererPool, type WasmRendererPoolOptions } from "./browser";
-import type { PoolWorkerData, PoolWorkerMessage } from "./nodeWorker";
+import type { PoolRequest, PoolWorkerData, PoolWorkerMessage } from "./nodeWorker";
 
 export type { MissingFontBinding, SystemFontOptions, TextPdfBinding, WasmRendererOptions, WasmRendererPool, WasmRendererPoolOptions, WasmSource } from "./browser";
 export { type MissingFont, MissingFontError, type MissingFontPolicy } from "./browser";
@@ -34,7 +34,7 @@ export async function createWasmRenderer(options: WasmRendererOptions): Promise<
 // Caps the default worker count by memory rather than cores: each worker holds its own copy of the fonts.
 const MAX_DEFAULT_POOL_WORKERS = 8;
 
-type PoolJob = { readonly document: HtmlPresentationDocument; readonly resolve: (pdf: Uint8Array) => void; readonly reject: (error: unknown) => void };
+type PoolJob = { readonly request: PoolRequest; readonly resolve: (pdf: Uint8Array) => void; readonly reject: (error: unknown) => void };
 
 /** A worker thread and the one document it renders, if any: one document in flight per worker. */
 type PoolSlot = { readonly thread: Worker; job: PoolJob | undefined; ready: boolean; crash: Error | undefined };
@@ -163,7 +163,8 @@ export class WasmWorkerPool implements WasmRendererPool {
             slot.job = job;
             // A render in flight keeps the process alive until it settles.
             slot.thread.ref();
-            slot.thread.postMessage(job.document);
+            // Structured clone copies the request once; the image data URIs are strings, which cannot be transferred.
+            slot.thread.postMessage(job.request);
         }
     }
 
@@ -174,19 +175,33 @@ export class WasmWorkerPool implements WasmRendererPool {
     /** Renders in the first free worker; rejects with the error WasmRenderer.render() throws for the same document. */
     async render(document: HtmlPresentationDocument): Promise<Uint8Array> {
         assertHtmlPresentationDocument(document);
-        if (this.#closed) {
-            throw new Error("This WasmRendererPool is closed; create another with createWasmRendererPool()");
-        }
-
-        if (this.#slots.length === 0) {
-            throw this.#noWorkersError();
-        }
-
         // Only the profile's fields: anything else on the object might not clone into the worker.
         const { html, pageSize } = document;
 
+        return this.#enqueue({ kind: "document", document: { html, pageSize } });
+    }
+
+    /**
+     * Builds the HTML from the model in the first free worker, with `modelHtml` from `request.htmlModule`, then renders
+     * it there: toPdf() calls this, so the caller's thread does not build the HTML (#614). Same bytes as render().
+     */
+    async renderModelHtml(request: ModelHtmlRequest): Promise<Uint8Array> {
+        const { model, images, htmlModule } = request;
+
+        return this.#enqueue({ kind: "model", model, images, htmlModule });
+    }
+
+    #enqueue(request: PoolRequest): Promise<Uint8Array> {
+        if (this.#closed) {
+            return Promise.reject(new Error("This WasmRendererPool is closed; create another with createWasmRendererPool()"));
+        }
+
+        if (this.#slots.length === 0) {
+            return Promise.reject(this.#noWorkersError());
+        }
+
         return new Promise((resolve, reject) => {
-            this.#queue.push({ document: { html, pageSize }, resolve, reject });
+            this.#queue.push({ request, resolve, reject });
             this.#pump();
         });
     }

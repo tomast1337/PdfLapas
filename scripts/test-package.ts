@@ -335,8 +335,14 @@ if (!pdf.startsWith("%PDF-") || pdf.match(/\\/Type\\s*\\/Page\\b(?!s)/g)?.length
 // The pool's worker is a separate file in dist/: it must start from the package and render the same bytes.
 const pool = await createWasmRendererPool({ fonts, workers: 1 });
 const pooled = await pool.render(await presentation.toHtml());
-await pool.close();
 if (pooled.length !== bytes.length || pooled.some((byte, index) => byte !== bytes[index])) throw new Error("createWasmRendererPool() rendered other bytes than createWasmRenderer()");
+// toPdf() through the pool builds the HTML in the worker with the main package's dist/modelHtml.js (#614).
+const inWorker = await new PuppeteerGen(PAGE_SIZES.SCREEN_16X9.landscape, { renderer: { render: pool.render.bind(pool), renderModelHtml: request => { if (!request.htmlModule.endsWith("/dist/modelHtml.js")) throw new Error(\`toPdf() named \${request.htmlModule}, not the package's dist/modelHtml.js\`); return pool.renderModelHtml(request); } } });
+inWorker.addSlide().addText("WASM package consumer", { x: 1, y: 1, w: 4, h: 1, fontFace: "Calibri" });
+inWorker.addSlide().addShape("roundRect", { x: 1, y: 1, w: 2, h: 1, fill: { color: "0088CC" } });
+const workerBytes = await inWorker.toPdf();
+await pool.close();
+if (workerBytes.length !== bytes.length || workerBytes.some((byte, index) => byte !== bytes[index])) throw new Error("toPdf() through the pool rendered other bytes than createWasmRenderer()");
 console.log(\`WASM package consumer generated a PDF under \${"Bun" in globalThis ? "Bun" : "Node.js"}\`);
 `;
     const wasmConsumerPath = join(consumerDirectory, "wasm-consumer.ts");

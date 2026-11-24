@@ -12,7 +12,7 @@ const packagesDirectory = resolve(projectRoot, "packages");
 const PACKAGES = [
     { name: "model", entrypoints: ["index"] },
     { name: "puppeteer", entrypoints: ["index"] },
-    { name: "pptxgenjs", entrypoints: ["index", "html"] },
+    { name: "pptxgenjs", entrypoints: ["index", "html", "modelHtml"] },
     { name: "wasm", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "pdfkit", entrypoints: ["browser", "node"] },
     { name: "react", entrypoints: ["index"] },
@@ -21,7 +21,7 @@ const PACKAGES = [
 const RELATIVE_SPECIFIER = /(\bfrom\s*|\bimport\(\s*)(["'])(\.{1,2}\/[^"']*)\2/g;
 
 /** Bundles that must load in a browser: no puppeteer, jsdom or node:* imports. */
-const BROWSER_SAFE = ["model/dist/index.js", "pptxgenjs/dist/html.js", "wasm/dist/browser.js", "pdfkit/dist/browser.js"];
+const BROWSER_SAFE = ["model/dist/index.js", "pptxgenjs/dist/html.js", "pptxgenjs/dist/modelHtml.js", "wasm/dist/browser.js", "pdfkit/dist/browser.js"];
 
 async function declarationFiles(directory: string): Promise<string[]> {
     const entries = await readdir(directory, { withFileTypes: true });

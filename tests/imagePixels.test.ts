@@ -50,6 +50,57 @@ describe("decoded-pixel limits (#360)", () => {
         expect(() => checkImagePixels(`<div style="background: url(${png(9000, 9000)})"></div>`, limits)).toThrow("is over the limit");
     });
 
+    test("counts every data URI, whatever its media type or encoding, and the images an SVG image holds (GHSA-mc68-2mrj-jwhm)", () => {
+        const limits = imagePixelLimits();
+        const bytes = Buffer.from(headerOnlyPng(20000, 20000));
+        const base64 = bytes.toString("base64");
+        const percent = [...bytes].map(byte => `%${byte.toString(16).padStart(2, "0")}`).join("");
+        const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="${inner}" width="10" height="10"/></svg>`;
+        const svgUri = (inner: string) => `data:image/svg+xml;base64,${Buffer.from(svg(inner)).toString("base64")}`;
+        const over = "is over the limit of 67108864 pixels per image";
+
+        expect(() => checkImagePixels(`<img src="data:application/octet-stream;base64,${base64}">`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<img src="data:image/png,${percent}">`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<img src="data&colon;image/png;base64&comma;${base64}">`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<div style="background: url(data\\3a image/png;base64,${base64})"></div>`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<img src="${svgUri(`data:image/png;base64,${base64}`)}">`, limits)).toThrow(over);
+        // Nested two deep, in a percent-encoded SVG whose encoding hides the inner `data:`, and in a UTF-16 document.
+        expect(() => checkImagePixels(`<img src="${svgUri(svgUri(`data:image/png;base64,${base64}`))}">`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<img src="${svgUri(`data:image/svg+xml,${encodeURIComponent(svg(`data:image/png;base64,${base64}`))}`)}">`, limits)).toThrow(over);
+        expect(() => checkImagePixels(`<img src="data:image/svg+xml,${encodeURIComponent(svg(`data:image/png,${percent}`))}">`, limits)).toThrow(over);
+        const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(svg(`data:image/png;base64,${base64}`), "utf16le")]).toString("base64");
+
+        expect(() => checkImagePixels(`<img src="data:image/svg+xml;base64,${utf16}">`, limits)).toThrow(over);
+        // Inside an SVG image, the images count toward the deck total too, and a plain SVG passes.
+        expect(() => checkImagePixels(`<img src="${svgUri(png(8192, 8192))}">${`<img src="${png(8192, 8191)}">`.repeat(1)}`, limits)).not.toThrow();
+        expect(() => checkImagePixels(`<img src="${svgUri(png(8192, 8192))}"><img src="${svgUri(png(8192, 8190))}"><img src="${png(8192, 8189)}"><img src="${png(8192, 8188)}"><img src="${png(8192, 8187)}">`, limits)).toThrow("in total");
+        expect(() => checkImagePixels(`<img src="data:image/svg+xml;base64,${Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>").toString("base64")}">`, limits)).not.toThrow();
+    });
+
+    test("refuses an image whose size it cannot read, and reads a BMP's", () => {
+        const limits = imagePixelLimits();
+        const uri = (bytes: number[]) => `<img src="data:image/png;base64,${Buffer.from(bytes).toString("base64")}">`;
+        const bmp = [0x42, 0x4d, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0x20, 0x4e, 0, 0, 0xe0, 0xb1, 0xff, 0xff];
+
+        expect(rasterImageSize(new Uint8Array(bmp))).toEqual({ kind: "size", width: 20000, height: 20000 });
+        expect(() => checkImagePixels(uri(bmp), limits)).toThrow("An image of 20000x20000 pixels is over the limit");
+        // A short base64 header draws nothing; an unencoded one may have been cut by a `data:` its bytes spell.
+        expect(() => checkImagePixels(uri(headerOnlyPng(1, 1).slice(0, 20)), limits)).not.toThrow();
+        expect(() => checkImagePixels(`<img src="data:image/png,%89PNG%0D%0A%1A%0A%00%00%00%0D%49%48%44%52%00%00data:x,">`, limits)).toThrow("An image's header is truncated");
+        expect(() => checkImagePixels(uri([0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66]), limits)).toThrow("An image in AVIF format cannot be checked");
+        expect(() => checkImagePixels(uri([0, 0, 1, 0, 1, 0]), limits)).toThrow("An image in ICO format cannot be checked");
+    });
+
+    test("refuses SVG images nested deeper than it checks", () => {
+        let uri = png(1, 1);
+
+        for (let level = 0; level < 10; level++) {
+            uri = `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"><image href="${uri}"/></svg>`).toString("base64")}`;
+        }
+
+        expect(() => checkImagePixels(`<img src="${uri}">`, imagePixelLimits())).toThrow("nested more than 8 levels deep");
+    });
+
     test("the limits can be raised or lowered, and are checked", () => {
         expect(() => checkImagePixels(`<img src="${png(9000, 9000)}">`, imagePixelLimits({ maxImagePixels: 9000 * 9000 }))).not.toThrow();
         expect(() => checkImagePixels(`<img src="${png(20, 20)}">`, imagePixelLimits({ maxImagePixels: 100 }))).toThrow("over the limit of 100 pixels per image");

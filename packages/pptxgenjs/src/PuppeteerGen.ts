@@ -18,7 +18,7 @@ import { checkedPageSize, DEFAULT_PAGE_SIZE, PPTX_LAYOUT_PAGE_SIZES } from "./pa
 import type { PptxAddSlideProps, PptxGenJSLike, PptxSectionProps, PptxSlideMasterProps, PptxTableToSlidesProps, PptxWriteBaseProps, PptxWriteFileProps, PptxWriteProps } from "./pptx";
 import { PuppeteerSlide } from "./PuppeteerSlide";
 import type { MasterPlaceholder, SlideContext, SlideMaster } from "./slideContext";
-import { type HtmlPresentationDocument, lazyDocument, type PresentationRenderer, trustedModelToHtml } from "./render/document";
+import { type HtmlPresentationDocument, lazyDocument, type PresentationRenderer, resolveModelImages, trustedModelToHtml } from "./render/document";
 import { createBrowserDocument } from "./render/slide";
 
 /**
@@ -122,6 +122,11 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
     private readonly warningLines = new Set<string>();
     /** The `context.document` of components checked in addComponent(), created the first time one reads it. */
     private readonly componentDocument: () => Document;
+    /**
+     * URL of the module (./modelHtml) a renderer with renderModelHtml() loads to build the HTML in its own threads. Set by
+     * the Node entry, which knows where the module is; unset, toPdf() always builds the HTML here.
+     */
+    protected htmlModule: string | undefined;
 
     constructor(pageSize: PageSizeInput = DEFAULT_PAGE_SIZE, options: PuppeteerGenOptions = {}) {
         this.pageSize = checkedPageSize("new PuppeteerGen(pageSize)", pageSize);
@@ -389,7 +394,18 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
             throw new Error("toPdf() renderer must implement render(document: HtmlPresentationDocument): every renderer reads the toHtml() document, renderModel(model) was removed (#69)");
         }
 
-        return this.renderer.render(await this.toHtml());
+        const model = this.sharedModel();
+        // Component definitions are user functions, which cannot cross into another thread: such a deck builds its HTML here.
+        const hasComponents = model.slides.some(slide => !slide.hidden && slide.objects.some(object => object.kind === "component"));
+
+        if (this.htmlModule !== undefined && this.renderer.renderModelHtml !== undefined && !hasComponents) {
+            // The images are resolved here, with the injected resolver; the renderer builds the same HTML toHtml() does.
+            const images = await resolveModelImages(model, new Map(), this.resolveImage);
+
+            return this.renderer.renderModelHtml({ model, images, htmlModule: this.htmlModule });
+        }
+
+        return this.renderer.render(await trustedModelToHtml(model, { components: this.components, resolveImage: this.resolveImage, createDocument: this.createDocument }));
     }
 
     /** PptxGenJS `writeFile()`: in a browser, downloads the PDF as PptxGenJS downloads its .pptx; returns the file name. */

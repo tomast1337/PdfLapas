@@ -821,7 +821,10 @@ What that means for a service:
 loaded once, and implements `PresentationRenderer` like `createWasmRenderer()`, so it goes in the same `renderer`
 option. `render()` posts the HTML document to the first free worker (one document in flight per worker, the rest
 wait in one FIFO queue) and resolves with the PDF bytes the worker transfers back. Use it on a server that renders
-with WASM under concurrent requests: renders run on several cores and no longer block the event loop.
+with WASM under concurrent requests: renders run on several cores and no longer block the event loop. `toPdf()`
+goes one step further: it posts the deck's model and its resolved images, and the worker builds the HTML (the same
+document `toHtml()` returns) before rendering it. A deck with components builds its HTML on the calling thread,
+since component definitions cannot cross into a worker.
 
 ```typescript
 import PuppeteerGen from "@pdflapas/pptxgenjs";
@@ -848,10 +851,12 @@ await renderer.close();
   3.2 GB RSS, about 330 MB per worker; load only the faces your decks use to lower it.
 - **Failures.** A worker that dies is replaced; the render it was running rejects and says so, and the others carry
   on. `close()` terminates the workers and rejects what is still queued or in flight.
-- **Limits.** Building the deck and its HTML (the PptxGenJS calls and `toHtml()`) still runs on the calling thread:
-  about 5.5 ms of CPU per request in the mix below (`bench:load` prints it as "main thread ... ms CPU per request"),
-  which bounds one process near 150 renders/s. Past that, run more processes. Moving `toHtml()` into the workers
-  would take off about a third of it (#614). PDFKit has no pool yet (#608).
+- **Limits.** Building the deck (the PptxGenJS calls and normalization), resolving its images and copying its model
+  into the worker still run on the calling thread: about 5.4 ms of CPU per request in the mix below (`bench:load`
+  prints it as "main thread ... ms CPU per request"), from 5.7 ms when the HTML was built there too (#614). Building
+  the HTML costs about 2.2 ms per request, but copying the model to the worker (structured clone) costs about 1 ms,
+  so the gain is about 1 ms (#634). One process stays near 150 renders/s; past that, run more processes. Each worker also
+  loads the HTML builder, about 30 MB of RSS per worker. PDFKit has no pool yet (#608).
 
 Measured with `BENCH_LOAD_ENGINES=wasm,wasm-pool BENCH_LOAD_CONCURRENCY=1,4,16,64 BENCH_LOAD_SECONDS=30 bun run bench:load`
 (Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above; the single renderer measured slower here than in

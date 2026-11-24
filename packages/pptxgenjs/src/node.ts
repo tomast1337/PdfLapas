@@ -281,6 +281,9 @@ export function checkPowerPointFonts(options: { readonly faces?: readonly string
     return { present: faces.filter(isPresent), missing: faces.filter(face => !isPresent(face)) };
 }
 
+// The module a pooled renderer's workers build the HTML with: modelHtml.ts beside the sources, modelHtml.js in dist/.
+const MODEL_HTML_MODULE = new URL(`./modelHtml${extname(fileURLToPath(import.meta.url))}`, import.meta.url).href;
+
 export class PuppeteerGen extends CorePuppeteerGen {
     constructor(pageSize?: PageSizeInput, options: PuppeteerGenOptions = {}) {
         const { imageSources: _applied, ...rest } = options;
@@ -293,6 +296,7 @@ export class PuppeteerGen extends CorePuppeteerGen {
             resolveFontMetrics: options.resolveFontMetrics === undefined ? resolveInstalledFontMetrics : options.resolveFontMetrics,
             resolveGlyphAdvances: options.resolveGlyphAdvances === undefined ? resolveInstalledGlyphAdvances : options.resolveGlyphAdvances,
         });
+        this.htmlModule = MODEL_HTML_MODULE;
     }
 
     /** PptxGenJS `writeFile()`: writes the PDF to disk and returns the file name it used. */

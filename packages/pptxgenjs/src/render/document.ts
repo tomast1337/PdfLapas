@@ -1,7 +1,7 @@
-import type { DataUri, HtmlPresentationDocument, NormalizedPresentation } from "@pdflapas/model";
+import type { DataUri, HtmlPresentationDocument, NormalizedPresentation, NormalizedSlideObject } from "@pdflapas/model";
 import { parseModel } from "#src/modelSchema";
 import { IMAGE_SOURCE_LIMITS, resolvedImageDataUri, resolveRemoteImageSource } from "#src/normalize/image";
-import { componentImageSources } from "./component";
+import { componentImageSources, type RenderedComponent } from "./component";
 import { type ComponentLookup, createBrowserDocument, presentationHtml, renderComponents } from "./slide";
 
 // The renderer interfaces are the model package's contract; re-exported for existing imports.
@@ -47,8 +47,17 @@ export async function modelToHtml(model: unknown, options: ModelToHtmlOptions = 
 
 /** modelToHtml() without the check, for a model our own normalizer built (toHtml()): its values are already branded. */
 export async function trustedModelToHtml(model: NormalizedPresentation, options: ModelToHtmlOptions = {}): Promise<HtmlPresentationDocument> {
-    const resolveImage = options.resolveImage ?? resolveRemoteImageSource;
     const components = renderComponents(model, options.components, lazyDocument(options.createDocument ?? createBrowserDocument));
+    const images = await resolveModelImages(model, components, options.resolveImage ?? resolveRemoteImageSource);
+
+    return { html: presentationHtml(model, { components, images }), pageSize: model.pageSize };
+}
+
+/**
+ * The data URI of each path and URL image source of the model's shown slides and of its rendered `components`, as
+ * `resolveImage` resolves it: what trustedModelToHtml() inlines, and what toPdf() hands a renderer that builds the HTML itself.
+ */
+export async function resolveModelImages(model: NormalizedPresentation, components: ReadonlyMap<NormalizedSlideObject, RenderedComponent>, resolveImage: (source: string) => Promise<string>): Promise<Map<string, DataUri>> {
     const modelSources = model.slides.flatMap(slide => (slide.hidden ? [] : slide.objects).flatMap(object => (object.kind === "image" && object.image.sourceKind !== "data" ? [object.image.source] : [])));
     const sources = new Set([...modelSources, ...Array.from(components.values()).flatMap(componentImageSources)]);
     // Each distinct source is resolved once, IMAGE_SOURCE_LIMITS.concurrency at a time, so a deck of many images
@@ -63,5 +72,13 @@ export async function trustedModelToHtml(model: NormalizedPresentation, options:
 
     await Promise.all(Array.from({ length: Math.min(IMAGE_SOURCE_LIMITS.concurrency, sources.size) }, worker));
 
-    return { html: presentationHtml(model, { components, images }), pageSize: model.pageSize };
+    return images;
+}
+
+/**
+ * The toHtml() document of a model without `component` objects whose images `resolveModelImages()` resolved: the
+ * `modelHtml` export of the module PresentationRenderer.renderModelHtml() loads, so it can run in another thread.
+ */
+export function modelHtml(model: NormalizedPresentation, images: ReadonlyMap<string, DataUri>): HtmlPresentationDocument {
+    return { html: presentationHtml(model, { components: new Map(), images }), pageSize: model.pageSize };
 }

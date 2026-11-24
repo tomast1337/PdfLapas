@@ -1,11 +1,14 @@
 // A worker thread of createWasmRendererPool() (node.ts), Node/Bun only: one WasmRenderer with the pool's fonts, loaded
 // once, rendering the documents the pool posts one at a time and transferring the PDF bytes back.
-import type { HtmlPresentationDocument, MissingFont } from "@pdflapas/model";
+import type { DataUri, HtmlPresentationDocument, MissingFont, NormalizedPresentation } from "@pdflapas/model";
 import { parentPort, workerData } from "node:worker_threads";
 import { createWasmRenderer, type WasmRenderer } from "./browser";
 
 /** What createWasmRendererPool() hands each worker. */
 export type PoolWorkerData = { readonly fonts: readonly Uint8Array[]; readonly wasm: WebAssembly.Module; readonly onUnsupported: "error" | "warn" };
+
+/** What the pool posts a worker per render: the HTML document, or the model and the module that builds its HTML (renderModelHtml()). */
+export type PoolRequest = { readonly kind: "document"; readonly document: HtmlPresentationDocument } | { readonly kind: "model"; readonly model: NormalizedPresentation; readonly images: ReadonlyMap<string, DataUri>; readonly htmlModule: string };
 
 /** What a worker posts back: once whether it started, then one message per document. */
 export type PoolWorkerMessage =
@@ -34,8 +37,24 @@ try {
 if (renderer !== undefined) {
     const started = renderer;
 
-    port.on("message", async (document: HtmlPresentationDocument) => {
+    port.on("message", async (request: PoolRequest) => {
         try {
+            let document: HtmlPresentationDocument;
+
+            if (request.kind === "document") {
+                document = request.document;
+            } else {
+                // The runtime caches the module after the first import, so it loads once per worker.
+                const module: { readonly modelHtml?: unknown } = await import(request.htmlModule);
+
+                if (typeof module.modelHtml !== "function") {
+                    throw new TypeError(`renderModelHtml(): ${request.htmlModule} has no modelHtml(model, images) export; name the module @pdflapas/pptxgenjs's Node entry ships`);
+                }
+
+                // `as`: the export's contract (ModelHtmlRequest.htmlModule); render() checks the result.
+                document = (await module.modelHtml(request.model, request.images)) as HtmlPresentationDocument;
+            }
+
             const pdf = await started.render(document);
             // The binding copies the PDF out of wasm memory into a fresh ArrayBuffer of its own, never a shared one.
             const bytes = pdf.buffer as ArrayBuffer;

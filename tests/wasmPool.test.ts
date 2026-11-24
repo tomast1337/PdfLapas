@@ -2,12 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Worker } from "node:worker_threads";
-import type { HtmlPresentationDocument } from "@pdflapas/model";
-import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
+import type { HtmlPresentationDocument, PresentationRenderer } from "@pdflapas/model";
+import { PuppeteerGen, PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { createWasmRendererPool as browserCreateWasmRendererPool } from "../packages/wasm/src/browser";
 import { createWasmRenderer, createWasmRendererPool, loadSystemFonts, WasmWorkerPool } from "../packages/wasm/src/node";
 import type { PoolWorkerData } from "../packages/wasm/src/nodeWorker";
+import { populateParityFixture } from "./visual/fixture";
 import { DECKS } from "./visual/wasm/decks";
 
 const PAGE = PAGE_SIZES.SCREEN_16X9.landscape;
@@ -136,6 +137,76 @@ if (!wasmBuilt) {
             await expect(createWasmRendererPool({ fonts, workers: 0 })).rejects.toThrow(/positive integer number of workers, got 0/);
             await expect(createWasmRendererPool({ fonts: [new Uint8Array(8)], workers: 1 })).rejects.toThrow(/Font #0 contains no usable font faces/);
             await expect(browserCreateWasmRendererPool(options)).rejects.toThrow(/only available under Node\/Bun/);
+        });
+
+        test("toPdf() builds the HTML in a worker: the same bytes, warnings and errors as rendering toHtml(), on every deck", async () => {
+            let inWorkers = 0;
+            let withoutComponents = 0;
+            // The pool, counting the renders whose HTML a worker built.
+            const counted: PresentationRenderer = {
+                render: document => pool.render(document),
+                renderModelHtml: request => {
+                    inWorkers++;
+
+                    return pool.renderModelHtml(request);
+                },
+            };
+            const populators: [string, (presentation: PuppeteerGen) => void][] = [["fixture", populateParityFixture]];
+
+            for (const [name, deck] of Object.entries(DECKS)) {
+                populators.push([name, presentation => deck.populate(presentation)]);
+            }
+
+            for (const Gen of [PuppeteerGenLibreOffice, PuppeteerGenPowerPoint]) {
+                for (const [name, populate] of populators) {
+                    const before = new Gen(undefined, { renderer: pool });
+                    const after = new Gen(undefined, { renderer: counted });
+
+                    populate(before);
+                    populate(after);
+                    const expected = await before
+                        .toHtml()
+                        .then(document => pool.render(document))
+                        .catch((error: unknown) => error);
+                    const expectedWarnings = pool.warnings();
+                    const pdf = await after.toPdf().catch((error: unknown) => error);
+
+                    expect([name, pdf]).toEqual([name, expected]);
+                    expect([name, pool.warnings()]).toEqual([name, expectedWarnings]);
+                    expect([name, after.warnings()]).toEqual([name, before.warnings()]);
+                    if (!after.getModel().slides.some(slide => !slide.hidden && slide.objects.some(object => object.kind === "component"))) {
+                        withoutComponents++;
+                    }
+                }
+            }
+
+            // A deck with components builds its HTML on this thread; every other deck in a worker.
+            expect(withoutComponents).toBeGreaterThan(populators.length);
+            expect(inWorkers).toBe(withoutComponents);
+        }, 60_000);
+
+        test("toPdf() builds a deck with components on the caller's thread", async () => {
+            const calls: string[] = [];
+            const spy: PresentationRenderer = {
+                render: async () => (calls.push("render"), new Uint8Array()),
+                renderModelHtml: async () => (calls.push("renderModelHtml"), new Uint8Array()),
+            };
+            const plain = new PuppeteerGen(PAGE, { renderer: spy });
+            const withComponent = new PuppeteerGen(PAGE, { renderer: spy });
+
+            plain.addSlide().addText("plain", { x: 1, y: 1, w: 2, h: 1 });
+            withComponent.registerComponent("test/text", 1, { render: props => String(props.label) });
+            withComponent.addSlide().addComponent({ type: "test/text", version: 1, props: { label: "A" } }, { x: 1, y: 1, w: 2, h: 1 });
+            await plain.toPdf();
+            await withComponent.toPdf();
+            expect(calls).toEqual(["renderModelHtml", "render"]);
+        });
+
+        test("renderModelHtml() rejects a module without modelHtml, and keeps rendering", async () => {
+            const model = new PuppeteerGen(PAGE).getModel();
+
+            await expect(pool.renderModelHtml({ model, images: new Map(), htmlModule: new URL("../packages/model/src/index.ts", import.meta.url).href })).rejects.toThrow(/has no modelHtml\(model, images\) export/);
+            expect(await pool.render(first)).toEqual(await single.render(first));
         });
 
         test("lets the process exit once idle, without close()", () => {

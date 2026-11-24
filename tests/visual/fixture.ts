@@ -2354,6 +2354,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartOptionSourceFixture(presentation);
     populateChartAxisPlacementFixture(presentation);
     populateChartLabelsAtLineFixture(presentation);
+    populateChartDateSlotFixture(presentation);
 }
 
 /**
@@ -3847,4 +3848,48 @@ export function populateChartLabelsAtLineFixture(presentation: Presentation): vo
     atZero.addChart("bar", negative, { ...shared, x: 5.2, y: 0.8, barDir: "bar" });
     atCrossing.addChart("bar", rising, { ...shared, x: 0.4, y: 0.8, catAxisLabelPos: "nextTo", valAxisCrossesAt: 3, catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
     atCrossing.addChart("bar", rising, { ...shared, x: 5.2, y: 0.8, barDir: "bar", valAxisLabelPos: "nextTo", catAxisCrossesAt: 2 } as PptxGenJS.IChartOpts);
+}
+
+/**
+ * Date axis cases left after #593 (#631): a stacked column chart with several dates in one month's slot, each series'
+ * point stacked on the same point of the series before it; a bar3D chart's data table on a time line with an empty
+ * slot, a column a slot wide per category; and a bar3D time line with minor ticks, which LibreOffice 26.2.6 draws
+ * without category tick marks (PowerPoint draws them). A parity slide after the others (no page number moves).
+ */
+export function populateChartDateSlotFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+
+    slide.addText("Stacked date slots and bar3D time lines", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    // Excel serials: 45294 is 3 January 2024; three dates in January, two in February, three in March.
+    const shared = ["45294", "45303", "45316", "45327", "45342", "45353", "45365", "45379"];
+    const months = ["45292", "45323", "45413", "45444"];
+    // Light bars and no gridlines, as on the other chart slides.
+    const options: PptxGenJS.IChartOpts = { w: 4.4, h: 2.3, valGridLine: { style: "none" }, chartColors: ["BDD7EE", "F8CBAD"], catAxisLabelFontFace: "Arial", valAxisLabelFontFace: "Arial" };
+
+    slide.addChart(
+        "bar",
+        [
+            { name: "Lorem", labels: shared, values: [3, 5, 4, 7, 6, 8, 5, 9] },
+            { name: "Ipsum", labels: shared, values: [3, 6, 5, 7, 4, 8, 6, 5] },
+        ],
+        { ...options, x: 0.4, y: 0.8, barGrouping: "stacked", catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months" },
+    );
+    // One color: with two, PptxGenJS writes each point of a single series an outline-only <c:dPt>, which LibreOffice
+    // and PowerPoint fill with accent1 4472C4 (#507), and the projection still differs from LibreOffice's (#541), so a
+    // dark box costs more than the ticks and table it scores. One entry gets no <c:dPt> and keeps its light fill.
+    const light3D: PptxGenJS.IChartOpts = { chartColors: ["BDD7EE"] };
+
+    slide.addChart("bar3D", [{ name: "Lorem", labels: months, values: [3, 5, 4, 7] }], { ...options, ...light3D, x: 5.2, y: 0.8, catLabelFormatCode: "mmm-yy", showDataTable: true, dataTableFontSize: 9 });
+    slide.addChart("bar3D", [{ name: "Lorem", labels: ["45292", "45323", "45352", "45383", "45413", "45444"], values: [3, 5, 4, 7, 6, 5] }], {
+        ...options,
+        ...light3D,
+        x: 0.4,
+        y: 3.2,
+        catLabelFormatCode: "mmm-yy",
+        catAxisMajorUnit: 2,
+        catAxisMajorTimeUnit: "months",
+        catAxisMinorTickMark: "out" as PptxGenJS.ChartAxisTickMark,
+        catAxisMinorUnit: 1,
+        catAxisMinorTimeUnit: "months",
+    });
 }

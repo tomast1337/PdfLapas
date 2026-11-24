@@ -453,6 +453,10 @@ export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     // `valAxisMajorTickMark: "cross"`, `valAxisMinorTickMark: "out"`, none for `valAxisLineShow: false` and
     // `valAxisMajorTickMark: "none"` (#565).
     drawsBar3DValueAxisLine: true,
+    // Its PDF export draws the category tick marks below the floor's front edge: outside major ticks between the
+    // categories of a text axis (D01), and on a date axis at each labelled slot with outside minor ticks at each
+    // month for catAxisMajorUnit 2 and catAxisMinorUnit 1 months (B05, B07, #631).
+    drawsBar3DCategoryTicks: true,
     // Its PDF export of a scatter and a bubble chart with `showDataTable` draws no table, as on a pie (#592).
     drawsScatterDataTable: false,
     // Its PDF export of synthetic scatter and bubble charts scales the x axis as a horizontal value axis, by the room

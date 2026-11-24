@@ -1168,6 +1168,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     // The category axis's tick marks, crossing, label skip and number format (makeCatAxis, #566).
     const catMajorTickMark = tickMark(options.catAxisMajorTickMark, "catAxisMajorTickMark", PPTX_DEFAULTS.chart.categoryMajorTickMark);
     const catMinorTickMark = tickMark(options.catAxisMinorTickMark, "catAxisMinorTickMark", catDefaults.minorTickMark);
+    // bar3D draws them on the floor's front edge where the target draws them (drawsBar3DCategoryTicks).
+    const bar3DCategoryTicksUndrawn = normalizedType === "bar3D" && !profile.drawsBar3DCategoryTicks;
     const categoryCount = series[0]?.labels.length ?? 0;
     // `<c:crossesAt val="${catAxisCrossesAt}"/>` on the value axis is the 1-based category it crosses before; a string
     // is written `<c:crosses val="...">` ("autoZero", "min" or "max").
@@ -1298,7 +1300,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     if (dateAxis && requestedFormatCode !== undefined && timeLine) {
         // A minor tick every catAxisMinorUnit catAxisMinorTimeUnit; without a unit, one a slot. LibreOffice 26.2.6 takes
         // catAxisMinorUnit alone in days, PowerPoint in the base unit (dateAxisMinorTimeUnit).
-        const minorTicks = catMinorTickMark !== "none" && normalizedType !== "bar3D";
+        const minorTicks = catMinorTickMark !== "none" && !bar3DCategoryTicksUndrawn;
         const minorTimeUnit = timeUnits.catAxisMinorTimeUnit ?? (axisNumbers.catAxisMinorUnit !== undefined && profile.dateAxisMinorTimeUnit === "days" ? "days" : timeUnits.catAxisBaseTimeUnit);
         const layout = dateAxisLayout({
             serials,
@@ -1318,16 +1320,11 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
             throw new TypeError("catAxisMinVal must not be after catAxisMaxVal on a date axis");
         }
 
-        // shortcut: a stack over several dates in one slot adds each series' point to the same point of the series before
-        // it in LibreOffice 26.2.6 and PowerPoint (A04), where ECharts adds the points of one slot together; draw it when a
-        // deck needs one.
-        if (series.some(item => item.stack !== undefined) && new Set(layout.categorySlots).size < layout.categorySlots.length) {
-            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catAxisBaseTimeUnit[stacked, several dates in one slot]`] });
-        }
-
-        // shortcut: a bar3D chart's data table on a time line is not measured; measure it when a deck needs one.
-        if (options.showDataTable && normalizedType === "bar3D") {
-            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: ["showDataTable[bar3D date axis]"] });
+        // A column or bar stack over several dates in one slot adds each series' point to the same point of the series
+        // before it (A04, #631), which the renderer draws as a stack per date of the slot. shortcut: an area stack is not
+        // measured, and a combo chart's series line up with the renderer's by index; draw them when a deck needs one.
+        if (series.some(item => item.stack !== undefined && (mixed || (item.type !== "bar" && item.type !== "bar3D"))) && new Set(layout.categorySlots).size < layout.categorySlots.length) {
+            throw new UnsupportedChartError({ reason: "chart-option", chartTypes, unsupportedOptions: [`catAxisBaseTimeUnit[stacked ${mixed ? "combo" : "area"}, several dates in one slot]`] });
         }
 
         const dateLabel = (serial: number) => (dateFormat ? formatChartDate(serial, requestedFormatCode) : formatChartNumber(serial, requestedFormatCode));
@@ -1407,7 +1404,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         lineWidth: positiveNumber(options.catAxisLineSize || undefined, "catAxisLineSize", catDefaults.lineWidthPt),
         lineStyle: options.catAxisLineStyle ?? catDefaults.lineStyle,
         // PptxGenJS writes `<c:minorTickMark val="none"/>` on a scatter chart's axes, as its major ones.
-        minorTickMark: normalizedType === "scatter" ? "none" : catMinorTickMark,
+        minorTickMark: normalizedType === "scatter" || bar3DCategoryTicksUndrawn ? "none" : catMinorTickMark,
         ...(valueAxisCrossing ? { valueAxisCrossing } : {}),
         gridLineColor: normalizeColor(catGridLine?.color ?? PPTX_DEFAULTS.chart.gridLine.color),
         gridLineWidth: positiveNumber(catGridLine?.size, "catGridLine.size", PPTX_DEFAULTS.chart.gridLine.widthPt),
@@ -1645,7 +1642,7 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
         axisLineVisible: options.catAxisLineShow ?? PPTX_DEFAULTS.chart.categoryAxisLineVisible,
         // PptxGenJS 4.0.1 writes `<c:majorTickMark val="none"/>` and `<c:minorTickMark val="none"/>` on both scatter
         // axes, whatever catAxisMajorTickMark or valAxisMajorTickMark say.
-        categoryMajorTickMark: normalizedType === "scatter" ? "none" : catMajorTickMark,
+        categoryMajorTickMark: normalizedType === "scatter" || bar3DCategoryTicksUndrawn ? "none" : catMajorTickMark,
         valueAxisMinimum: primaryAxis.minimum,
         valueAxisMaximum: primaryAxis.maximum,
         valueAxes: normalizedType === "scatter" ? valueAxes.map(axis => ({ ...axis, majorTickMark: "none" as const, minorTickMark: "none" as const })) : valueAxes,

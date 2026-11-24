@@ -326,6 +326,37 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         }
     }
 
+    // The category tick marks below the floor's front edge (normalizeChart keeps them only where the target draws them,
+    // drawsBar3DCategoryTicks, #631): major ones between categories, or at each labelled slot of a date axis and its
+    // end; minor ones at the date axis's minor ticks, or with the major ones on a text axis. A slot's start is its index.
+    if (!categoryAxisModel.hidden) {
+        const majorStarts: number[] = [];
+
+        for (let index = 0; index <= categoryCount; index++) {
+            if (!dateSlots || index === categoryCount || labels[index] !== "") {
+                majorStarts.push(index);
+            }
+        }
+
+        const tickStroke: Attribute[] = [
+            ["stroke", categoryAxisModel.lineColor],
+            ["stroke-width", n(pointsToPixels(categoryAxisModel.lineWidth))],
+        ];
+
+        for (const [mark, starts] of [
+            [categoryAxisModel.minorTickMark, dateSlots?.minorTicks ?? majorStarts],
+            [chart.categoryMajorTickMark, majorStarts],
+        ] as const) {
+            for (const start of mark === "none" ? [] : starts) {
+                const point = project(categoryAxisModel.reversed ? 1 - start / categoryCount : start / categoryCount, frontDepth, minimum);
+                const below = mark === "inside" ? 0 : TICK_LENGTH;
+                const above = mark === "outside" ? 0 : TICK_LENGTH;
+
+                grid.push(element("line", [["class", "bar3d-category-tick"], ["x1", n(point.x)], ["y1", n(point.y - above)], ["x2", n(point.x)], ["y2", n(point.y + below)], ...tickStroke]));
+            }
+        }
+    }
+
     // The value axis title, turned up, beside its labels (LibreOffice draws it left of the plot area).
     if (axis?.showTitle) {
         const titlePx = pointsToPixels(axis.titleFontSize);
@@ -828,7 +859,14 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
         const columnsLeft = tableLeft + 3 * LEGEND_TEXT_GAP + (table.keys ? keyPx + LEGEND_TEXT_GAP : 0) + widestName;
         const tableTop = area.y + area.height + gap;
         const tableBottom = tableTop + (chart.series.length + 1) * tableRowPx;
-        const column = (tableRight - columnsLeft) / categoryCount;
+        // On a date axis a column per category, named by its date, in category order: a time-line slot wide, or sharing
+        // the table's width (dateColumns, as on a 2D chart). LibreOffice 26.2.6 draws the slot-wide ones on a bar3D chart
+        // too (#631). shortcut: PowerPoint's bar3D table on a date axis is not measured, so it takes its 2D columns; check
+        // it when a PowerPoint export of one is available.
+        const tableColumns = dateSlots?.categoryLabels ?? labels;
+        const columnCount = dateSlots ? tableColumns.length : categoryCount;
+        const column = (tableRight - columnsLeft) / Math.max(1, dateSlots && table.dateColumns === "slots" ? categoryCount : columnCount);
+        const columnX = (index: number): number => columnsLeft + ((dateSlots ? index : categorySlot(index)) + 0.5) * column;
         const textStyle: Attribute[] = [
             ["font-family", table.fontFace],
             ["font-size", n(tablePx)],
@@ -846,12 +884,12 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
                 ["stroke-width", n(pointsToPixels(table.borderWidth))],
             ]);
 
-        for (let index = 0; index < categoryCount; index++) {
-            const text = labels[index] ?? String(index + 1);
+        for (let index = 0; index < columnCount; index++) {
+            const text = tableColumns[index] ?? String(index + 1);
             const number = Number(text);
             const label = categoryAxisModel.labelFormatCode && text.trim() !== "" && Number.isFinite(number) ? formatChartNumber(number, categoryAxisModel.labelFormatCode) : text;
 
-            tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnsLeft + (categorySlot(index) + 0.5) * column)], ["y", n(tableTop + tableRowPx / 2)], ["text-anchor", "middle"], ...textStyle], escapeText(label)));
+            tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnX(index))], ["y", n(tableTop + tableRowPx / 2)], ["text-anchor", "middle"], ...textStyle], escapeText(label)));
         }
 
         for (const [row, series] of chart.series.entries()) {
@@ -874,7 +912,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(nameX + (table.keys ? keyPx + LEGEND_TEXT_GAP : 0))], ["y", n(y)], ...textStyle], escapeText(series.name)));
 
             for (const [index, value] of series.values.entries()) {
-                tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnsLeft + (categorySlot(index) + 0.5) * column)], ["y", n(y)], ["text-anchor", "middle"], ...textStyle], escapeText(formatChartNumber(value, valueFormat))));
+                tableSvg.push(element("text", [["class", "bar3d-table"], ["x", n(columnX(index))], ["y", n(y)], ["text-anchor", "middle"], ...textStyle], escapeText(formatChartNumber(value, valueFormat))));
             }
         }
 
@@ -883,7 +921,7 @@ export function renderBar3DSvg(width: number, height: number, chart: NormalizedC
             tableSvg.push(rule(tableLeft, tableTop + row * tableRowPx, tableRight, tableTop + row * tableRowPx));
         }
 
-        for (let index = 0; table.verticalBorder && index < categoryCount; index++) {
+        for (let index = 0; table.verticalBorder && index < columnCount; index++) {
             tableSvg.push(rule(columnsLeft + index * column, index === 0 ? tableTop + tableRowPx : tableTop, columnsLeft + index * column, tableBottom));
         }
 

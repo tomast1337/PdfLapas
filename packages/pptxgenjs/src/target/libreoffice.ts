@@ -271,6 +271,9 @@ export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     // bar3D draws its value axis on a wall, where 26.2.6 draws neither an axis line nor tick marks whatever
     // valAxisLine* and valAxis*TickMark say (#561).
     drawsBar3DValueAxisLine: false,
+    // Nor category tick marks on the floor's edge, whatever catAxisMajorTickMark and catAxisMinorTickMark say: none on a
+    // text axis (D01) or a date axis with outside major and minor ticks (B07, #631).
+    drawsBar3DCategoryTicks: false,
     // Its PDF export of a scatter or bubble chart with `showDataTable` draws a single malformed row ("Series1" over the
     // first x value), which the renderers do not draw (#592).
     drawsScatterDataTable: true,

@@ -1675,8 +1675,21 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
             // Each point at its date's slot, in category order: a line joins the points across empty slots, through the
             // points of one slot, and toward a point outside the time line as far as the plot's edge; bars of one slot
             // overlap, and a stack adds each series' point to the same point of the series before it (#593).
+            // A stack over several dates in one slot adds each series' point to the same point of the series before it, as
+            // LibreOffice 26.2.6 and PowerPoint draw it (A04, #631), where ECharts adds the points of one slot together: each
+            // point's rank among its slot's dates gets a stack of its own, all over one another.
+            const ranks: number[] = [];
+
             if (dateSlots) {
                 const slotted: unknown[] = [];
+                const seen = new Map<number, number>();
+
+                for (const slot of dateSlots.categorySlots) {
+                    const rank = seen.get(slot) ?? 0;
+
+                    ranks.push(rank);
+                    seen.set(slot, rank + 1);
+                }
 
                 for (const [category, item] of data.entries()) {
                     const slot = slotsBefore + (dateSlots.categorySlots[category] ?? 0);
@@ -1689,7 +1702,7 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 data = slotted;
             }
 
-            cartesian.push({
+            const drawn: Record<string, unknown> = {
                 label,
                 name: series.name,
                 type: seriesType,
@@ -1719,7 +1732,26 @@ export function renderChart(chart: NormalizedChart, style: NormalizedObjectStyle
                 // PowerPoint and LibreOffice draw a combo chart's area group behind the other types, whatever the call
                 // order (#538); ECharts draws a line series (an area's too) at z 3, over the bars at z 2.
                 ...(chart.type === "mixed" && series.type === "area" ? { z: 1 } : {}),
-            });
+            };
+            const rankCount = series.stack ? Math.max(0, ...ranks) + 1 : 1;
+
+            // normalizeChart keeps such a stack out of a combo chart, whose series this array lines up with.
+            for (let rank = 0; rank < rankCount; rank++) {
+                if (rankCount === 1) {
+                    cartesian.push(drawn);
+                    continue;
+                }
+
+                const ranked: unknown[] = [];
+
+                for (const [category, point] of data.entries()) {
+                    if (ranks[category] === rank) {
+                        ranked.push(point);
+                    }
+                }
+
+                cartesian.push({ ...drawn, data: ranked, stack: `${String(drawn.stack)}-rank${rank}`, barGap: "-100%" });
+            }
         }
 
         // ECharts places a band's bars from the top down in series order, and draws each series over the ones before it.

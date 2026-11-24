@@ -767,6 +767,18 @@ describe("PDFKit renderer", () => {
         expect((decimal?.x ?? 0) + width("12")).toBeCloseTo(96 + 288, 2);
     });
 
+    test("refuses elements nested past the renderer's depth instead of exhausting the stack (#448)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addImage({ data: `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">${"<g>".repeat(300)}<rect width="1" height="1"/>${"</g>".repeat(300)}</svg>`)}`, x: 1, y: 1, w: 1, h: 1 });
+        const document = await pres.toHtml();
+
+        await renderer.render(document);
+        expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': an SVG image's elements nest deeper than 256 levels; the picture is not drawn"]);
+        await expect(renderer.render({ ...document, html: document.html.replace("</body>", `${"<div>".repeat(300)}</body>`) })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels");
+    });
+
     test("runs a right-to-left paragraph's words from the right, and reports mixed directions", async () => {
         const renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ }), onUnsupported: "warn" });
         const pdf = await render(renderer, pres => pres.addSlide().addText("שלום עולם", { x: 1, y: 1, w: 5, h: 1, fontFace: "Arial", align: "right", rtlMode: true }));

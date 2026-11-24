@@ -40,6 +40,8 @@ use crate::path::rect_path;
 use crate::table::TableLayout;
 use crate::text::draw::LinkQuad;
 pub use crate::text::font::MissingFont;
+/// Font file bytes behind an `Arc`, which renderers on several threads can register without copying them.
+pub type SharedFont = Blob<u8>;
 use crate::text::layout::{BoxLayout, Brush};
 
 /// Model page sizes are in inches; PDF user space is in points.
@@ -129,7 +131,21 @@ impl Renderer {
         if !text::font::usable_font_file(&data) {
             return 0;
         }
-        let families = self.fonts.collection.register_fonts(Blob::from(data), None);
+        self.register_font(SharedFont::from(data))
+    }
+
+    /// `add_font` for bytes several renderers share: each renderer (one per thread in `crates/pdf-ffi`'s pool) keeps
+    /// its own parsed collection, layout and PDF font caches, but they all point at these bytes instead of a copy each.
+    pub fn add_shared_font(&mut self, data: SharedFont) -> u32 {
+        if !text::font::usable_font_file(data.data()) {
+            return 0;
+        }
+        self.register_font(data)
+    }
+
+    /// Registers a font file `text::font::usable_font_file` accepted.
+    fn register_font(&mut self, data: SharedFont) -> u32 {
+        let families = self.fonts.collection.register_fonts(data, None);
         // parley appends the `emoji` generic family for emoji-presentation clusters.
         for (id, _) in &families {
             if self

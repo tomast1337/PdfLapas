@@ -6,6 +6,10 @@
 //! Every buffer a call writes to `out` belongs to the caller, who copies it and releases it with
 //! `pdflapas_buffer_free`. A panic never crosses the boundary: each call runs under `catch_unwind` (the `native`
 //! profile unwinds), returns `PDFLAPAS_ERROR`, and poisons the handle, whose state the panic may have left half-written.
+//!
+//! `pool` puts several renderers on threads behind one handle (`pdflapas_pool_*`), sharing the font bytes.
+mod pool;
+
 use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
@@ -30,13 +34,17 @@ pub struct PdflapasRenderer {
 
 const POISONED: &str = "this native renderer panicked in an earlier call and cannot be used again; create another (and report the document that caused it)";
 
-fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
-    let detail = payload
+/// What a caught panic says: its `&str` or `String` payload.
+fn panic_detail(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
         .downcast_ref::<&str>()
         .map(|text| (*text).to_owned())
         .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_default();
-    format!("the native renderer panicked: {detail}; {POISONED}")
+        .unwrap_or_default()
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    format!("the native renderer panicked: {}; {POISONED}", panic_detail(payload))
 }
 
 /// Bytes from a caller pointer: a null pointer is an empty slice only when `len` is 0.
@@ -56,14 +64,17 @@ unsafe fn caller_bytes<'a>(data: *const u8, len: usize) -> Result<&'a [u8], Stri
 /// # Safety
 /// `out` must be a valid, writable `PdflapasBuffer`.
 unsafe fn give(out: *mut PdflapasBuffer, bytes: Vec<u8>) {
+    // SAFETY: the caller guarantees `out` is writable.
+    unsafe { out.write(owned(bytes)) };
+}
+
+/// `bytes` as a buffer the caller owns and releases with `pdflapas_buffer_free`.
+fn owned(bytes: Vec<u8>) -> PdflapasBuffer {
     let boxed = bytes.into_boxed_slice();
     let len = boxed.len();
-    // SAFETY: the caller guarantees `out` is writable.
-    unsafe {
-        out.write(PdflapasBuffer {
-            ptr: Box::into_raw(boxed).cast::<u8>(),
-            len,
-        });
+    PdflapasBuffer {
+        ptr: Box::into_raw(boxed).cast::<u8>(),
+        len,
     }
 }
 

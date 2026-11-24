@@ -29,6 +29,31 @@ export type NativeRenderer = PresentationRenderer & {
     [Symbol.dispose](): void;
 };
 
+export type NativeRendererPoolOptions = NativeRendererOptions & {
+    /** Render threads, all sharing one copy of `fonts`. Default: one per core but one, at most 8. */
+    threads?: number;
+};
+
+/**
+ * What createNativeRendererPool() returns: the surface of @pdflapas/wasm's WasmRendererPool. Renders run on threads in
+ * the library, so `render()` does not block the event loop; only copying the HTML in and the PDF out does.
+ */
+export type NativeRendererPool = PresentationRenderer & {
+    /** What the last render to finish could not draw; with several in flight, read the error of the one you need instead. */
+    warnings(): string[];
+    /** The font faces the last render to finish asked for that none of the fonts provides. */
+    missingFonts(): MissingFont[];
+    /** Stops the threads; queued and in-flight renders reject. */
+    close(): Promise<void>;
+    [Symbol.asyncDispose](): Promise<void>;
+};
+
+const NEEDS_BUN = "@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node";
+
 export async function createNativeRenderer(_options: NativeRendererOptions): Promise<NativeRenderer> {
-    throw new Error("@pdflapas/native needs Bun's FFI; use @pdflapas/wasm on Node");
+    throw new Error(NEEDS_BUN);
+}
+
+export async function createNativeRendererPool(_options: NativeRendererPoolOptions): Promise<NativeRendererPool> {
+    throw new Error(NEEDS_BUN);
 }

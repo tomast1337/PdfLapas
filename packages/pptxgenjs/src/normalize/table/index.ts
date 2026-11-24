@@ -10,6 +10,7 @@ import { tableMarginPixels } from "#src/normalize/margin";
 import { TRANSPARENT } from "#src/color";
 import { checkedSize } from "#src/normalize/size";
 import { normalizeColor, normalizeFill } from "#src/normalize/style";
+import type { SharedRunOptions } from "#src/normalize/sharedRunOptions";
 import { floorTextWrapWidth, normalizeText, type TextInput } from "#src/normalize/text";
 
 const INHERITED_CELL_OPTIONS = ["align", "bold", "border", "color", "fill", "fontFace", "fontSize", "margin", "textDirection", "underline", "valign"] as const;
@@ -183,6 +184,8 @@ export function tableRow(row: unknown, index: number): PptxGenJS.TableRow {
 export type TableRunWriting = {
     /** The table's options as the caller gave them, without the face PdfLapas fills in to draw them; `options` when unset. */
     readonly table?: PptxGenJS.TableProps;
+    /** What PptxGenJS wrote onto run options objects in earlier text boxes and cells. */
+    readonly shared?: SharedRunOptions;
 };
 
 export function normalizeTable(
@@ -296,7 +299,7 @@ export function normalizeTable(
             // shortcut: the theme font (soft breaks, a cell without fontFace) is the default Calibri whatever the
             // deck's theme; pass pres.theme.bodyFontFace in once #256 settles the table normalizer's inputs.
             const theme = PPTX_DEFAULTS.theme.bodyFontFace;
-            const text = normalizeText(input, textOptions, target, fontMetrics, theme, cellOptions.fontFace ?? theme, { box, cell: true });
+            const text = normalizeText(input, textOptions, target, fontMetrics, theme, cellOptions.fontFace ?? theme, { box, shared: writing.shared, cell: true });
 
             text.margin = tableMarginPixels(cellOptions.margin);
             // PptxGenJS 4.0.1 writes `fit` (and `shrinkText`, `autoFit`) only into a text box's <a:bodyPr>

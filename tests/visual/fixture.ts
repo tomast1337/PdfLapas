@@ -548,7 +548,7 @@ const WRAPPING_TEXT = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
 const LINE_FEED_TAIL_CASE = { page: PARAGRAPH_PAGE + 1, name: "text-line-feed-tail-run", x: 0.5, y: 1, w: 4, h: 2.5 } as const;
 // The line-feed slide too: paragraphs written without a run, at the size on their <a:endParaRPr>.
 const EMPTY_PARAGRAPH_CASE = { page: PARAGRAPH_PAGE + 1, name: "text-empty-paragraph-mark", x: 5.5, y: 1, w: 4, h: 2.5 } as const;
-// The line-feed slide too: two text boxes, and two tables, given copies of the same run options.
+// The line-feed slide too: run options two text boxes, and two tables, share.
 const SHARED_RUN_OPTIONS_CASE = { page: PARAGRAPH_PAGE + 1, name: "text-shared-run-options", x: 0.5, y: 3.9, w: 9, h: 1.2 } as const;
 // The custom-baseline slide: runs with a custom `baseline` at two sizes, on the slide after; no WASM deck takes it.
 const CUSTOM_BASELINE_CASES = [
@@ -2170,21 +2170,18 @@ export function populateParityFixture(presentation: Presentation): void {
             ],
             { x: empty.x, y: empty.y + 1.1, w: empty.w, border: { type: "solid", pt: 1, color: "404040" }, ...style },
         );
-        // Each box gets its own copy of the run options: PptxGenJS 4.0.1 writes a box's options onto them in place (so
-        // shared objects would draw the second box at the first one's 12pt), which PdfLapas does not reproduce across
-        // calls (#645). Each box still draws its own options written onto its runs (genXmlTextBody STEP 6).
+        // PptxGenJS writes the first box's options onto the run options both boxes share (sharedRunOptions.ts): the
+        // second box's runs keep the first one's 12pt and spacing, and the second table's run its 14pt, red and right.
         const shared = SHARED_RUN_OPTIONS_CASE;
         const title = { color: "0077AA", italic: true, breakLine: true, paraSpaceAfter: 5 };
         const item = { breakLine: true, paraSpaceAfter: 3 };
-        // One copy for both of the first box's items: runs of one box share it, as they share `item` in the second.
-        const firstItem = { ...item };
         const column = { y: shared.y, w: 2.1, h: shared.h, fontFace: "Arial", color: "000000", align: "left", valign: "top", margin: 0 } as const;
 
         slide.addText(
             [
-                { text: "Column A", options: { ...title } },
-                { text: "Alpha", options: firstItem },
-                { text: "Beta", options: firstItem },
+                { text: "Column A", options: title },
+                { text: "Alpha", options: item },
+                { text: "Beta", options: item },
             ],
             { ...column, x: shared.x, fontSize: 12 },
         );
@@ -2199,7 +2196,7 @@ export function populateParityFixture(presentation: Presentation): void {
         const cellRun = { breakLine: true };
         const table = { y: shared.y, w: 2.1, fontFace: "Arial", border: { type: "solid", pt: 1, color: "404040" } } as const;
 
-        slide.addTable([[{ text: [{ text: "Cell A", options: { ...cellRun } }, { text: "Own tail" }] }]], { ...table, x: shared.x + 4.6, fontSize: 14, color: "AA0000", align: "right" });
+        slide.addTable([[{ text: [{ text: "Cell A", options: cellRun }, { text: "Own tail" }] }]], { ...table, x: shared.x + 4.6, fontSize: 14, color: "AA0000", align: "right" });
         slide.addTable([[{ text: [{ text: "Cell B", options: cellRun }, { text: "Own tail" }] }]], { ...table, x: shared.x + 6.9, fontSize: 8, color: "0000AA", align: "left" });
         // PptxGenJS 4.0.1 addTableDefinition drops a `colW` whose length is not the column count; with no `w`, genXmlTable
         // then writes 1in columns.

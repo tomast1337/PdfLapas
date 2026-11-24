@@ -59,8 +59,11 @@ export function shrinkAttributes(): (readonly [name: string, value: string])[] {
     ];
 }
 
-/** Adds the text box's declarations to `css`, which the caller writes; returns the box's attributes and its content. */
-export function renderText(css: InlineStyle, text: NormalizedTextBox): { attributes: Attribute[]; content: Html } {
+/**
+ * Adds the text box's declarations to `css`, which the caller writes; returns the box's attributes and its content.
+ * `mirrored`: the box is flipped one way only, so the content mirrors back, about its own centre (#627).
+ */
+export function renderText(css: InlineStyle, text: NormalizedTextBox, mirrored: boolean): { attributes: Attribute[]; content: Html } {
     const [top, right, bottom, left] = text.margin;
 
     css.set("padding", `${top}px ${right}px ${bottom}px ${left}px`);
@@ -93,6 +96,10 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox): { attribu
         contentCss.set("writing-mode", text.direction === "vertical270" ? "vertical-rl" : "vertical-lr");
         contentCss.set("text-orientation", text.direction === "stacked" ? "upright" : "mixed");
         contentCss.set("height", "100%");
+    }
+
+    if (mirrored) {
+        contentCss.set("transform", "scaleX(-1)");
     }
 
     const paragraphs: Html[] = [];

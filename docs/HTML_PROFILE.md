@@ -266,7 +266,10 @@ There is no media, notes or master element: the model has no such kinds.
 
 `render/text.ts`. The box is a flex container: `align-items` is the vertical anchor (`flex-start`,
 `center`, `flex-end`). Vertical text sets `writing-mode` (`vertical-rl` for `vertical270`, `vertical-lr`
-otherwise) and `text-orientation` (`upright` for `stacked`) on `.text-content`. With `fit: resize` the
+otherwise) and `text-orientation` (`upright` for `stacked`) on `.text-content`. A box flipped one way only
+(`flipH` or `flipV`, not both) sets `transform: scaleX(-1)` on `.text-content`, which mirrors the text back
+about the middle of its text area: PowerPoint and LibreOffice flip the shape and the text area but never
+mirror glyphs, so `flipH` text reads as unflipped and `flipV` text is turned 180 degrees. With `fit: resize` the
 height becomes `min-height` and `height: auto`. With `fit: shrink` the box also states the shrink rule
 (`PPTX_DEFAULTS.text.shrink`): `data-text-fit-step="0.95"`, `data-text-fit-max-steps="20"` and
 `data-text-fit-tolerance="0.5"`. While the text overflows the box's inner size (its size less the

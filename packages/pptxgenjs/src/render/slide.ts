@@ -98,7 +98,10 @@ export function presentationHtml(presentation: NormalizedPresentation, pass: Ren
                     const css: InlineStyle = new Map();
                     const objectAttributes = applyObjectStyle(css, object.shape ? { ...object.style, fill: undefined, line: undefined, shadow: undefined } : object.style);
                     const svg = object.shape ? [renderShapeSvg(object.shape, object.style)] : [];
-                    const text = renderText(css, object.text);
+                    // PowerPoint and LibreOffice flip a text box's shape and its text area, never its glyphs: flipH
+                    // leaves the text reading left to right, flipV turns it 180 degrees, both together are a 180-degree
+                    // turn of the box. Under one flip the content mirrors back (#627).
+                    const text = renderText(css, object.text, object.style.transform.flipH !== object.style.transform.flipV);
 
                     objects.push(element("div", [["class", "slide-element slide-text"], ...objectAttributes, ["data-shape", object.shape?.name], ...text.attributes, styleAttribute(css)], [...svg, text.content]));
                     break;

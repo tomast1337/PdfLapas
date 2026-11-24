@@ -261,6 +261,8 @@ pub(crate) struct TextBox {
     pub(crate) wrap: bool,
     pub(crate) fit: TextFit,
     pub(crate) direction: TextDirection,
+    /// `.text-content` `transform: scaleX(-1)`: the text mirrors back inside a box flipped one way (HTML_PROFILE).
+    pub(crate) mirrored: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -659,6 +661,7 @@ pub(crate) mod build {
             wrap: true,
             fit: TextFit::None,
             direction: TextDirection::Horizontal,
+            mirrored: false,
         }
     }
 }

@@ -403,6 +403,12 @@ async function prepareForPrint(): Promise<string[]> {
         );
 
         if (paragraphs.length) {
+            // Transforms move no layout: read lines in the boxes' own axes, where the text runs left to right even in a
+            // turned or flipped box (a flipV box turns its text 180 degrees, #627).
+            const flat = document.createElement("style");
+
+            flat.textContent = "* { transform: none !important; }";
+            document.head.append(flat);
             // Client rects are in zoomed px, word-spacing in CSS px; the line breaker rounds each piece up to a LayoutUnit.
             const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
             const LAYOUT_UNIT = 1 / 64;
@@ -544,6 +550,8 @@ async function prepareForPrint(): Promise<string[]> {
                     }
                 }
             }
+
+            flat.remove();
         }
     }
 
@@ -800,12 +808,19 @@ async function prepareForPrint(): Promise<string[]> {
             const hosts = new Map<Element, SVGSVGElement>();
 
             for (const run of drawn) {
-                const host = run.closest(".text-content")?.parentElement;
+                const content = run.closest<HTMLElement>(".text-content");
+                const host = content?.parentElement;
 
-                if (host && !hosts.has(host)) {
+                if (content && host && !hosts.has(host)) {
                     const svg = document.createElementNS(SVG, "svg");
 
                     svg.setAttribute("style", "position: absolute; left: 0px; top: 0px; width: 1px; height: 1px; overflow: visible; pointer-events: none;");
+                    // A mirrored .text-content (#627) mirrors its lines with it, about its own middle.
+                    if (content.style.transform) {
+                        svg.style.transformOrigin = `${content.offsetLeft + content.offsetWidth / 2}px 0px`;
+                        svg.style.transform = content.style.transform;
+                    }
+
                     host.append(svg);
                     hosts.set(host, svg);
                 }

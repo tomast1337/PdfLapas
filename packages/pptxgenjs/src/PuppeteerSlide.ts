@@ -288,6 +288,19 @@ export class PuppeteerSlide implements PptxSlide {
             { ...chartOptions, holeSize, legendFontFace: chartOptions.legendFontFace ?? this.context.bodyFontFace() },
             this.context.target,
         );
+
+        // PptxGenJS 4.0.1 keeps the options object of every addChart() and writes its defaults onto it in place (chart
+        // type, grouping, colors, label format, a marker outline width multiplied by 12700 each call), then writes every
+        // chart from it as it is when the file is written. So all charts on one object take the last call's state, in
+        // LibreOffice too. Each chart here is drawn from its options at its own call, an intentional difference that
+        // warns instead (docs/MIGRATION.md).
+        if (this.context.chartOptionsSeen.has(chartOptions)) {
+            this.context.warn(
+                `addChart(): the options object was given to an earlier addChart() too. PptxGenJS 4.0.1 reads chart options only when it writes the file, after writing its defaults onto them in place, so every chart sharing that object takes its final state (the last chart's type, grouping, colors and labels, and marker outlines past the largest line width). PdfLapas draws each chart from its options at its own call. Pass each chart its own copy, e.g. \`{ ...options }\`.`,
+            );
+        }
+
+        this.context.chartOptionsSeen.add(chartOptions);
         const series: NormalizedChartSeries[] = [];
 
         // A point whose <c:dPt> has no fill keeps its series fill where the target draws it so (chartPointKeepsSeriesFill);

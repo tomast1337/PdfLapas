@@ -1126,10 +1126,10 @@ describe("chart normalization and rendering", () => {
     });
 
     test("steps a 2D value axis by the room its labels have on the target (valueAxisStepRoom, #585, #589)", () => {
-        const scale = (target: "libreoffice" | "powerpoint", type: "bar" | "line", values: number[], options: PptxGenJS.IChartOpts): string => {
+        const scale = (target: "libreoffice" | "powerpoint", type: "bar" | "line", values: number[], options: PptxGenJS.IChartOpts, names = ["A", "B", "C", "D"]): string => {
             const presentation = new PuppeteerGen(undefined, { target });
 
-            presentation.addSlide().addChart(type, [{ name: "Lorem", labels: ["A", "B", "C", "D"], values }], { x: 0.3, y: 0.7, w: 6, valAxisLabelFontFace: "Arial", valAxisLabelFontSize: 10, ...options });
+            presentation.addSlide().addChart(type, [{ name: "Lorem", labels: names, values }], { x: 0.3, y: 0.7, w: 6, valAxisLabelFontFace: "Arial", valAxisLabelFontSize: 10, ...options });
             const svg = renderedPage(presentation).querySelector(".slide-chart svg");
             const anchor = options.barDir === "bar" ? "middle" : "end";
             const labels = Array.from(svg?.querySelectorAll(`text[text-anchor='${anchor}']`) ?? [], text => text.textContent ?? "").filter(text => /^-?[\d.]+$/.test(text));
@@ -1149,6 +1149,14 @@ describe("chart normalization and rendering", () => {
         // A horizontal axis: 3, 9, 16, 12 on a 4in chart runs 0..18 by 2 in LibreOffice, 0..20 by 5 in PowerPoint.
         expect(scale("libreoffice", "bar", [3, 9, 16, 12], { h: 4.4, w: 4, barDir: "bar" })).toBe("0..18 (10)");
         expect(scale("powerpoint", "bar", [3, 9, 16, 12], { h: 4.4, w: 4, barDir: "bar" })).toBe("0..20 (5)");
+        // #620: PowerPoint's room is the axis it lays out, the frame less 13.9pt and 2.14 label sizes on a column chart and
+        // the width less the category names on a horizontal bar: 0, 8, 20, 14 runs 0..30 by 10 on a 1.3in column chart,
+        // 0..25 by 5 on a 1.5in one, and 0, 6.4, 16, 11.2 0..20 by 10 on a 2.5in wide horizontal bar.
+        const quarters = { catAxisLabelFontFace: "Arial", catAxisLabelFontSize: 10, w: 2.6 };
+
+        expect(scale("powerpoint", "bar", [0, 8, 20, 14], { ...quarters, h: 1.3 })).toBe("0..30 (4)");
+        expect(scale("powerpoint", "bar", [0, 8, 20, 14], { ...quarters, h: 1.5 })).toBe("0..25 (6)");
+        expect(scale("powerpoint", "bar", [0, 6.4, 16, 11.2], { ...quarters, h: 2.2, w: 2.5, barDir: "bar" }, ["Q1", "Q2", "Q3", "Q4"])).toBe("0..20 (3)");
     });
 
     test("steps a bar3D value axis as LibreOffice does, by valAxisMajorUnit when set (#541)", () => {

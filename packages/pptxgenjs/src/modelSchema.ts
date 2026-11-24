@@ -273,7 +273,15 @@ const valueAxis = z.strictObject({
             fixedMinimum: z.boolean(),
             fixedMaximum: z.boolean(),
             labelHeightsPerStep: z.number().positive().optional(),
-            stepRoom: z.strictObject({ label: z.enum(["height", "width"]), perStep: z.number().positive(), rounding: finite, maxIncrements: z.number().int().min(2) }).optional(),
+            stepRoom: z
+                .strictObject({
+                    label: z.enum(["height", "width"]),
+                    perStep: z.number().positive(),
+                    rounding: finite,
+                    maxIncrements: z.number().int().min(2),
+                    length: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("laidOut") }), z.strictObject({ kind: z.literal("band"), pt: finite, em: finite })]).optional(),
+                })
+                .optional(),
             padding: z.strictObject({ ratio: z.number().min(0), maxSteps: z.number().int().min(1), dropsHalfRange: z.boolean(), bubbleRoom: z.number().min(0), count: z.enum(["bounds", "range"]) }).optional(),
         })
         .optional(),

@@ -1131,6 +1131,11 @@ The chart's options drive ECharts or the 3D bar renderer; the HTML keeps only th
 | `NormalizedChartValueAxis.automaticScale.stepRoom.perStep`       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.automaticScale.stepRoom.rounding`      | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.automaticScale.stepRoom.maxIncrements` | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartValueAxis.automaticScale.stepRoom.length`        | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartStepRoomLength<laidOut>.kind`                    | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartStepRoomLength<band>.kind`                       | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartStepRoomLength<band>.pt`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
+| `NormalizedChartStepRoomLength<band>.em`                         | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartValueAxis.automaticScale.padding`                | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartAxisPadding.ratio`                               | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |
 | `NormalizedChartAxisPadding.maxSteps`                            | gap     | Not in the HTML: only the drawn SVG (see [Charts](#charts)). |

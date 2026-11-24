@@ -307,6 +307,11 @@ export type RenderingTargetProfile = {
      */
     readonly drawsBar3DValueAxisLine: boolean;
     /**
+     * Whether a bar3D chart draws its category tick marks (`catAxisMajorTickMark`, `catAxisMinorTickMark`) on the
+     * floor's front edge, or none (`NormalizedChart.categoryMajorTickMark`, `NormalizedChartCategoryAxis.minorTickMark`).
+     */
+    readonly drawsBar3DCategoryTicks: boolean;
+    /**
      * Whether a scatter or bubble chart draws its data table (`showDataTable`), which the renderers do not draw, so it
      * is rejected, or none (`NormalizedChart.dataTable`).
      */

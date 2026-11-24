@@ -2697,16 +2697,29 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         // Consecutive serials with a number format stay the categories, formatted as numbers.
         expect(normalizeChart("line", dates(["1", "2", "3"]), { catLabelFormatCode: "0.0" }).categoryAxis).toMatchObject({ labelFormatCode: "0.0" });
         expect(normalizeChart("line", dates(["1", "2", "3"]), { catLabelFormatCode: "0.0" }).categoryAxis.dateSlots).toBeUndefined();
-        // Several dates share their month's slot (#593); stacked, ECharts would stack them by slot, so they throw.
+        // Several dates share their month's slot (#593). A column or bar3D stack adds each point to the same point of the
+        // series before it (A04, #631, drawn as a stack per date of the slot); an area stack throws.
         expect(normalizeChart("line", dates(["45292", "45293", "45323"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months" }).categoryAxis.dateSlots?.categorySlots).toEqual([0, 0, 1]);
-        expect(() => normalizeChart("area", dates(["45292", "45293"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months", barGrouping: "stacked" })).toThrow("catAxisBaseTimeUnit[stacked, several dates in one slot]");
+        expect(() => normalizeChart("area", dates(["45292", "45293"]), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months", barGrouping: "stacked" })).toThrow("catAxisBaseTimeUnit[stacked area, several dates in one slot]");
+        for (const type of ["bar", "bar3D"] as const) {
+            const shared = [...dates(["45292", "45293", "45323"]), { name: "Ipsum", labels: ["45292", "45293", "45323"], values: [4, 5, 6] }];
+
+            expect(normalizeChart(type, shared, { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "months", barGrouping: "stacked" }).categoryAxis.dateSlots?.categorySlots).toEqual([0, 0, 1]);
+        }
+
         // A bad time unit, a fractional major unit.
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisBaseTimeUnit: "weeks" })).toThrow("catAxisBaseTimeUnit");
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 1.5 })).toThrow("whole number");
         expect(() => normalizeChart("line", dates(months), { catLabelFormatCode: "mmm-yy", catAxisMinorUnit: 0.5 })).toThrow("whole number");
-        // bar3D lays its bars on the time line too; a data table under it throws.
+        // bar3D lays its bars on the time line too, and a data table under it has a column per category, named by its
+        // date, as LibreOffice 26.2.6 draws it (#631).
         expect(normalizeChart("bar3D", dates(["45292", "45352"]), { catLabelFormatCode: "mmm-yy" }).categoryAxis.dateSlots).toEqual({ labels: ["Jan-24", "Feb-24", "Mar-24"], categorySlots: [0, 2] });
-        expect(() => normalizeChart("bar3D", dates(months), { catLabelFormatCode: "mmm-yy", showDataTable: true })).toThrow("showDataTable[bar3D date axis]");
+        const bar3DTable = new PuppeteerGen();
+
+        bar3DTable.addSlide().addChart("bar3D", dates(["45292", "45352"]), { x: 0, y: 0, w: 5, h: 4, catLabelFormatCode: "mmm-yy", showDataTable: true });
+        const cells = Array.from(renderedPage(bar3DTable).querySelectorAll(".bar3d-table"), cell => cell.textContent);
+
+        expect(cells).toEqual(["Jan-24", "Mar-24", "Lorem", "1", "2"]);
         // A data table has a column per slot in LibreOffice and per category in PowerPoint (T01..T08, #593).
         const gapped = dates(["45292", "45352"]);
         const table = { catLabelFormatCode: "mmm-yy", showDataTable: true };
@@ -2875,6 +2888,20 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(bar3D?.querySelector(".bar3d-value-axis")?.getAttribute("stroke")).toBe("#C00000");
         expect(bar3D?.querySelectorAll(".bar3d-value-tick")).toHaveLength(4 + 16);
         expect(page("powerpoint", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4, valAxisLineShow: false, valAxisMajorTickMark: "none" })).svgs[0]?.querySelector(".bar3d-value-axis, .bar3d-value-tick")).toBeNull();
+
+        // bar3D category ticks below the floor's front edge (#631): PowerPoint draws the outside major ones between the
+        // categories, and on a date axis at each labelled slot with minor ones at each minor unit; LibreOffice none.
+        expect(axis.svgs[0]?.querySelectorAll(".bar3d-category-tick")).toHaveLength(4);
+        expect(normalizeChart("bar3D", categoricalData, { catAxisMinorTickMark: OUT }, "libreoffice")).toMatchObject({ categoryMajorTickMark: "none", categoryAxis: { minorTickMark: "none" } });
+        expect(page("libreoffice", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4 })).svgs[0]?.querySelector(".bar3d-category-tick")).toBeNull();
+        const months = [{ name: "Lorem", labels: ["45292", "45323", "45352", "45383", "45413", "45444"], values: [3, 5, 4, 7, 5, 6] }];
+        const timeLine = { catLabelFormatCode: "mmm-yy", catAxisMajorUnit: 2, catAxisMajorTimeUnit: "months" as const, catAxisMinorUnit: 1, catAxisMinorTimeUnit: "months" as const, catAxisMinorTickMark: OUT };
+        const dated = page("powerpoint", slide => slide.addChart("bar3D", months, { x: 0, y: 0, w: 5, h: 4, ...timeLine }));
+        const minorTicks = normalizeChart("bar3D", months, timeLine, "powerpoint").categoryAxis.dateSlots?.minorTicks ?? [];
+
+        expect(minorTicks.length).toBeGreaterThan(0);
+        // Majors at Jan, Mar, May and the end.
+        expect(dated.svgs[0]?.querySelectorAll(".bar3d-category-tick")).toHaveLength(4 + minorTicks.length);
 
         // A combo line type's markers take PptxGenJS's written fill, chartColors[index of the series in the chart], on
         // PowerPoint only; a line chart alone writes its line's color.

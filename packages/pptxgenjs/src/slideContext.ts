@@ -36,6 +36,9 @@ export type MasterPlaceholder = {
 /** What a filled placeholder's shared `_bodyProp` holds when the file is written, as the filling text's options. */
 export type PlaceholderBody = Pick<PptxGenJS.TextPropsOptions, "valign" | "vert" | "wrap" | "autoFit" | "inset">;
 
+/** A fill's `margin` as slideObjectToXml writes it onto the shared `_bodyProp`; undefined: none written yet. */
+export type PlaceholderMargin = PptxGenJS.TextPropsOptions["margin"];
+
 /** What a slide reads from the presentation that owns it. PuppeteerGen.addSlide() creates one per slide; every field is required. */
 export type SlideContext = {
     /** The presentation's page size when the slide was added, which its percentage positions resolve against. */

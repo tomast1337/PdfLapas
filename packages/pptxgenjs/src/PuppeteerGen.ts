@@ -17,7 +17,7 @@ import type { PageSize, PageSizeInput } from "./pageLayouts";
 import { checkedPageSize, DEFAULT_PAGE_SIZE, PPTX_LAYOUT_PAGE_SIZES } from "./pageLayouts";
 import type { PptxAddSlideProps, PptxGenJSLike, PptxSectionProps, PptxSlideMasterProps, PptxTableToSlidesProps, PptxWriteBaseProps, PptxWriteFileProps, PptxWriteProps } from "./pptx";
 import { PuppeteerSlide } from "./PuppeteerSlide";
-import type { MasterPlaceholder, SlideContext, SlideMaster } from "./slideContext";
+import type { MasterPlaceholder, PlaceholderMargin, SlideContext, SlideMaster } from "./slideContext";
 import { type HtmlPresentationDocument, lazyDocument, type PresentationRenderer, resolveModelImages, trustedModelToHtml } from "./render/document";
 import { createBrowserDocument } from "./render/slide";
 
@@ -353,7 +353,10 @@ export class PuppeteerGen implements Omit<PptxGenJSLike, "PlaceholderType"> {
 
     /** The model sharing the slides' own objects: only for code that does not modify it, as trustedModelToHtml() does not. */
     private sharedModel(): NormalizedPresentation {
-        return { pageSize: this.pageSize, metadata: { ...this.metadata, ...this.pdfMetadata }, slides: this.slides.map(slide => slide.toModel(this.pageSize, this.masterSlideNumber)) };
+        // The margins placeholder fills write onto their shared `_bodyProp`, in slide order, as PptxGenJS writes the file.
+        const writtenMargins = new Map<MasterPlaceholder, PlaceholderMargin>();
+
+        return { pageSize: this.pageSize, metadata: { ...this.metadata, ...this.pdfMetadata }, slides: this.slides.map(slide => slide.toModel(this.pageSize, this.masterSlideNumber, writtenMargins)) };
     }
 
     /**

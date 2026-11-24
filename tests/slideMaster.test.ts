@@ -446,6 +446,55 @@ describe("addText and addImage({ placeholder })", () => {
         expect(margins[0]?.[0]).toBeCloseTo(inchesToPixels(0.5));
     });
 
+    test("a placeholder fill without a margin takes the last margin an earlier slide's fill wrote, over any inset, as PptxGenJS writes it at write time", async () => {
+        const fills: PptxGenJS.TextPropsOptions[] = [{ placeholder: "side", inset: 0.3 }, { placeholder: "side", margin: 5 }, { placeholder: "side" }, { placeholder: "side", margin: [1, 2, 3, 4] }, { placeholder: "side", inset: 0.4 }];
+        const reference = new pptxgen();
+
+        reference.defineSlideMaster(PLACEHOLDER_MASTER);
+
+        for (const options of fills) {
+            reference.addSlide({ masterName: "PH" }).addText("Side", structuredClone(options));
+        }
+
+        // `as`: write() returns a Buffer for the nodebuffer output type.
+        const zip = await JSZip.loadAsync((await reference.write({ outputType: "nodebuffer" })) as Buffer);
+        const insets: string[] = [];
+
+        for (const index of [1, 2, 3, 4, 5]) {
+            const slideXml = (await zip.file(`ppt/slides/slide${index}.xml`)?.async("string")) ?? "";
+
+            insets.push(
+                slideXml
+                    .match(/<a:bodyPr [^>]*lIns="(\d+)" tIns="(\d+)" rIns="(\d+)" bIns="(\d+)"/)
+                    ?.slice(1)
+                    .join(" ") ?? "none",
+            );
+        }
+
+        // The last inset given (0.4in) until a margin is written; then the last margin written, in slide order.
+        expect(insets).toEqual(["365760 365760 365760 365760", "63500 63500 63500 63500", "63500 63500 63500 63500", "12700 50800 25400 38100", "12700 50800 25400 38100"]);
+
+        const pres = new PuppeteerGen();
+
+        pres.defineSlideMaster(PLACEHOLDER_MASTER);
+
+        for (const options of fills) {
+            pres.addSlide({ masterName: "PH" }).addText("Side", options);
+        }
+
+        const margins = pres.getModel().slides.map(slide => (slide.objects[1]?.kind === "text" ? slide.objects[1].text.margin.map(side => Number(pixelsToPoints(side).toFixed(3))) : []));
+
+        // [top, right, bottom, left] in points.
+        expect(margins).toEqual([
+            [28.8, 28.8, 28.8, 28.8],
+            [5, 5, 5, 5],
+            [5, 5, 5, 5],
+            [4, 2, 3, 1],
+            [4, 2, 3, 1],
+        ]);
+        expect(pres.getModel()).toEqual(pres.getModel());
+    });
+
     test("a body placeholder without a size takes the bodyStyle's 32pt with 20% space before after its first paragraph; a run array keeps each run's color", () => {
         const runs: PptxGenJS.TextProps[] = [
             { text: "A", options: { breakLine: true } },

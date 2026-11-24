@@ -14,7 +14,7 @@ const PACKAGES = [
     { name: "puppeteer", entrypoints: ["index"] },
     { name: "pptxgenjs", entrypoints: ["index", "html", "modelHtml"] },
     { name: "wasm", entrypoints: ["browser", "node", "nodeWorker"] },
-    { name: "pdfkit", entrypoints: ["browser", "node"] },
+    { name: "pdfkit", entrypoints: ["browser", "node", "nodeWorker"] },
     { name: "react", entrypoints: ["index"] },
 ] as { name: string; entrypoints: string[] }[];
 

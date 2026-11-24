@@ -1,7 +1,7 @@
 // Sustained concurrent load (#406): N requests in flight for a fixed time, each building a deck from the mix and
 // rendering it through toPdf(), as a service does. Puppeteer uses the Node entry's default renderer (one shared
 // Chromium through withBrowser); WASM and PDFKit use one long-lived renderer for every request, wasm-pool one
-// long-lived createWasmRendererPool() (wasm-pool-html: with buildHtmlInWorkers). Prints, every sample
+// long-lived createWasmRendererPool() (wasm-pool-html: with buildHtmlInWorkers), pdfkit-pool one createPdfkitRendererPool(). Prints, every sample
 // interval, per-render latency (p50, p95, p99), throughput, the process's RSS and heap, and the count and RSS of its
 // child processes (Chromium); after each level, the same once the load has stopped and the idle browser has closed.
 import { readdirSync, readFileSync } from "node:fs";
@@ -136,6 +136,10 @@ if (import.meta.main) {
             const { createPdfkitRenderer, loadSystemFonts } = await import("../packages/pdfkit/src/node");
 
             renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") }), onUnsupported: "warn" });
+        } else if (engine === "pdfkit-pool") {
+            const { createPdfkitRendererPool, loadSystemFonts } = await import("../packages/pdfkit/src/node");
+
+            renderer = await createPdfkitRendererPool({ fonts: await loadSystemFonts({ dirs: process.env.FONT_DIRS?.split(":") }), onUnsupported: "warn" });
         }
 
         console.log(`${engine} ready: ${memoryLine()}`);

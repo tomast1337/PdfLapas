@@ -12,6 +12,10 @@ import { normalizeColor } from "../packages/pptxgenjs/src/normalize/style";
 import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { unresolvedModelHtml } from "../packages/pptxgenjs/src/render/document";
 
+// The OOXML tick-mark names, untyped in PptxGenJS: its typed "inside" and "outside" draw no tick (#630).
+const IN = "in" as PptxGenJS.ChartAxisTickMark;
+const OUT = "out" as PptxGenJS.ChartAxisTickMark;
+
 const categoricalData: PptxGenJS.OptsChartData[] = [
     { name: "First", labels: ["A", "B", "C"], values: [2, 5, 3] },
     { name: "Second", labels: ["A", "B", "C"], values: [4, 1, 6] },
@@ -2074,8 +2078,8 @@ describe("chart normalization and rendering", () => {
             valAxisLineShow: true,
             valAxisLineSize: 2,
             valAxisLineStyle: "dash",
-            valAxisMajorTickMark: "inside",
-            valAxisMinorTickMark: "outside",
+            valAxisMajorTickMark: IN,
+            valAxisMinorTickMark: OUT,
             valAxisOrientation: "minMax",
             showValAxisTitle: true,
             valAxisTitle: "Revenue",
@@ -2321,7 +2325,7 @@ describe("chart axis and plot-area options on every chart type (#561, #479)", ()
 
         expect(Number(zero?.getAttribute("x"))).toBeGreaterThan(inchesToPixels(4) / 2);
         // LibreOffice draws no axis line or tick marks on a 3D wall (drawsBar3DValueAxisLine off): accepted, drawn as none.
-        expect(normalizeChart("bar3D", quarters, { valAxisLineColor: "FF0000", valAxisLineSize: 3, valAxisMinorTickMark: "outside" }).valueAxes[0]).toMatchObject({ lineVisible: false, majorTickMark: "none", minorTickMark: "none" });
+        expect(normalizeChart("bar3D", quarters, { valAxisLineColor: "FF0000", valAxisLineSize: 3, valAxisMinorTickMark: OUT }).valueAxes[0]).toMatchObject({ lineVisible: false, majorTickMark: "none", minorTickMark: "none" });
         expect(() => normalizeChart("bar3D", quarters, { valAxisLogScaleBase: 10 })).toThrow("valAxisLogScaleBase[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { valAxisOrientation: "maxMin" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisOrientation[bar3D]");
         expect(() => normalizeChart("bar3D", quarters, { barDir: "bar" })).toThrow("barDir[bar3D]");
@@ -2439,7 +2443,7 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
             catAxisLineColor: "FF0000",
             catAxisLineSize: 3,
             catAxisLineStyle: "dash",
-            catAxisMinorTickMark: "outside",
+            catAxisMinorTickMark: OUT,
             catAxisOrientation: "maxMin",
             catAxisCrossesAt: 2,
         } as unknown as PptxGenJS.IChartOpts).categoryAxis;
@@ -2494,10 +2498,12 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(bubbleCrossing("powerpoint", "scatter")).toEqual({ kind: "value", value: 2 });
         expect(bubbleCrossing("libreoffice", "bubble")).toEqual({ kind: "value", value: 2 });
         expect(() => normalizeChart("scatter", xy, { catAxisCrossesAt: Number.NaN } as PptxGenJS.IChartOpts)).toThrow("catAxisCrossesAt");
-        // PptxGenJS writes a tick mark as given, so the OOXML names "in" and "out" are the typed "inside" and "outside".
+        // PptxGenJS writes a tick mark as given: the OOXML names "in" and "out" tick inside and outside, and LibreOffice
+        // 26.2.6 draws no tick for the typed "inside" and "outside", which OOXML does not name (#630).
         const marks = normalizeChart("bar", quarters, { catAxisMajorTickMark: "in", catAxisMinorTickMark: "out", valAxisMajorTickMark: "out", valAxisMinorTickMark: "in" } as unknown as PptxGenJS.IChartOpts);
 
         expect([marks.categoryMajorTickMark, marks.categoryAxis.minorTickMark, marks.valueAxes[0]?.majorTickMark, marks.valueAxes[0]?.minorTickMark]).toEqual(["inside", "outside", "outside", "inside"]);
+        expect(normalizeChart("bar", quarters, { catAxisMajorTickMark: "outside", valAxisMinorTickMark: "inside" })).toMatchObject({ categoryMajorTickMark: "none", valueAxes: [{ minorTickMark: "none" }] });
         expect(() => normalizeChart("bar", quarters, { catAxisMajorTickMark: "inner" } as unknown as PptxGenJS.IChartOpts)).toThrow('catAxisMajorTickMark must be "none", "inside" (or "in")');
         expect(() => normalizeChart("bar", quarters, { valAxisMinorTickMark: "toString" } as unknown as PptxGenJS.IChartOpts)).toThrow("valAxisMinorTickMark must be");
         // A date format needs date serials: text categories are not a time line.
@@ -2636,7 +2642,7 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(normalizeChart("line", gapped, table).categoryAxis.dateSlots?.categoryLabels).toEqual(["Jan-24", "Mar-24"]);
         // Minor ticks: LibreOffice steps catAxisMinorUnit in days (Jan 1, 16, 31, Feb 15, Mar 1), PowerPoint in the base
         // unit (M03); none unless marked.
-        const minor = { catLabelFormatCode: "mmm-yy", catAxisMinorTickMark: "outside", catAxisMinorUnit: 15 } satisfies PptxGenJS.IChartOpts;
+        const minor = { catLabelFormatCode: "mmm-yy", catAxisMinorTickMark: OUT, catAxisMinorUnit: 15 } satisfies PptxGenJS.IChartOpts;
 
         expect(normalizeChart("line", dates(months.slice(0, 2)), { catLabelFormatCode: "mmm-yy" }).categoryAxis.dateSlots?.minorTicks).toBeUndefined();
         expect(normalizeChart("line", dates(months.slice(0, 2)), minor, "libreoffice").categoryAxis.dateSlots?.minorTicks).toEqual([0, 15 / 31, 30 / 31, 1 + 14 / 29, 2]);
@@ -2789,7 +2795,7 @@ describe("chart category-axis, data-table and point options (#566, #567, #548, #
         expect(() => normalizeChart("doughnut", pieData, { plotArea }, "libreoffice")).toThrow("plotArea[doughnut]");
 
         // A bar3D value axis line and its tick marks: each step's major tick and each fifth's minor one on PowerPoint.
-        const axis = page("powerpoint", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4, valAxisLineColor: "C00000", valAxisMajorTickMark: "cross", valAxisMinorTickMark: "outside", valAxisMaxVal: 6, valAxisMajorUnit: 2 }));
+        const axis = page("powerpoint", slide => slide.addChart("bar3D", categoricalData, { x: 0, y: 0, w: 5, h: 4, valAxisLineColor: "C00000", valAxisMajorTickMark: "cross", valAxisMinorTickMark: OUT, valAxisMaxVal: 6, valAxisMajorUnit: 2 }));
         const bar3D = axis.svgs[0];
 
         expect(bar3D?.querySelector(".bar3d-value-axis")?.getAttribute("stroke")).toBe("#C00000");

@@ -13,7 +13,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
  * same PR, so the output change is visible in review; to see what changed, diff toHtml() against main.
  */
 const EXPECTED_SHA256: Record<string, string> = {
-    fixture: "1da5ec2b35a53bcab3dee85a3c7f3917809b888fb20706aa8d4bc03364931ec7",
+    fixture: "0138b00208df534f4ae04384a37e31a5c3f112f1ce78f5628c1d01e285b50882",
     "cross-runtime": "f91873120d39362618c9a6e5fec29d9353be09d25dd9c718bb7af8dfc7e7a9fd",
     "wasm-text": "9700fb8fe52842ff7f6f09e6cd4c3c5b3a9af6d01659ab00ab124f2d3c479641",
     "wasm-emoji": "0170f6d0e30f8fb4961eda77afac9a9ab91bd91534aaa2c394c68edd9d332fc0",
@@ -22,7 +22,7 @@ const EXPECTED_SHA256: Record<string, string> = {
     "wasm-tables": "0cbe750637e62232cca8447e143d6166bcd1861e6f3f19aa76c44cd4f17b4a46",
     "wasm-images": "119660443b85adcf0dbeeaa887c4112b27efb546e49678a4c50cb5863e25dd16",
     "wasm-effects": "5c44ac688170f0772061d8f4a7c5ba3359c73947123207deb16e61298bd30577",
-    "wasm-charts": "88affd22d46387693e2eb6f10836d01a763735d26b7fb4a5755e53486fe4f3fd",
+    "wasm-charts": "7494d42a78af13f6a9fa810c8dff8b927756e3f4c03fa013a28a1cb8517317ed",
     "wasm-chartAxis": "a80e7e6e7b3581711fc9b80a5cd20574d676b282914b1e54939fe39a39a01c34",
     "wasm-chartPlot": "b3d6edd9e6d43821a15ae72d6c20103842a164c2dbdaad0bb6f18f57eacdeed5",
     "wasm-placeholders": "53821eb8897ea93c67c9739a6c027813277946713717d6a4c7c138d19daf0810",

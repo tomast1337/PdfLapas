@@ -304,9 +304,9 @@ const DATA_TABLE_UNDRAWN_TYPES = new Set<NormalizedChartType>(["doughnut", "pie"
 const XY_TYPES = new Set<NormalizedChartType>(["scatter", "bubble"]);
 const DATA_BORDER_TYPES = new Set<NormalizedChartType>(["area", "bar", "bar3D", "bubble", "doughnut", "mixed", "pie"]);
 // PptxGenJS types its tick marks "none", "inside", "outside" and "cross" and writes the value into `<c:majorTickMark>` and
-// `<c:minorTickMark>` as given, so the OOXML names "in" and "out" work too; LibreOffice draws "inside" and "outside" as
-// them (PowerPoint likely cannot open a file with them, #630).
-const TICK_MARKS: Readonly<Record<string, NormalizedChartValueAxis["majorTickMark"]>> = { none: "none", inside: "inside", outside: "outside", cross: "cross", in: "inside", out: "outside" };
+// `<c:minorTickMark>` as given, so the OOXML names "in" and "out" work too. "inside" and "outside" are not OOXML names:
+// LibreOffice 26.2.6 draws no tick for them on either axis, major or minor (PowerPoint likely cannot open the file, #630).
+const TICK_MARKS: Readonly<Record<string, NormalizedChartValueAxis["majorTickMark"]>> = { none: "none", inside: "none", outside: "none", cross: "cross", in: "inside", out: "outside" };
 // bar3D draws its value axis on a wall, its line and tick marks where the target draws them (drawsBar3DValueAxisLine);
 // it draws no logarithmic or reversed 3D axis or horizontal 3D bars yet.
 // A radar chart's value axis is its first spoke: LibreOffice draws its labels and rings, the line style on every spoke,

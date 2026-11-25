@@ -12,7 +12,7 @@ import { createPdfkitRenderer, loadSystemFonts } from "../packages/pdfkit/src/no
 import { boxRadii, dilate, gaussianBlur } from "../packages/pdfkit/src/effect/filter";
 import { composite } from "../packages/pdfkit/src/effect/raster";
 import { breakOpportunities } from "../packages/pdfkit/src/lineBreak";
-import { record } from "../packages/pdfkit/src/path";
+import { record, strokeOutline } from "../packages/pdfkit/src/path";
 import { layoutText } from "../packages/pdfkit/src/text/layout";
 import { createShaper } from "../packages/pdfkit/src/text/shaper";
 import { populateWebpDeck } from "./visual/wasm/format-deck";
@@ -248,6 +248,37 @@ describe("PDFKit renderer", () => {
         },
         { timeout: 60_000 },
     );
+
+    test("cuts an effect outline's dashes only where a mask can show them (GHSA-mc68-2mrj-jwhm)", () => {
+        const style = { width: 1, cap: "butt", join: "miter", miterLimit: 10 } as const;
+        const line = (length: number) => [
+            {
+                points: [
+                    [0, 0],
+                    [length, 0],
+                ] as [number, number][],
+                closed: false,
+            },
+        ];
+
+        // A 2-unit pattern over 100 units: 50 dashes, one quadrilateral each.
+        expect(strokeOutline(line(100), { ...style, dashes: [1, 1] })).toHaveLength(50);
+        // A pattern finer than a mask sample is stroked solid: one quadrilateral, not 500,000.
+        expect(strokeOutline(line(100), { ...style, dashes: [0.0001, 0.0001] })).toHaveLength(1);
+        // Past tiny-skia's 1,000,000 dashes the stroke casts nothing, as in pdf-core.
+        expect(strokeOutline(line(4_000_000), { ...style, dashes: [1, 1] })).toEqual([]);
+    });
+
+    test("draws a hairline dotted outline's shadow in bounded time", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const start = performance.now();
+
+        await render(renderer, pres =>
+            pres.addSlide().addShape("rect", { x: 0.5, y: 0.5, w: 9, h: 4.5, line: { color: "000000", width: 0.001, dashType: "sysDot" }, shadow: { type: "outer", blur: 4, offset: 4, angle: 45, color: "000000", opacity: 0.5 } }),
+        );
+        // About 3 s before the fix, about 25 ms after.
+        expect(performance.now() - start).toBeLessThan(1000);
+    });
 
     describe("pictures", () => {
         test("draws a GIF's and a WebP's first frame, embedded as PNG", async () => {

@@ -202,6 +202,11 @@ function disc([cx, cy]: Point, radius: number): Point[] {
     });
 }
 
+/** Most dashes one stroke is cut into, as in tiny-skia's `dash_impl`. */
+const MAX_DASH_COUNT = 1_000_000;
+/** Shortest dash pattern cut into dashes: one mask sample (effect/index.ts samples at most one per unit). */
+const MIN_DASH_PERIOD = 1;
+
 /**
  * The area `style` paints along `lines`, as polygons all of positive area: a quadrilateral per piece, the join between
  * neighbours (miter wedge within the limit, else bevel; round as a disc) and the caps. Their union under the nonzero
@@ -216,23 +221,43 @@ export function strokeOutline(lines: readonly Polyline[], style: StrokeStyle): P
     }
 
     // Every line, cut into its dashes when the style has some (SVG `stroke-dasharray`, the pattern repeated to an even count).
+    const dashes = style.dashes ?? [];
+    const pattern = dashes.length % 2 ? [...dashes, ...dashes] : dashes;
+    let total = 0;
+
+    for (const length of pattern) {
+        total = total + length;
+    }
+
+    // A pattern shorter than MIN_DASH_PERIOD repeats within one mask sample (effect outlines are the only caller), where
+    // it cannot show: it is stroked solid, one piece per line instead of one per dash.
+    const dashed = pattern.length > 0 && total >= MIN_DASH_PERIOD && pattern.every(length => length >= 0);
+
+    if (dashed) {
+        // tiny-skia's limit (Skia's): a path of more than MAX_DASH_COUNT dashes is not dashed, and pdf-core, which
+        // strokes effect outlines through it, then leaves the stroke out of the silhouette. A hairline dotted far finer
+        // than a mask sample would otherwise cut millions of pieces (0.001 pt sysDot: seconds per shape).
+        let length = 0;
+
+        for (const line of lines) {
+            const points = line.closed && line.points[0] ? [...line.points, line.points[0]] : line.points;
+
+            for (let k = 1; k < points.length; k++) {
+                const [a, b] = [points[k - 1] ?? [0, 0], points[k] ?? [0, 0]];
+
+                length += Math.hypot(b[0] - a[0], b[1] - a[1]);
+            }
+        }
+
+        if ((length * (pattern.length / 2)) / total > MAX_DASH_COUNT) {
+            return polygons;
+        }
+    }
+
     const pieces: Polyline[] = [];
 
     for (const line of lines) {
-        if (!style.dashes?.length) {
-            pieces.push(line);
-            continue;
-        }
-
-        const dashes = style.dashes;
-        const pattern = dashes.length % 2 ? [...dashes, ...dashes] : dashes;
-        let total = 0;
-
-        for (const length of pattern) {
-            total = total + length;
-        }
-
-        if (!pattern.length || !(total > 0) || pattern.some(length => !(length >= 0))) {
+        if (!dashed) {
             pieces.push(line);
             continue;
         }

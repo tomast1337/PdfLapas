@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inflateSync } from "node:zlib";
+import { crc32, deflateSync, inflateSync } from "node:zlib";
 import { create as createFont, type Font } from "fontkit";
 import { JSDOM } from "jsdom";
 import PDFDocument from "pdfkit";
@@ -304,6 +304,30 @@ describe("PDFKit renderer", () => {
 
             await render(renderer, pres => pres.addSlide().addImage({ data: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`, x: 1, y: 1, w: 1, h: 1 }));
             expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': fill-opacity 'half' in an SVG image is not a number; inherited instead", "slide 1: object 'Image 0': stroke-opacity 'none' in an SVG image is not a number; inherited instead"]);
+        });
+
+        test("fails the render, not the process, on a corrupt PNG whose pixels PDFKit would decode (GHSA-mc68-2mrj-jwhm)", async () => {
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+            const chunk = (type: string, data: Buffer) => {
+                const head = Buffer.alloc(8);
+                const crc = Buffer.alloc(4);
+
+                head.writeUInt32BE(data.length, 0);
+                head.write(type, 4, "latin1");
+                crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, "latin1"), data])), 0);
+
+                return Buffer.concat([head, data, crc]);
+            };
+            // A 4x4 RGBA PNG: IDAT is a valid zlib stream of filter bytes 9 (no such filter), or 68 good bytes.
+            const png = (idat: Buffer) => {
+                const ihdr = Buffer.from([0, 0, 0, 4, 0, 0, 0, 4, 8, 6, 0, 0, 0]);
+
+                return `data:image/png;base64,${Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", Buffer.alloc(0))]).toString("base64")}`;
+            };
+
+            await expect(render(renderer, pres => pres.addSlide().addImage({ data: png(deflateSync(Buffer.alloc(68, 9))), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("cannot decode image/png data");
+            await expect(render(renderer, pres => pres.addSlide().addImage({ data: png(Buffer.from([0x78, 0x9c, 0xff, 0xff, 0xff, 0x00])), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("cannot decode image/png data");
+            expect((await render(renderer, pres => pres.addSlide().addImage({ data: png(deflateSync(Buffer.alloc(68))), x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
         });
 
         test("reports image formats it does not decode", async () => {

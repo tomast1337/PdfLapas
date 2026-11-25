@@ -227,6 +227,28 @@ describe("PDFKit renderer", () => {
         });
     });
 
+    test(
+        "draws shadows and glows within a per-render mask sample budget, as pdf-core does (GHSA-mc68-2mrj-jwhm)",
+        async () => {
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+            // Shapes larger than the mask's longest side each take a full mask: the budget holds four of them.
+            const shadowed = (count: number) => (pres: PuppeteerGen) => {
+                const slide = pres.addSlide();
+
+                for (let index = 0; index < count; index++) {
+                    slide.addShape("rect", { x: 0, y: 0, w: 45, h: 45, fill: { color: "4472C4" }, shadow: { type: "outer", blur: 1, offset: 1, angle: 45, color: "000000", opacity: 0.5 } });
+                }
+            };
+
+            await render(renderer, shadowed(5));
+            expect(renderer.warnings()).toEqual(["slide 1: object 'Shape 4': shadows and glows past 67108864 mask samples per render not rendered"]);
+            // The budget is per render.
+            await render(renderer, shadowed(1));
+            expect(renderer.warnings()).toEqual([]);
+        },
+        { timeout: 60_000 },
+    );
+
     describe("pictures", () => {
         test("draws a GIF's and a WebP's first frame, embedded as PNG", async () => {
             const renderer = await createPdfkitRenderer({ fonts: systemFonts });

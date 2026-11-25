@@ -28,6 +28,12 @@ const SIGMAS_KEPT = 3;
 const SAMPLES_PER_PX = 1;
 /** Longest mask side; a larger silhouette is sampled more coarsely. */
 const MAX_SIDE = 4096;
+/**
+ * Mask samples one render may blur, four masks of MAX_SIDE squared, as pdf-core's `MAX_RENDER_SAMPLES`: a mask costs
+ * time in its samples, so a deck of many large shadows or glows would cost seconds of CPU. An effect past it is
+ * reported and not drawn; an ordinary deck spends a few percent of it.
+ */
+const MAX_RENDER_SAMPLES = 4 * MAX_SIDE * MAX_SIDE;
 /** Curve flattening tolerance (px). */
 const FLATTEN_TOLERANCE = 0.1;
 const CHANNEL_MAX = 255;
@@ -121,6 +127,8 @@ export class Effects {
     readonly #active: Capture[] = [];
     #paused: Capture[] = [];
     #images = 0;
+    /** Mask samples spent in this render, against MAX_RENDER_SAMPLES. */
+    #samples = 0;
 
     capturing(): boolean {
         return this.#active.length > 0;
@@ -241,6 +249,14 @@ export class Effects {
 
         const scale = Math.min(SAMPLES_PER_PX, MAX_SIDE / Math.max(areaWidth, areaHeight));
         const [w, h] = [Math.ceil(areaWidth * scale), Math.ceil(areaHeight * scale)];
+
+        if (this.#samples + w * h > MAX_RENDER_SAMPLES) {
+            report(`shadows and glows past ${MAX_RENDER_SAMPLES} mask samples per render not rendered`);
+
+            return;
+        }
+
+        this.#samples += w * h;
         const toMask =
             (dx: number, dy: number) =>
             (line: Line): Line => [(line[0] - x0) * scale + dx, (line[1] - y0) * scale + dy, (line[2] - x0) * scale + dx, (line[3] - y0) * scale + dy];

@@ -3,7 +3,7 @@
 // WebP are decoded (their first frame, as Chromium prints them) and embedded as PNG; SVG is drawn as vector paths
 // (svgImage.ts). The picture's area is its shadow's silhouette, as in pdf-core's image.rs.
 import { webpSize } from "@pdflapas/model";
-import { decodeGif, decodeWebP, encodePng } from "image-in-browser";
+import { decodeGif, decodePng, decodeWebP, encodePng } from "image-in-browser";
 import { length, readStyle, take } from "./css";
 import { attribute, children, type Element, hasClass } from "./dom";
 import { opacityGroup } from "./internals";
@@ -78,7 +78,25 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
     // By magic bytes, as browsers sniff: a mislabelled PNG still draws.
     let raster: Uint8Array | undefined;
 
-    if (startsWith(bytes, PNG_SIGNATURE) || startsWith(bytes, JPEG_SIGNATURE)) {
+    if (startsWith(bytes, PNG_SIGNATURE) && (bytes[25] === 3 || bytes[25] === 4 || bytes[25] === 6 || bytes[28] === 1)) {
+        // PDFKit decodes the pixels of a PNG with a palette (for its tRNS), an alpha channel or interlacing itself, in
+        // zlib's asynchronous callback, where a corrupt stream throws past every handler and ends the process. Such a
+        // PNG is decoded here first (IHDR colour type at byte 25, interlace method at byte 28), so a corrupt one fails
+        // this render, and PDFKit gets it re-encoded.
+        let image: ReturnType<typeof decodePng>;
+
+        try {
+            image = decodePng({ data: bytes });
+        } catch (error) {
+            throw new Error(`cannot decode ${mime} data: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        if (!image) {
+            throw new Error(`cannot decode ${mime} data: its PNG data is corrupt`);
+        }
+
+        raster = encodePng({ image, singleFrame: true });
+    } else if (startsWith(bytes, PNG_SIGNATURE) || startsWith(bytes, JPEG_SIGNATURE)) {
         raster = bytes;
     } else if (startsWith(bytes, GIF_SIGNATURE) || (startsWith(bytes, RIFF_SIGNATURE) && startsWith(bytes, WEBP_FORM, 8))) {
         // The first frame of a GIF or WebP as a PNG file, for PDFKit, which embeds only PNG and JPEG. Its pixels are

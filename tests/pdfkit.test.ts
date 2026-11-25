@@ -867,6 +867,25 @@ describe("PDFKit renderer", () => {
         await expect(renderer.render({ ...document, html: document.html.replace("</body>", `${"<div>".repeat(300)}</body>`) })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels");
     });
 
+    test("stops parsing at the depth limit, so deep nesting costs milliseconds, not seconds (GHSA-mc68-2mrj-jwhm)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        // HTML elements inside <svg> leave SVG parsing, which is where parse5 is quadratic in depth (100k took 14 s)
+        pres.addSlide().addImage({ data: `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">${"<div>".repeat(100_000)}</svg>`)}`, x: 1, y: 1, w: 1, h: 1 });
+        const document = await pres.toHtml();
+        let start = performance.now();
+
+        await renderer.render(document);
+        expect(performance.now() - start).toBeLessThan(500);
+        expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': an SVG image's elements nest deeper than 256 levels; the picture is not drawn"]);
+        const html = document.html.replace("</body>", `${"<div>".repeat(100_000)}</body>`);
+
+        start = performance.now();
+        await expect(renderer.render({ ...document, html })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels");
+        expect(performance.now() - start).toBeLessThan(500);
+    });
+
     test("runs a right-to-left paragraph's words from the right, and reports mixed directions", async () => {
         const renderer = await createPdfkitRenderer({ fonts: await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ }), onUnsupported: "warn" });
         const pdf = await render(renderer, pres => pres.addSlide().addText("שלום עולם", { x: 1, y: 1, w: 5, h: 1, fontFace: "Arial", align: "right", rtlMode: true }));

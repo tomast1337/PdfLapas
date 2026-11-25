@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { pointsToPixels } from "@pdflapas/model";
+import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { InvalidModelError, parseModel } from "../packages/pptxgenjs/src/modelSchema";
 import { createNodeDocument, PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { modelToHtml } from "../packages/pptxgenjs/src/render/document";
@@ -19,17 +21,8 @@ function smallModel(): unknown {
 
 type Json = Record<string | number, unknown>;
 
-/** The InvalidModelError parseModel() throws for the small model with `value` written at `path` (its last key the field). */
-function rejection(path: readonly (string | number)[], value: unknown): InvalidModelError {
-    const model = smallModel();
-    // `as`: smallModel() is getModel() JSON and every test path names objects and arrays it has.
-    let parent = model as Json;
-
-    for (const key of path.slice(0, -1)) {
-        parent = parent[key] as Json;
-    }
-
-    parent[path[path.length - 1] ?? ""] = value;
+/** The InvalidModelError parseModel() throws for `model`. */
+function invalid(model: unknown): InvalidModelError {
     try {
         parseModel(model);
     } catch (error) {
@@ -41,6 +34,21 @@ function rejection(path: readonly (string | number)[], value: unknown): InvalidM
     }
 
     throw new Error("parseModel() accepted the model");
+}
+
+/** The InvalidModelError parseModel() throws for the small model with `value` written at `path` (its last key the field). */
+function rejection(path: readonly (string | number)[], value: unknown): InvalidModelError {
+    const model = smallModel();
+    // `as`: smallModel() is getModel() JSON and every test path names objects and arrays it has.
+    let parent = model as Json;
+
+    for (const key of path.slice(0, -1)) {
+        parent = parent[key] as Json;
+    }
+
+    parent[path[path.length - 1] ?? ""] = value;
+
+    return invalid(model);
 }
 
 describe("parseModel()", () => {
@@ -102,6 +110,42 @@ describe("parseModel()", () => {
         expect(rejection(["slides", 1, "objects", 0, "image", "source"], "data:text/html;base64,PHNjcmlwdD4=").issues[0]?.path).toBe("model.slides[1].objects[0].image.source");
         expect(rejection(["slides", 0, "objects", 0, "text", "paragraphs", 0, "runs", 0, "link"], { href: "javascript:alert(1)" }).message).toContain("runs[0].link.href: is not a supported link");
         expect(rejection(["slides", 0, "objects", 0, "text", "paragraphs", 0, "runs", 0, "fontFace"], 'Arial";}\nbody{color:red').message).toContain("runs[0].fontFace: ");
+    });
+
+    test("rejects a shadow blur or glow size over the API limit and accepts it at the limit", () => {
+        const shadowBlur = pointsToPixels(PPTX_DEFAULTS.limits.shadowBlurPt);
+        const glowSize = pointsToPixels(PPTX_DEFAULTS.limits.glowSizePt);
+        // The NormalizedShadow both effects use; a glow carries its size (the API's `glow.size`) in `blur`.
+        const effect = (blur: number) => ({ visible: true, color: "#000000", blur, offsetX: 0, offsetY: 0, inset: false });
+
+        function withShadow(blur: number): unknown {
+            const model = smallModel() as { slides: { objects: { style: { shadow?: unknown } }[] }[] };
+
+            model.slides[0]!.objects[0]!.style.shadow = effect(blur);
+
+            return model;
+        }
+
+        function withGlow(blur: number): unknown {
+            const model = smallModel() as { slides: { objects: { text: { paragraphs: { runs: { glow?: unknown }[] }[] } }[] }[] };
+
+            model.slides[0]!.objects[0]!.text.paragraphs[0]!.runs[0]!.glow = effect(blur);
+
+            return model;
+        }
+
+        expect(() => parseModel(withShadow(shadowBlur))).not.toThrow();
+        expect(() => parseModel(withGlow(glowSize))).not.toThrow();
+
+        const shadow = invalid(withShadow(shadowBlur + 1));
+
+        expect(shadow.message).toContain(`model.slides[0].objects[0].style.shadow.blur: shadow.blur is ${shadowBlur + 1} px, above the API limit of 100 pt (${shadowBlur} px)`);
+        const glow = invalid(withGlow(glowSize + 1));
+
+        expect(glow.message).toContain(`model.slides[0].objects[0].text.paragraphs[0].runs[0].glow.blur: glow.blur is ${glowSize + 1} px, above the API limit of 150 pt (${glowSize} px)`);
+        // checkedSize refuses a negative blur too, so a foreign model cannot ask for one either.
+        expect(invalid(withShadow(-1)).issues[0]?.path).toBe("model.slides[0].objects[0].style.shadow.blur");
+        expect(invalid(withGlow(-1)).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].glow.blur");
     });
 
     test("rejects word letter-spacing that is not one finite value per word of the run", () => {

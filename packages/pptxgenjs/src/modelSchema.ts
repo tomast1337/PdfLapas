@@ -1,6 +1,7 @@
-import { type CssColor, type DataUri, inches, LINK_URL_SCHEME, type NormalizedPresentation, px } from "@pdflapas/model";
+import { type CssColor, type DataUri, inches, LINK_URL_SCHEME, type NormalizedPresentation, pointsToPixels, px } from "@pdflapas/model";
 import { z } from "zod";
 import { cloneComponentProps } from "#src/components/normalize";
+import { PPTX_DEFAULTS } from "#src/defaults";
 import { isSpaces, isWord, runPieces } from "#src/normalize/advanceGrid";
 import { RESOLVED_IMAGE } from "#src/normalize/image";
 
@@ -41,7 +42,20 @@ const svgSyntax = z.string().regex(SVG_SYNTAX, { error: "holds characters SVG pa
 const fontFace = z.string().regex(FONT_FACE, { error: "holds a control character or one of ;{}: write the font's family name" });
 const href = z.string().refine(value => LINK_URL_SCHEME.test(value) || SLIDE_LINK.test(value), { error: "is not a supported link: use an http:, https: or mailto: URL, or #slide-<number>" });
 
-const shadow = z.strictObject({ visible: z.boolean(), color: cssColor, blur: finite, offsetX: finite, offsetY: finite, inset: z.boolean() });
+// A shadow's blur and a glow's size both reach the renderers as the run's or object's `blur`, in CSS px, but the API
+// checks them in points (checkedSize): 100 pt for a shadow and 150 pt for a glow. Model JSON from another producer is
+// held to the same limit, so a value the API could never write cannot cost a renderer seconds of work.
+const effectBlur = (field: string, limitPt: number) => {
+    const limitPx = pointsToPixels(limitPt);
+
+    return nonNegative.max(limitPx, {
+        error: issue => `${field} is ${String(issue.input)} px, above the API limit of ${limitPt} pt (${limitPx} px): use at most ${limitPx} px`,
+    });
+};
+
+const shadow = z.strictObject({ visible: z.boolean(), color: cssColor, blur: effectBlur("shadow.blur", PPTX_DEFAULTS.limits.shadowBlurPt), offsetX: finite, offsetY: finite, inset: z.boolean() });
+// The glow reuses NormalizedShadow and carries its size (the API's `glow.size`) in `blur`; its limit differs from a shadow's.
+const glow = z.strictObject({ visible: z.boolean(), color: cssColor, blur: effectBlur("glow.blur", PPTX_DEFAULTS.limits.glowSizePt), offsetX: finite, offsetY: finite, inset: z.boolean() });
 const fill = z.strictObject({ visible: z.boolean(), color: cssColor });
 const arrow = z.enum(["none", "arrow", "diamond", "oval", "stealth", "triangle"]);
 const link = z.strictObject({ href, tooltip: z.string().optional(), slide: integerFrom(1).optional() });
@@ -118,7 +132,7 @@ const textRun = z
         nonBreakingHyphen: z.enum(["hyphen-minus", "hyphen"]).optional(),
         highlight: cssColor.optional(),
         outline: z.strictObject({ color: cssColor, width: nonNegative }).optional(),
-        glow: shadow.optional(),
+        glow: glow.optional(),
         shadow: shadow.optional(),
         language: z.string().regex(LANGUAGE, { error: "is not a language tag: write a BCP 47 tag such as en-US" }),
         link: link.optional(),

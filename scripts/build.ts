@@ -187,14 +187,6 @@ if (await Bun.file(wasmBinary).exists()) {
     console.warn("packages/wasm/src/pdf_wasm_bg.wasm is not built (bun run build:wasm); @pdflapas/wasm will not work");
 }
 
-// The native loader resolves its library next to itself (dist/) too. A prototype built by hand (bun run build:native);
-// the package is private, so a host-only binary in dist/ is never published.
-const nativeLibrary = resolve(packagesDirectory, "native/src/pdflapas_native.linux-x64.so");
-
-if (await Bun.file(nativeLibrary).exists()) {
-    await copyFile(nativeLibrary, resolve(packagesDirectory, "native/dist/pdflapas_native.linux-x64.so"));
-}
-
 for (const { name } of PACKAGES) {
     for (const declarationFile of await declarationFiles(resolve(packagesDirectory, name, "dist"))) {
         // The vendored PptxGenJS declarations are copied verbatim; their only relative paths are in comments.

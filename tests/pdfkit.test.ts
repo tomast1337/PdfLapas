@@ -381,6 +381,13 @@ describe("PDFKit renderer", () => {
             await expect(render(renderer, pres => pres.addSlide().addImage({ data: png(deflateSync(Buffer.alloc(68, 9))), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("cannot decode image/png data");
             await expect(render(renderer, pres => pres.addSlide().addImage({ data: png(Buffer.from([0x78, 0x9c, 0xff, 0xff, 0xff, 0x00])), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("cannot decode image/png data");
             expect((await render(renderer, pres => pres.addSlide().addImage({ data: png(deflateSync(Buffer.alloc(68))), x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
+            // #448: 255 KB of IDAT inflating to 256 MB took image-in-browser 3.7.0 1.9 s and 500 MB; 3.8.0 stops at the
+            // 68 bytes the header declares and draws them, as a browser does.
+            const bomb = png(deflateSync(Buffer.alloc(256 * 1024 * 1024)));
+            const start = performance.now();
+
+            expect((await render(renderer, pres => pres.addSlide().addImage({ data: bomb, x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
+            expect(performance.now() - start).toBeLessThan(500);
         });
 
         test("reports image formats it does not decode", async () => {

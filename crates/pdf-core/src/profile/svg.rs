@@ -15,7 +15,8 @@ use krilla::paint::{FillRule, LineCap, LineJoin};
 use kurbo::{Affine, BezPath, PathEl, Shape as _};
 
 use super::allow;
-use super::dom::{self, Dom, Element};
+pub(crate) use super::dom::MAX_ELEMENT_DEPTH;
+use super::dom::{self, Dom, DomError, Element};
 use super::style::Style;
 use crate::color::{Rgba, parse_color};
 use crate::path::rounded_rect_path;
@@ -100,10 +101,21 @@ pub(crate) fn chart(dom: &Dom<'_>, svg: &Element<'_>) -> Result<Svg, String> {
     read(dom, svg, view_box, Fit::CENTER_MEET, RootPaint::Ignore)
 }
 
+/// An SVG image read, or refused for nesting past `dom::MAX_ELEMENT_DEPTH`.
+pub(crate) enum SvgImage {
+    Read(Svg),
+    /// The other backends report such a picture and draw the rest of the slide.
+    TooDeep,
+}
+
 /// An SVG image: the decoded `data:image/svg+xml` document. Its root `<svg>` is sized into the
 /// picture's rectangle as Chromium sizes an `<img>`'s SVG.
-pub(crate) fn image(text: &str) -> Result<Svg, String> {
-    let dom = dom::parse(markup(text)?)?;
+pub(crate) fn image(text: &str) -> Result<SvgImage, String> {
+    let dom = match dom::parse(markup(text)?) {
+        Ok(dom) => dom,
+        Err(DomError::TooDeep) => return Ok(SvgImage::TooDeep),
+        Err(DomError::Malformed(message)) => return Err(message),
+    };
     let [svg] = dom.elements_of(&dom.children)?[..] else {
         return Err("the document must hold one <svg> element".into());
     };
@@ -131,7 +143,7 @@ pub(crate) fn image(text: &str) -> Result<Svg, String> {
             _ => return Err("an <svg> without a viewBox must have both width and height in px, or neither".into()),
         },
     };
-    read(&dom, svg, view_box, fit, RootPaint::Inherit)
+    read(&dom, svg, view_box, fit, RootPaint::Inherit).map(SvgImage::Read)
 }
 
 /// Whether the `<svg>`'s own fill, stroke and font are inherited by its content.
@@ -876,6 +888,7 @@ pub(crate) mod tests {
     use crate::color::Rgba;
     use crate::model::SlideObject;
     use crate::profile::parse;
+    use crate::profile::svg::SvgImage;
     use crate::profile::tests::document;
     use krilla::paint::FillRule;
 
@@ -1159,9 +1172,12 @@ pub(crate) mod tests {
 
     /// An SVG image's document as editors write it: `attrs` on the `<svg>`, `body` inside.
     fn image_svg(attrs: &str, body: &str) -> Result<Svg, String> {
-        super::image(&format!(
+        match super::image(&format!(
             "\u{feff}<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- Generator: x -->\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n<svg {attrs}>{body}</svg>\n"
-        ))
+        ))? {
+            SvgImage::Read(svg) => Ok(svg),
+            SvgImage::TooDeep => Err("too deep".into()),
+        }
     }
 
     const NS: &str = r#"xmlns="http://www.w3.org/2000/svg""#;

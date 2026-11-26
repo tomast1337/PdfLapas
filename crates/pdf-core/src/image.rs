@@ -24,6 +24,7 @@ use crate::color::unit;
 use crate::model::{ImageModel, ImageSizing};
 use crate::path::{ellipse_path, rect_path, to_path};
 use crate::profile;
+use crate::profile::svg::{MAX_ELEMENT_DEPTH, SvgImage};
 use crate::svg::Svg;
 
 /// The data-URI payload as the compatibility layer validates it: standard alphabet, padding optional.
@@ -45,6 +46,8 @@ pub(crate) const MAX_DECK_IMAGE_PIXELS: u64 = 1 << 28;
 pub(crate) enum Picture {
     Raster(Image),
     Svg(Rc<Svg>),
+    /// An SVG image nesting past `MAX_ELEMENT_DEPTH`: reported and not drawn, as PDFKit does.
+    TooDeepSvg,
 }
 
 /// Decodes `data:<mime>;base64,<payload>` by its magic bytes (browsers sniff too, so a mislabelled
@@ -95,8 +98,10 @@ pub(crate) fn decode_data_uri(source: &str, deck_pixels_left: u64) -> Result<Pic
         // shortcut: no editor namespaces (inkscape:*, sodipodi:*), <use>, <style> sheets or radial
         // gradients; add one when a real deck's SVG needs it and its gzip cost is measured (#17).
         let text = std::str::from_utf8(&bytes).map_err(|e| format!("SVG image is not UTF-8: {e}"))?;
-        let svg = profile::svg::image(text).map_err(|e| format!("SVG image: {e}"))?;
-        return Ok(Picture::Svg(Rc::new(svg)));
+        return match profile::svg::image(text).map_err(|e| format!("SVG image: {e}"))? {
+            SvgImage::Read(svg) => Ok(Picture::Svg(Rc::new(svg))),
+            SvgImage::TooDeep => Ok(Picture::TooDeepSvg),
+        };
     } else {
         return Err(format!("'{mime}' data is not a PNG, JPEG, GIF, WebP or SVG image"));
     };
@@ -235,6 +240,12 @@ impl Renderer {
                 decoded
             }
         };
+        if let Picture::TooDeepSvg = picture {
+            self.warn(format!(
+                "image '{name}': an SVG image's elements nest deeper than {MAX_ELEMENT_DEPTH} levels; the picture is not drawn"
+            ));
+            return Ok(());
+        }
         let Placement {
             x: px,
             y: py,
@@ -282,6 +293,8 @@ impl Renderer {
                 self.draw_svg(surface, &svg, x + px, y + py, size.width(), size.height());
                 self.effects.resume();
             }
+            // Reported and returned before the frame was clipped.
+            Picture::TooDeepSvg => {}
         }
         if faded {
             surface.pop();

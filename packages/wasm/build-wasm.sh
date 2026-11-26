@@ -78,7 +78,8 @@ root=$PWD
 # +750 B: line-band underlines of one look run on across runs and a zigzag line in band thicknesses, as PowerPoint draws them (#397: join_line_band and the unitless zigzag line), 1,065,243 -> 1,065,993 B measured; budget = that size.
 # +89 B: a picture's inner shadow turns and flips with it, as in PowerPoint and Chromium (#345: the offset rotated into the box's space), 1,065,993 -> 1,066,082 B measured; budget = that size.
 # +194 B: text mirrored back inside a box flipped one way, as PowerPoint and LibreOffice draw it (#627: .text-content transform: scaleX(-1)), 1,066,082 -> 1,066,276 B measured; budget = that size.
-GZIP_BUDGET=1066276
+# +99 B: HTML nested deeper than MAX_ELEMENT_DEPTH refused and too-deep SVG images reported, as the other backends do (#667: the depth check in profile/dom.rs), 1,066,276 -> 1,066,375 B measured; budget = that size.
+GZIP_BUDGET=1066375
 
 locked=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' crates/Cargo.lock)
 if [ "$locked" != "$WASM_BINDGEN_VERSION" ]; then

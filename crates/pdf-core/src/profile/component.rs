@@ -228,9 +228,11 @@ mod tests {
             let prefix = "slide 1: object 'Component 0': component 'fixture/progress' v1: ";
             assert!(error.starts_with(prefix) && error.contains(expected), "{markup}: {error}");
         }
-        // Deep markup is read in a loop, not by recursion.
-        let deep = format!("{}{}", r#"<div style="width:1px;height:1px">"#.repeat(10_000), "</div>".repeat(10_000));
-        assert_eq!(boxes(&svg(&PROGRESS.replace(inner, &deep)).unwrap()).len(), 0);
+        // Deep markup is read in a loop, not by recursion, up to the element depth every backend reads.
+        let deep = |depth: usize| format!("{}{}", r#"<div style="width:1px;height:1px">"#.repeat(depth), "</div>".repeat(depth));
+        assert_eq!(boxes(&svg(&PROGRESS.replace(inner, &deep(200))).unwrap()).len(), 0);
+        let error = svg(&PROGRESS.replace(inner, &deep(10_000))).err().unwrap_or_default();
+        assert_eq!(error, "elements nest deeper than 256 levels (toHtml() nests about a dozen)");
     }
 
     #[test]

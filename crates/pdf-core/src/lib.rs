@@ -1028,6 +1028,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reports_and_skips_svg_images_nested_past_the_element_depth() {
+        // The root <svg> is level 1, so 255 nested <g> reach the limit.
+        let groups = |depth: usize| format!("{}{}", "<g>".repeat(depth), "</g>".repeat(depth));
+        let mut r = Renderer::new();
+        let drawn = render(&mut r, &build::deck(vec![picture(build::image(&svg_image(&groups(255))))]));
+        // Within the element limit, the reader's own `<g>` limit still names the problem.
+        assert!(drawn.is_err_and(|e| e.contains("SVG groups nest deeper than 32 levels")));
+        render(&mut r, &build::deck(vec![picture(build::image(&svg_image(&groups(256))))])).unwrap();
+        assert_eq!(
+            r.warnings(),
+            vec!["image 'Picture 1': an SVG image's elements nest deeper than 256 levels; the picture is not drawn"]
+        );
+    }
+
     /// A text-in-shape object whose fill, line, run, outline, highlight and
     /// underline all use `color`, on a slide of that colour.
     fn model_with_color(color: &str) -> Presentation {

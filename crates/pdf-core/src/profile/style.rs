@@ -276,7 +276,7 @@ mod tests {
 
     fn style_of(attr: &str) -> Result<Vec<(String, String)>, String> {
         let html = format!("<div style=\"{attr}\"></div>");
-        let dom = dom::parse(&html)?;
+        let dom = dom::parse(&html).map_err(|e| e.to_string())?;
         let elements = dom.elements_of(&dom.children)?;
         let element = elements.first().ok_or("no element")?;
         let style = Style::of(element)?;

@@ -42,6 +42,28 @@
       "dependencies": {
         "@pdflapas/model": "workspace:*",
       },
+      "optionalDependencies": {
+        "@pdflapas/native-linux-arm64-gnu": "workspace:*",
+        "@pdflapas/native-linux-arm64-musl": "workspace:*",
+        "@pdflapas/native-linux-x64-gnu": "workspace:*",
+        "@pdflapas/native-linux-x64-musl": "workspace:*",
+      },
+    },
+    "packages/native-linux-arm64-gnu": {
+      "name": "@pdflapas/native-linux-arm64-gnu",
+      "version": "0.2.0",
+    },
+    "packages/native-linux-arm64-musl": {
+      "name": "@pdflapas/native-linux-arm64-musl",
+      "version": "0.2.0",
+    },
+    "packages/native-linux-x64-gnu": {
+      "name": "@pdflapas/native-linux-x64-gnu",
+      "version": "0.2.0",
+    },
+    "packages/native-linux-x64-musl": {
+      "name": "@pdflapas/native-linux-x64-musl",
+      "version": "0.2.0",
     },
     "packages/pdfkit": {
       "name": "@pdflapas/pdfkit",
@@ -156,6 +178,14 @@
     "@pdflapas/model": ["@pdflapas/model@workspace:packages/model"],
 
     "@pdflapas/native": ["@pdflapas/native@workspace:packages/native"],
+
+    "@pdflapas/native-linux-arm64-gnu": ["@pdflapas/native-linux-arm64-gnu@workspace:packages/native-linux-arm64-gnu"],
+
+    "@pdflapas/native-linux-arm64-musl": ["@pdflapas/native-linux-arm64-musl@workspace:packages/native-linux-arm64-musl"],
+
+    "@pdflapas/native-linux-x64-gnu": ["@pdflapas/native-linux-x64-gnu@workspace:packages/native-linux-x64-gnu"],
+
+    "@pdflapas/native-linux-x64-musl": ["@pdflapas/native-linux-x64-musl@workspace:packages/native-linux-x64-musl"],
 
     "@pdflapas/pdfkit": ["@pdflapas/pdfkit@workspace:packages/pdfkit"],
 

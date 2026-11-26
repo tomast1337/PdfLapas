@@ -67,6 +67,26 @@ try {
         console.log(`packed ${manifest.name}@${manifest.version} (${workspaceDependencies.map(entry => entry.join("@")).join(", ") || "no workspace dependencies"})`);
     }
 
+    // @pdflapas/native's platform packages hold only a library, built for this host by bun run build:native and by CI's
+    // "Native build" jobs for all four. Packed with or without it, so the consumer installs @pdflapas/native from tarballs.
+    const native = (await Bun.file(resolve(projectRoot, "packages/native/package.json")).json()) as { version: string; optionalDependencies: Record<string, string> };
+
+    for (const name of Object.keys(native.optionalDependencies)) {
+        const packageDirectory = resolve(projectRoot, "packages", name.replace("@pdflapas/", ""));
+        const manifest = (await Bun.file(join(packageDirectory, "package.json")).json()) as { name: string; version: string };
+
+        if (manifest.name !== name || manifest.version !== native.version) {
+            throw new Error(`packages/${name.replace("@pdflapas/", "")} is ${manifest.name}@${manifest.version}, expected ${name}@${native.version}`);
+        }
+
+        await run([process.execPath, "pm", "pack", "--ignore-scripts", "--quiet", "--destination", temporaryRoot], packageDirectory);
+        const tarball = join(temporaryRoot, `${name.replace(/^@/, "").replace("/", "-")}-${manifest.version}.tgz`);
+        const files = (await output(["tar", "-tzf", tarball], temporaryRoot)).split("\n");
+
+        tarballs[name] = tarball;
+        console.log(`packed ${name}@${manifest.version} (${files.includes("package/pdflapas_native.so") ? "with" : "without"} its library)`);
+    }
+
     // A clean consumer installs the packed tarballs and typechecks and runs each public entry under Bun and Node.js.
     const consumerDirectory = join(temporaryRoot, "pdflapas-consumer");
     const dependencies = ["@pdflapas/pptxgenjs", "@pdflapas/wasm", "@pdflapas/pdfkit", "@pdflapas/react", "@pdflapas/native"];
@@ -384,8 +404,8 @@ console.log(\`WASM package consumer generated a PDF under \${"Bun" in globalThis
     await run(["node", "--experimental-strip-types", wasmConsumerPath], consumerDirectory);
     await run([process.execPath, "run", pdfkitConsumerPath], consumerDirectory);
     await run(["node", "--experimental-strip-types", pdfkitConsumerPath], consumerDirectory);
-    // The native prototype: Node gets the error that points at @pdflapas/wasm; Bun renders the WASM bytes when the tarball
-    // carries the library (bun run build:native before packing), else names the missing library.
+    // The native prototype: Node gets the error that points at @pdflapas/wasm; Bun renders the WASM bytes when this host's
+    // platform package carries the library (bun run build:native before packing), else names the missing library.
     const nativeConsumerSource = `
 import PuppeteerGen, { PAGE_SIZES } from "${names.main}";
 import { createNativeRenderer, createNativeRendererPool } from "@pdflapas/native";
@@ -399,7 +419,7 @@ const native = await createNativeRenderer({ fonts }).then(renderer => renderer, 
 if (!("Bun" in globalThis)) {
     if (!(native instanceof Error) || native.name !== "UnsupportedRuntimeError" || native.message !== "@pdflapas/native needs Bun (bun:ffi); on Node use @pdflapas/wasm (createWasmRenderer / createWasmRendererPool). Node support waits on node:ffi (#612 phase 4).") throw new Error(\`@pdflapas/native under Node: \${native}\`);
 } else if (native instanceof Error) {
-    if (!native.message.startsWith("No @pdflapas/native library for")) throw native;
+    if (!/^@pdflapas\\/native-linux-[a-z0-9]+-(gnu|musl)\\/pdflapas_native\\.so, the library of @pdflapas\\/native for .* is not installed/.test(native.message)) throw native;
 } else {
     const pool = await createNativeRendererPool({ fonts, threads: 2 });
     const [a, b, c] = [await native.render(document), await (await createWasmRenderer({ fonts })).render(document), await pool.render(document)];

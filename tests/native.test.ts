@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { createNativeRenderer, createNativeRendererPool } from "../packages/native/src/bun";
+import { createNativeRenderer, createNativeRendererPool, nativeTarget } from "../packages/native/src/bun";
 import { createNativeRenderer as createOutsideBun, createNativeRendererPool as createPoolOutsideBun } from "../packages/native/src/index";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
@@ -10,14 +10,54 @@ import { DECKS } from "./visual/wasm/decks";
 
 const PAGE = PAGE_SIZES.SCREEN_16X9.landscape;
 // Both renderers are needed: the native output is checked against the WASM output of the same pdf-core.
-const nativeBuilt = await Bun.file(resolve(import.meta.dir, "../packages/native/src/pdflapas_native.linux-x64.so")).exists();
+const nativeLibrary = `packages/native-${nativeTarget()}/pdflapas_native.so`;
+const nativeBuilt = await Bun.file(resolve(import.meta.dir, `../${nativeLibrary}`)).exists();
 const wasmBuilt = await Bun.file(resolve(import.meta.dir, "../packages/wasm/src/pdf_wasm_bg.wasm")).exists();
 const systemFonts = nativeBuilt && wasmBuilt ? await loadSystemFonts().catch(() => []) : [];
 const canRender = nativeBuilt && wasmBuilt && systemFonts.length > 0;
 
 if (!canRender) {
-    test.skip(`native backend render (${!nativeBuilt ? "packages/native/src/pdflapas_native.linux-x64.so is not built (bun run build:native)" : !wasmBuilt ? "the WASM renderer is not built" : "no system fonts found"})`, () => {});
+    const reason = !nativeBuilt ? `${nativeLibrary} is not built (bun run build:native)` : !wasmBuilt ? "the WASM renderer is not built" : "no system fonts found";
+
+    // Set by CI's "Native byte identity" jobs, where a skip would pass without comparing anything.
+    if (process.env.NATIVE_TEST_REQUIRED) {
+        throw new Error(`NATIVE_TEST_REQUIRED is set, but ${reason}`);
+    }
+
+    test.skip(`native backend render (${reason})`, () => {});
 }
+
+describe("native library lookup", () => {
+    test.skipIf(process.platform !== "linux")("names this Linux process's platform package by CPU and libc", async () => {
+        expect(nativeTarget()).toMatch(/^linux-(x64|arm64)-(gnu|musl)$/);
+        // Told apart another way, by detect-libc's fallback: musl's ldd is a script that runs its dynamic loader.
+        const ldd = Bun.file("/usr/bin/ldd");
+
+        if (await ldd.exists()) {
+            expect(nativeTarget().endsWith("-musl")).toBe((await ldd.text()).includes("musl"));
+        }
+    });
+
+    test("@pdflapas/native lists one optional platform package per target, each with its os, cpu and libc", async () => {
+        const manifest = await Bun.file(resolve(import.meta.dir, "../packages/native/package.json")).json();
+        const platforms: Record<string, unknown> = {};
+
+        for (const name of Object.keys(manifest.optionalDependencies)) {
+            const { os, cpu, libc, version, files } = await Bun.file(resolve(import.meta.dir, `../packages/${name.replace("@pdflapas/", "")}/package.json`)).json();
+
+            platforms[name] = { os, cpu, libc, version, files };
+        }
+
+        const platform = (cpu: string, libc: string) => ({ os: ["linux"], cpu: [cpu], libc: [libc], version: manifest.version, files: ["pdflapas_native.so"] });
+
+        expect(platforms).toEqual({
+            "@pdflapas/native-linux-arm64-gnu": platform("arm64", "glibc"),
+            "@pdflapas/native-linux-arm64-musl": platform("arm64", "musl"),
+            "@pdflapas/native-linux-x64-gnu": platform("x64", "glibc"),
+            "@pdflapas/native-linux-x64-musl": platform("x64", "musl"),
+        });
+    });
+});
 
 describe("native backend outside Bun", () => {
     test("the Node entry imports and its factories say to use @pdflapas/wasm until node:ffi", async () => {

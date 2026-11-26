@@ -1,15 +1,15 @@
 // "@pdflapas/native" under Bun: the Rust renderer (crates/pdf-ffi, pdf-core) as a native library loaded with bun:ffi.
 // Same surface, options and errors as @pdflapas/wasm's WasmRenderer and WasmRendererPool.
 import { assertHtmlPresentationDocument, type HtmlPresentationDocument, type MissingFont, type MissingFontPolicy, missingFontPolicy, reportMissingFonts } from "@pdflapas/model";
-import { dlopen, FFIType, JSCallback, type Library, type Pointer, suffix, toArrayBuffer } from "bun:ffi";
+import { dlopen, FFIType, JSCallback, type Library, type Pointer, toArrayBuffer } from "bun:ffi";
+import { createRequire } from "node:module";
 import { availableParallelism } from "node:os";
-import { fileURLToPath } from "node:url";
 import type { NativeRenderer, NativeRendererOptions, NativeRendererPool, NativeRendererPoolOptions } from "./index";
 
 export type { MissingFont, MissingFontPolicy, NativeRenderer, NativeRendererOptions, NativeRendererPool, NativeRendererPoolOptions } from "./index";
 export { MissingFontError, UnsupportedRuntimeError } from "./index";
 
-/** The C ABI of crates/pdf-ffi (lib.rs, pool.rs). `usize` is `u64`: the prototype builds 64-bit Linux only. */
+/** The C ABI of crates/pdf-ffi (lib.rs, pool.rs). `usize` is `u64`: every target is 64-bit Linux. */
 const SYMBOLS = {
     pdflapas_renderer_new: { args: [], returns: FFIType.ptr },
     pdflapas_add_font: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.u32 },
@@ -40,27 +40,61 @@ const MAX_DEFAULT_POOL_THREADS = 8;
 // While renders are in flight, a timer keeps the process alive (a threadsafe JSCallback does not) and drains the queue
 // as a safety net should a wake-up ever be lost.
 const IN_FLIGHT_DRAIN_MS = 1000;
+/** The platform packages of @pdflapas/native's optionalDependencies, by nativeTarget(). */
+const NATIVE_TARGETS: ReadonlySet<string> = new Set(["linux-x64-gnu", "linux-arm64-gnu", "linux-x64-musl", "linux-arm64-musl"]);
 const ENCODER = new TextEncoder();
 const DECODER = new TextDecoder();
 
 /** `pdflapas_report`'s JSON: `warnings()` and `missingFonts()` of crates/pdf-wasm. */
 type Report = { readonly warnings: string[]; readonly missingFonts: readonly { readonly face: string; readonly used?: string; readonly objects: string[] }[] };
 
-/** Loads the platform's library next to this module. */
+/**
+ * The platform this process needs a library for, as the suffix of its package `@pdflapas/native-<target>`:
+ * `linux-x64-gnu`, `linux-arm64-musl`, ... Only NATIVE_TARGETS have a package.
+ */
+export function nativeTarget(): string {
+    if (process.platform !== "linux") {
+        return `${process.platform}-${process.arch}`;
+    }
+
+    // Only a glibc process reports glibcVersionRuntime: how napi-rs and detect-libc tell musl apart. The declarations
+    // type the report as a plain object.
+    const { header } = process.report.getReport() as { header?: { glibcVersionRuntime?: string } };
+
+    return `linux-${process.arch}-${header?.glibcVersionRuntime ? "gnu" : "musl"}`;
+}
+
+/** Loads this platform's library from its package, an optional dependency of @pdflapas/native. */
 function openLibrary(): NativeLibrary {
-    // shortcut: built for linux-x64 only (bun run build:native); per-platform packages are phase 2 (#612).
-    const path = fileURLToPath(new URL(`./pdflapas_native.${process.platform}-${process.arch}.${suffix}`, import.meta.url));
+    const target = nativeTarget();
+
+    if (!NATIVE_TARGETS.has(target)) {
+        // shortcut: linux only; darwin and windows packages wait on #612.
+        throw new Error(`@pdflapas/native has no library for ${target}, only for ${[...NATIVE_TARGETS].join(", ")}; use @pdflapas/wasm (createWasmRenderer / createWasmRendererPool) on this platform`);
+    }
+
+    const name = `@pdflapas/native-${target}`;
+    let path: string;
+
+    try {
+        // In this repository the workspace links every platform package, and `bun run build:native` builds into it.
+        path = createRequire(import.meta.url).resolve(`${name}/pdflapas_native.so`);
+    } catch (error) {
+        throw new Error(`${name}/pdflapas_native.so, the library of @pdflapas/native for ${target}, is not installed: reinstall without --omit=optional or --no-optional (in this repository, \`bun run build:native\`), or use @pdflapas/wasm`, {
+            cause: error,
+        });
+    }
 
     try {
         return dlopen(path, SYMBOLS);
     } catch (error) {
-        throw new Error(`No @pdflapas/native library for ${process.platform}-${process.arch} at ${path}: build it with \`bun run build:native\` (linux-x64 only for now), or use @pdflapas/wasm`, { cause: error });
+        throw new Error(`${name} could not load ${path}; reinstall it, or use @pdflapas/wasm`, { cause: error });
     }
 }
 
 /** Copies a buffer the library handed over into JS memory and frees it in the library. */
 function take(library: NativeLibrary, address: bigint, length: bigint): Uint8Array {
-    // A Rust pointer; Number keeps every user-space x86-64 address exactly.
+    // A Rust pointer; Number keeps every 48-bit user-space address of x64 and arm64 Linux exactly.
     const pointer = Number(address) as Pointer;
     const bytes = length === 0n ? new Uint8Array() : new Uint8Array(toArrayBuffer(pointer, 0, Number(length))).slice();
 

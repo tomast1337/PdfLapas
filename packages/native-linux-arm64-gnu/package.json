@@ -1,0 +1,32 @@
+{
+  "name": "@pdflapas/native-linux-arm64-gnu",
+  "version": "0.2.0",
+  "private": true,
+  "description": "The linux arm64 (glibc) library of @pdflapas/native, which installs and loads it; not used directly",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "pdflapas_native.so"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomast1337/Puppeter-PptxGenJS.git",
+    "directory": "packages/native-linux-arm64-gnu"
+  },
+  "bugs": {
+    "url": "https://github.com/tomast1337/Puppeter-PptxGenJS/issues"
+  },
+  "homepage": "https://github.com/tomast1337/Puppeter-PptxGenJS#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

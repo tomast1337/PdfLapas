@@ -53,5 +53,11 @@
   },
   "dependencies": {
     "@pdflapas/model": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@pdflapas/native-linux-arm64-gnu": "workspace:*",
+    "@pdflapas/native-linux-arm64-musl": "workspace:*",
+    "@pdflapas/native-linux-x64-gnu": "workspace:*",
+    "@pdflapas/native-linux-x64-musl": "workspace:*"
   }
 }

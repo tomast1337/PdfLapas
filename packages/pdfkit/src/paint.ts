@@ -28,6 +28,8 @@ export type Paint = {
 export type RenderBudget = {
     /** Dashes, half-waves and zigzag halves drawn for underlines and strikes (text/draw.ts). */
     decorationPieces: number;
+    /** Points SVG image shapes are flattened into to tell a filled area from bare lines (svgImage.ts). */
+    svgPoints: number;
 };
 
 /** Adds the area the path `trace` builds (filled with `alpha`, drawn now) to the silhouettes being captured. */

@@ -186,8 +186,13 @@ export class Effects {
 
             const tolerance = Math.max(FLATTEN_TOLERANCE, Math.max(x1 - x0, y1 - y0) / MAX_SIDE);
             const start = capture.lines.length;
+            const flat = flatten(segments, affine, tolerance, Number.POSITIVE_INFINITY);
 
-            for (const polygon of outline(flatten(segments, affine, tolerance), scaleOf(affine))) {
+            if (flat.kind === "too-many") {
+                continue;
+            }
+
+            for (const polygon of outline(flat.lines, scaleOf(affine))) {
                 for (const [index, [ax, ay]] of polygon.entries()) {
                     const [bx, by] = polygon[(index + 1) % polygon.length] ?? [ax, ay];
 

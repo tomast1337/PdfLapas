@@ -115,7 +115,7 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const shaper = createShaper(faces);
     const registered = new Set<string>();
     const effects = new Effects();
-    const budget: RenderBudget = { decorationPieces: 0 };
+    const budget: RenderBudget = { decorationPieces: 0, svgPoints: 0 };
     const numbers = slides.map((slide, index) => Number(SLIDE_ID.exec(attribute(slide, "id", ""))?.[1] ?? index + 1));
 
     for (const element of descendants(slides)) {

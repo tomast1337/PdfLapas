@@ -127,11 +127,13 @@ export function scaleOf(m: Matrix): number {
 
 /**
  * The polylines of `segments` mapped by `m`, curves flattened to within `tolerance` (Wang's bound on the
- * cubic's second differences).
+ * cubic's second differences), and how many points they hold; `too-many` once that passes `maxPoints`, before the
+ * points past it are made (each is an array: a long path of large curves made gigabytes of them, #448).
  */
-export function flatten(segments: readonly Segment[], m: Matrix, tolerance: number): Polyline[] {
+export function flatten(segments: readonly Segment[], m: Matrix, tolerance: number, maxPoints: number): { kind: "lines"; lines: Polyline[]; points: number } | { kind: "too-many" } {
     const lines: Polyline[] = [];
     let points: Point[] = [];
+    let total = 0;
     const finish = (closed: boolean) => {
         if (points.length) {
             lines.push({ points, closed });
@@ -141,21 +143,35 @@ export function flatten(segments: readonly Segment[], m: Matrix, tolerance: numb
     };
 
     for (const segment of segments) {
+        // A move, line or close adds a point at most, a curve its count.
+        if (total + 1 > maxPoints) {
+            return { kind: "too-many" };
+        }
+
         if (segment[0] === "M") {
             finish(false);
             points.push(apply(m, segment[1], segment[2]));
+            total++;
         } else if (segment[0] === "L") {
             points.push(apply(m, segment[1], segment[2]));
+            total++;
         } else if (segment[0] === "C") {
             const p0 = points.at(-1) ?? apply(m, 0, 0);
 
             if (!points.length) {
                 points.push(p0);
+                total++;
             }
 
             const [p1, p2, p3] = [apply(m, segment[1], segment[2]), apply(m, segment[3], segment[4]), apply(m, segment[5], segment[6])];
             const dd = Math.max(Math.hypot(p0[0] - 2 * p1[0] + p2[0], p0[1] - 2 * p1[1] + p2[1]), Math.hypot(p1[0] - 2 * p2[0] + p3[0], p1[1] - 2 * p2[1] + p3[1]));
-            const count = Math.min(MAX_CURVE_POINTS, Math.max(1, Math.ceil(Math.sqrt((0.75 * dd) / tolerance))));
+            // A curve with a non-finite point (NaN count) adds none.
+            const count = Math.min(MAX_CURVE_POINTS, Math.max(1, Math.ceil(Math.sqrt((0.75 * dd) / tolerance)))) || 0;
+
+            total += count;
+            if (total > maxPoints) {
+                return { kind: "too-many" };
+            }
 
             for (let index = 1; index <= count; index++) {
                 const t = index / count;
@@ -171,13 +187,14 @@ export function flatten(segments: readonly Segment[], m: Matrix, tolerance: numb
             // A path continues from the closed subpath's start.
             if (first) {
                 points.push(first);
+                total++;
             }
         }
     }
 
     finish(false);
 
-    return lines.filter(line => line.points.length > 1 || line.closed);
+    return { kind: "lines", lines: lines.filter(line => line.points.length > 1 || line.closed), points: total };
 }
 
 /** `polygon` turned to a positive signed area, so overlapping pieces of one outline add up under the nonzero rule. */

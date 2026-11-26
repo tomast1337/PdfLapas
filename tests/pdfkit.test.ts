@@ -359,6 +359,27 @@ describe("PDFKit renderer", () => {
             expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': fill-opacity 'half' in an SVG image is not a number; inherited instead", "slide 1: object 'Image 0': stroke-opacity 'none' in an SVG image is not a number; inherited instead"]);
         });
 
+        // #448: each large curve flattened into up to 1024 points for the area test; 10 000 took 0.9 s and +850 MB.
+        test("reports and skips filled SVG shapes past the render's flattened-point budget, in bounded time", async () => {
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+            const picture = (d: string) => `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><path d="${d}" fill="#ff0000"/></svg>`)}`;
+            let d = "M0 0";
+
+            for (let index = 0; index < 10_000; index++) {
+                d += ` C${index * 3e6 + 1e6} 1e6 ${index * 3e6 + 2e6} 1e6 ${index * 3e6 + 3e6} 0`;
+            }
+
+            const start = performance.now();
+
+            await render(renderer, pres => pres.addSlide().addImage({ data: picture(d), x: 1, y: 1, w: 1, h: 1 }));
+            expect(performance.now() - start).toBeLessThan(1000);
+            expect(renderer.warnings()).toEqual(["slide 1: object 'Image 0': filled shapes in SVG images past 1000000 flattened points per render are not drawn"]);
+            const pdf = await render(renderer, pres => pres.addSlide().addImage({ data: picture("M0 0 C30 0 60 30 60 60 L0 60 Z"), x: 1, y: 1, w: 1, h: 1 }));
+
+            expect(renderer.warnings()).toEqual([]);
+            expect(pageContents(pdf)[0]).toMatch(/ c\n[^]*\nf\n/);
+        });
+
         test("fails the render, not the process, on a corrupt PNG whose pixels PDFKit would decode (GHSA-mc68-2mrj-jwhm)", async () => {
             const renderer = await createPdfkitRenderer({ fonts: systemFonts });
             const chunk = (type: string, data: Buffer) => {

@@ -913,6 +913,39 @@ Measured with `BENCH_LOAD_ENGINES=pdfkit,pdfkit-pool,wasm-pool BENCH_LOAD_CONCUR
 | PDFKit pool        | 16          | 69.0      | 195 ms | 298 ms  | 10.7 ms                     |
 | WASM pool          | 16          | 134.4     | 73 ms  | 312 ms  | 6.1 ms                      |
 
+### Native renderer (Bun)
+
+**Experimental, Linux only.** `@pdflapas/native` is the WASM renderer's Rust code (`crates/pdf-core`) built as a native
+library and loaded with Bun's FFI. It renders the same PDF bytes as `@pdflapas/wasm` (CI compares them on every visual
+deck), takes the same options and throws the same errors. `createNativeRendererPool()` renders on threads inside the
+library that share one copy of the font bytes, so `render()` does not block the event loop. `@pdflapas/wasm` stays the
+default and recommended backend.
+
+```typescript
+import PuppeteerGen from "@pdflapas/pptxgenjs";
+import { createNativeRendererPool } from "@pdflapas/native";
+import { loadSystemFonts } from "@pdflapas/wasm";
+
+const renderer = await createNativeRendererPool({ fonts: await loadSystemFonts(), threads: 4 });
+const pres = new PuppeteerGen(undefined, { renderer });
+pres.addSlide().addText("Hello", { x: 1, y: 1, w: 4, h: 1 });
+const pdf = await pres.toPdf();
+await renderer.close();
+```
+
+- **Platforms.** Linux x64 and arm64, glibc and musl (Alpine): each library is its own package
+  (`@pdflapas/native-linux-x64-gnu`, `-linux-arm64-gnu`, `-linux-x64-musl`, `-linux-arm64-musl`), an optional
+  dependency the package manager installs only on its platform. Elsewhere, or with optional dependencies omitted, the
+  factories throw an error naming the platform and pointing at `@pdflapas/wasm`. Darwin and Windows come later (#612).
+- **Runtime.** Bun only. Under Node.js the factories throw `UnsupportedRuntimeError`; use `createWasmRendererPool()`.
+- **Options.** `fonts`, `onUnsupported` and `onMissingFont` as in `createWasmRenderer()`; the pool adds `threads`,
+  one per core but one, at most 8. `createNativeRenderer()` is a single renderer whose renders block the event loop,
+  as a `WasmRenderer`'s do.
+- **Memory.** In `bench:load` (the mix above, 8 threads against 8 WASM workers) the native pool idled at about 0.8 GB
+  RSS against 3.1 GB for the WASM pool, at the same renders/s once the calling thread is the limit.
+- **Install.** Not on npm yet (#458). In this repository, `bun run build:native` builds this host's library
+  (`bun run build:native linux-x64-musl` for musl, in Docker).
+
 ### Fonts for the PowerPoint target
 
 The PowerPoint target matches PowerPoint only with the faces PowerPoint draws with installed: the faces the

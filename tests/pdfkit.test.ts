@@ -280,6 +280,32 @@ describe("PDFKit renderer", () => {
         expect(performance.now() - start).toBeLessThan(1000);
     });
 
+    // #448: the mask budget counted samples, not edges; a shadowed path of 40 000 tall curves took 3.9 s and +1 GB.
+    test("charges a shadow's outline edges to the budget, and reports one with too many", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addShape("triangle", { x: 1, y: 1, w: 4, h: 3, fill: { color: "4472C4" }, shadow: { type: "outer", blur: 6, offset: 4, angle: 45, color: "000000", opacity: 0.5 } });
+        const document = await pres.toHtml();
+        const curves = (count: number) => {
+            let d = "M0 270";
+
+            for (let index = 0; index < count; index++) {
+                d += ` C${index * 0.02 + 10} 0 ${index * 0.02 + 20} 540 ${index * 0.02 + 30} 270`;
+            }
+
+            return document.html.replace(/(<path class="shape-face" d=")[^"]*"/, `$1${d}"`);
+        };
+        const start = performance.now();
+        const shadowed = (pdf: Uint8Array) => (pageContents(pdf)[0] ?? "").includes("/FX1 Do");
+
+        expect(shadowed(await renderer.render({ ...document, html: curves(40_000) }))).toBe(false);
+        expect(performance.now() - start).toBeLessThan(1000);
+        expect(renderer.warnings()).toEqual(["slide 1: object 'Shape 0': a shadow or glow whose outline has more than 500000 edges is not rendered"]);
+        expect(shadowed(await renderer.render({ ...document, html: curves(100) }))).toBe(true);
+        expect(renderer.warnings()).toEqual([]);
+    });
+
     describe("pictures", () => {
         test("draws a GIF's and a WebP's first frame, embedded as PNG", async () => {
             const renderer = await createPdfkitRenderer({ fonts: systemFonts });

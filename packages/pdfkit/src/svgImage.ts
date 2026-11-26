@@ -39,6 +39,12 @@ const AXIS: Readonly<Record<string, number>> = { Min: 0, Mid: 0.5, Max: 1 };
 const CHANNEL_MAX = 255;
 /** Flattening tolerance (user units) for telling a path with area from bare lines. */
 const AREA_TOLERANCE = 1;
+/**
+ * Points one render flattens SVG image shapes into for that test. Each is an array (about 100 bytes), and a curve of
+ * large user units makes up to a thousand: a 539 KB path made 8.7 million, 0.9 s and +850 MB (#448). A detailed
+ * picture of 100 000 curves makes a few hundred thousand.
+ */
+const MAX_RENDER_SVG_POINTS = 1_000_000;
 const RGB_CHANNELS = 3;
 
 /** SVG's inherited properties, as an element's parent resolves them (SVG's initial values at the root). */
@@ -402,7 +408,16 @@ function drawChildren(reader: Reader, parent: Element, inherited: Inherited): vo
             let filled = false;
 
             if (fillColor && fillColor.alpha > 0) {
-                for (const { points } of flatten(record(doc, trace), IDENTITY, AREA_TOLERANCE)) {
+                const budget = reader.paint.budget;
+                const flat = flatten(record(doc, trace), IDENTITY, AREA_TOLERANCE, MAX_RENDER_SVG_POINTS - budget.svgPoints);
+
+                if (flat.kind === "too-many") {
+                    reader.report(`filled shapes in SVG images past ${MAX_RENDER_SVG_POINTS} flattened points per render are not drawn`);
+                    continue;
+                }
+
+                budget.svgPoints += flat.points;
+                for (const { points } of flat.lines) {
                     let sum = 0;
 
                     for (const [index, [x, y]] of points.entries()) {

@@ -6,6 +6,8 @@
 //
 // Private packages are never published. A version that is already
 // on npm is skipped, so a run that failed half-way can be resumed.
+// @pdflapas/native's platform packages are published from the tag's GitHub release (`gh release download`), where CI
+// built their libraries, and before @pdflapas/native, which depends on them.
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -23,6 +25,16 @@ const WASM_SOURCE_DIR = resolve(PACKAGES_DIR, "wasm/src");
 /** npm and bun pack every file under this directory of the tarball. */
 const TARBALL_ROOT = "package/";
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/**
+ * @pdflapas/native's platform packages. Only CI builds all four libraries (each on a runner of its CPU), so their
+ * tarballs come from the GitHub release of the tag (release.yml), checked against its SHA256SUMS, not from this machine.
+ */
+const NATIVE_PLATFORM = /^@pdflapas\/native-linux-/;
+const NATIVE_LIBRARY = "pdflapas_native.so";
+/** Where the platform tarballs and the release's SHA256SUMS are downloaded, apart from the tarballs packed here. */
+const RELEASE_ASSETS_DIR = resolve(RELEASE_DIR, "github");
+/** One `sha256sum` line: the digest, two spaces (or space and `*` for binary mode), the file name. */
+const SHA256SUMS_LINE = /^([0-9a-f]{64}) [ *](.+)$/;
 const DEPENDENCY_FIELDS = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
 
 export type Manifest = {
@@ -210,7 +222,32 @@ export function tarballProblems(source: Manifest, packedManifestText: string, fi
         problems.push(`carries ${packedWasmSha256 === undefined ? "no" : `a different (${packedWasmSha256})`} dist/${WASM_BINARY}, expected sha256 ${committedWasmSha256}`);
     }
 
+    if (NATIVE_PLATFORM.test(source.name) && !files.includes(`${TARBALL_ROOT}${NATIVE_LIBRARY}`)) {
+        problems.push(`carries no ${NATIVE_LIBRARY}; publish the tarball of the GitHub release, which CI built it for`);
+    }
+
     return problems.map(problem => `${source.name} ${problem}`);
+}
+
+/** File name to sha256 from a `sha256sum` listing, such as the GitHub release's SHA256SUMS. */
+export function parseSha256Sums(text: string): Map<string, string> {
+    const sums = new Map<string, string>();
+
+    for (const line of text.split("\n")) {
+        if (!line) {
+            continue;
+        }
+
+        const match = SHA256SUMS_LINE.exec(line);
+
+        if (!match?.[1] || !match[2]) {
+            throw new Error(`SHA256SUMS has a line that is not "<sha256>  <file>": ${line}`);
+        }
+
+        sums.set(match[2], match[1]);
+    }
+
+    return sums;
 }
 
 export function parseCommittedHash(text: string): string {
@@ -310,6 +347,14 @@ export async function packAndVerify(pkg: WorkspacePackage, committedWasmSha256: 
     // Built by test:package, so skip each package's prepack build.
     await output([process.execPath, "pm", "pack", "--ignore-scripts", "--quiet", "--destination", RELEASE_DIR], pkg.directory);
     const tarball = join(RELEASE_DIR, tarballName(pkg.manifest));
+
+    await verifyTarball(pkg.manifest, tarball, committedWasmSha256);
+
+    return tarball;
+}
+
+/** Throws with every problem of a packed tarball (tarballProblems), packed here or downloaded from the GitHub release. */
+export async function verifyTarball(manifest: Manifest, tarball: string, committedWasmSha256: string): Promise<void> {
     const files = (await output(["tar", "-tzf", tarball])).split("\n");
     const packedManifest = await output(["tar", "-xzOf", tarball, `${TARBALL_ROOT}package.json`]);
     const wasmEntry = `${TARBALL_ROOT}dist/${WASM_BINARY}`;
@@ -326,13 +371,11 @@ export async function packAndVerify(pkg: WorkspacePackage, committedWasmSha256: 
         packedWasmSha256 = sha256(bytes);
     }
 
-    const problems = tarballProblems(pkg.manifest, packedManifest, files, packedWasmSha256, committedWasmSha256);
+    const problems = tarballProblems(manifest, packedManifest, files, packedWasmSha256, committedWasmSha256);
 
     if (problems.length) {
         throw new Error(`${tarball} failed verification:\n  ${problems.join("\n  ")}`);
     }
-
-    return tarball;
 }
 
 /** Whether name@version is on npm: a 404 means no; any other failure stops the run. */
@@ -412,6 +455,22 @@ if (import.meta.main) {
 
         await rm(RELEASE_DIR, { recursive: true, force: true });
         await mkdir(RELEASE_DIR);
+        // The platform packages' tarballs, from the GitHub release the Release workflow built for this tag (NATIVE_PLATFORM).
+        const releaseSums = new Map<string, string>();
+
+        if (order.some(manifest => NATIVE_PLATFORM.test(manifest.name))) {
+            await mkdir(RELEASE_ASSETS_DIR);
+            const download = await capture(["gh", "release", "download", releaseTag, "--dir", RELEASE_ASSETS_DIR, "--pattern", "pdflapas-native-linux-*.tgz", "--pattern", "SHA256SUMS"]);
+
+            if (download.exitCode !== 0) {
+                throw new Error(`gh release download ${releaseTag} failed; install and log in to the GitHub CLI (gh auth login), and wait for the Release workflow of ${releaseTag} to create the release:\n${download.stderr}`);
+            }
+
+            for (const [file, hash] of parseSha256Sums(await Bun.file(join(RELEASE_ASSETS_DIR, "SHA256SUMS")).text())) {
+                releaseSums.set(file, hash);
+            }
+        }
+
         const plan: PlannedPackage[] = [];
 
         for (const manifest of order) {
@@ -421,7 +480,22 @@ if (import.meta.main) {
                 throw new Error(`${manifest.name} vanished from packages/`);
             }
 
-            const tarball = await packAndVerify(pkg, committedWasmSha256);
+            let tarball: string;
+
+            if (NATIVE_PLATFORM.test(manifest.name)) {
+                tarball = join(RELEASE_ASSETS_DIR, tarballName(manifest));
+                const expected = releaseSums.get(tarballName(manifest));
+                const file = Bun.file(tarball);
+                const actual = (await file.exists()) ? sha256(await file.bytes()) : "(not downloaded)";
+
+                if (expected === undefined || actual !== expected) {
+                    throw new Error(`${tarball} has sha256 ${actual}, the ${releaseTag} release's SHA256SUMS lists ${expected ?? "no such file"}; check the release's assets`);
+                }
+
+                await verifyTarball(manifest, tarball, committedWasmSha256);
+            } else {
+                tarball = await packAndVerify(pkg, committedWasmSha256);
+            }
 
             plan.push({ manifest, tarball, sha256: sha256(await Bun.file(tarball).bytes()), published: await isPublished(manifest) });
         }

@@ -72,6 +72,23 @@ jobs:
           git diff --exit-code -- packages/wasm/src
           echo "WASM sha256 $(cut -d' ' -f1 packages/wasm/src/pdf_wasm_bg.wasm.sha256) reproduced in Docker" >> "$GITHUB_STEP_SUMMARY"
 
+      # CI's "Native build" jobs built each @pdflapas/native library on a runner of its CPU (#612 phase 2).
+      - name: Download native artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          path: native
+
+      # Each library must match the checksum its build recorded; its platform package holds nothing else.
+      - name: Put the native libraries in their platform packages
+        run: |
+          for directory in native/native-*/; do
+            target=$(basename "$directory")
+            (cd "$directory" && sha256sum -c pdflapas_native.so.sha256)
+            cp "${directory}pdflapas_native.so" "packages/${target}/pdflapas_native.so"
+          done
+          test "$(ls packages/native-linux-*/pdflapas_native.so | wc -l)" = 4
+
       - name: Build packages
         run: bun run build
 
@@ -80,12 +97,26 @@ jobs:
           mkdir -p release
           # Built by the previous step, so skip each package's prepack build.
           for package in packages/*/; do
-            # Private packages are not released.
-            bun -e "process.exit((await Bun.file('${package}package.json').json()).private ? 1 : 0)" || continue
+            # Private packages are not released, but for @pdflapas/native's platform packages: only CI builds all four
+            # libraries, so their tarballs come from here even while private (#458). scripts/publish.ts publishes them.
+            case "$package" in
+              packages/native-linux-*/) ;;
+              *) bun -e "process.exit((await Bun.file('${package}package.json').json()).private ? 1 : 0)" || continue ;;
+            esac
             (cd "$package" && bun pm pack --ignore-scripts --destination ../../release)
           done
           cd release
           sha256sum *.tgz > SHA256SUMS
+
+      - name: Verify each native platform tarball ships its library
+        run: |
+          for checksum in native/native-*/pdflapas_native.so.sha256; do
+            target=$(basename "$(dirname "$checksum")")
+            tarball=$(ls release/pdflapas-${target}-*.tgz)
+            actual=$(tar -xzOf "$tarball" package/pdflapas_native.so | sha256sum | cut -d' ' -f1)
+            echo "$target packed sha256=$actual"
+            test "$actual" = "$(cut -d' ' -f1 "$checksum")"
+          done
 
       - name: Verify the @pdflapas/wasm tarball ships the built binary
         run: |

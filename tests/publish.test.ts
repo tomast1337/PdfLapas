@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { distTag, entryPointFiles, type Manifest, parseCommittedHash, parseOptions, publishOrder, releaseVersion, tarballName, tarballProblems } from "../scripts/publish";
+import { distTag, entryPointFiles, type Manifest, parseCommittedHash, parseOptions, parseSha256Sums, publishOrder, releaseVersion, tarballName, tarballProblems } from "../scripts/publish";
 
 const PACKAGES_DIR = resolve(import.meta.dir, "../packages");
 const HASH = "a".repeat(64);
@@ -20,6 +20,33 @@ describe("publish:npm", () => {
         const order = publishOrder(manifests.filter(manifest => manifest.private !== true)).map(batch => batch.map(manifest => manifest.name));
 
         expect(order).toEqual([["@pdflapas/model"], ["@pdflapas/pdfkit", "@pdflapas/puppeteer", "@pdflapas/wasm"], ["@pdflapas/pptxgenjs"], ["@pdflapas/react"]]);
+    });
+
+    test("publishes @pdflapas/native's platform packages before it, once they are public (#458)", async () => {
+        const native = (await Bun.file(join(PACKAGES_DIR, "native/package.json")).json()) as Manifest;
+        const platforms: Manifest[] = [];
+
+        for (const name of Object.keys(native.optionalDependencies ?? {})) {
+            platforms.push((await Bun.file(join(PACKAGES_DIR, name.replace("@pdflapas/", ""), "package.json")).json()) as Manifest);
+        }
+
+        const order = publishOrder([native, ...platforms, model]).map(batch => batch.map(manifest => manifest.name));
+
+        expect(order).toEqual([["@pdflapas/model", "@pdflapas/native-linux-arm64-gnu", "@pdflapas/native-linux-arm64-musl", "@pdflapas/native-linux-x64-gnu", "@pdflapas/native-linux-x64-musl"], ["@pdflapas/native"]]);
+    });
+
+    test("needs a platform tarball to carry its library, and reads the release's SHA256SUMS", () => {
+        const platform: Manifest = { name: "@pdflapas/native-linux-x64-gnu", version: "1.2.3" };
+
+        expect(tarballProblems(platform, JSON.stringify(platform), ["package/package.json", "package/pdflapas_native.so"], undefined, HASH)).toEqual([]);
+        expect(tarballProblems(platform, JSON.stringify(platform), ["package/package.json"], undefined, HASH)).toEqual(["@pdflapas/native-linux-x64-gnu carries no pdflapas_native.so; publish the tarball of the GitHub release, which CI built it for"]);
+        expect(parseSha256Sums(`${HASH}  pdflapas-native-linux-x64-gnu-1.2.3.tgz\n${OTHER_HASH} *SHA256SUMS\n`)).toEqual(
+            new Map([
+                ["pdflapas-native-linux-x64-gnu-1.2.3.tgz", HASH],
+                ["SHA256SUMS", OTHER_HASH],
+            ]),
+        );
+        expect(() => parseSha256Sums("nope\n")).toThrow("SHA256SUMS has a line");
     });
 
     test("refuses a cycle and a dependency on a package it does not publish", () => {

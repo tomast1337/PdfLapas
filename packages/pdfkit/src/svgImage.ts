@@ -2,8 +2,9 @@
 // `circle`, `ellipse`, `line`, `polyline` and `polygon`, with SVG's inherited fill and stroke (colours, opacities,
 // width, caps, joins, miter limit, dashes, fill rule), `opacity` and `transform`, sized into the picture box by its
 // viewBox and preserveAspectRatio as Chromium sizes an `<img>`. Anything else in the file is reported, not dropped.
+import { MAX_ELEMENT_DEPTH } from "@pdflapas/model";
 import { type Color, color as cssColor, readStyle, type Style, take } from "./css";
-import { attribute, children, type Element, hasAttribute, MAX_DEPTH, parseTree } from "./dom";
+import { attribute, children, type Element, hasAttribute, parseTree } from "./dom";
 import { opacityGroup } from "./internals";
 import { dash, fill, type Paint, stroke } from "./paint";
 import { flatten, IDENTITY, record, replay, type Segment } from "./path";
@@ -475,7 +476,7 @@ export function drawSvgImage(text: string, paint: Paint, box: Frame): void {
     const tree = parseTree(text, "fragment");
 
     if (tree.kind === "too-deep") {
-        report(`an SVG image's elements nest deeper than ${MAX_DEPTH} levels; the picture is not drawn`);
+        report(`an SVG image's elements nest deeper than ${MAX_ELEMENT_DEPTH} levels; the picture is not drawn`);
 
         return;
     }

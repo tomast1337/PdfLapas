@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
-import { px } from "@pdflapas/model";
+import { MAX_ELEMENT_DEPTH, px } from "@pdflapas/model";
 import { renderedPage, renderedSlide } from "./renderedPage";
 import { z } from "zod";
 import { normalizeComponent } from "../packages/pptxgenjs/src/components/normalize";
 import { COMPONENT_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
+import { completeProfileHtml } from "../packages/pptxgenjs/src/render/completion";
+import { printHtml } from "../packages/puppeteer/src/printWorkarounds";
 
 const input = { type: "example/metric", version: 1, props: { label: "Revenue", value: 42 } };
 const options = { x: 1, y: 2, w: 3, h: 1 };
@@ -192,4 +194,29 @@ test("a renderer that changes its props changes neither the model nor the next t
     expect(await p.toHtml()).toEqual(first);
     expect(first.html).toContain("<b>2</b>");
     expect(p.getModel().slides[0]?.objects[0]).toMatchObject({ kind: "component", component: { props: { count: 1 } } });
+});
+
+test("refuses component markup that nests past what the deck's HTML allows, in milliseconds", async () => {
+    // html, body, the .slide-container and the host hold the content, so 252 nested divs reach MAX_ELEMENT_DEPTH (256).
+    const nested = (depth: number) => `${"<div>".repeat(depth)}x${"</div>".repeat(depth)}`;
+    const p = new PuppeteerGen();
+
+    p.registerComponent("deep/markup", 1, { schema: z.object({ depth: z.number() }), render: props => nested(props.depth) });
+    const slide = p.addSlide();
+
+    slide.addComponent({ type: "deep/markup", version: 1, props: { depth: MAX_ELEMENT_DEPTH - 4 } }, options);
+    const { html } = await p.toHtml();
+
+    // A deck at the limit is read by the other parsers of caller HTML.
+    expect(completeProfileHtml(html)).toBe(html);
+    expect(printHtml(html)).toContain("x</div>");
+    expect(() => slide.addComponent({ type: "deep/markup", version: 1, props: { depth: MAX_ELEMENT_DEPTH - 3 } }, options)).toThrow(
+        "Component 'deep/markup' version 1 rendered markup whose elements nest deeper than 252 levels (the deck's HTML allows 256, and the slide takes 4); flatten its markup",
+    );
+    p.registerComponent("deep/open", 1, { render: () => "<div>".repeat(100_000) });
+    const start = performance.now();
+
+    // Before the limit, 100k nested divs took 24 s and then overflowed the stack.
+    expect(() => slide.addComponent({ type: "deep/open", version: 1, props: {} }, options)).toThrow("Component 'deep/open' version 1 rendered markup whose elements nest deeper than 252 levels");
+    expect(performance.now() - start).toBeLessThan(500);
 });

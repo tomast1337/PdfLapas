@@ -1,8 +1,8 @@
 // One render: parses the profile HTML once, writes one PDFKit page per slide container and collects what the
 // renderer could not draw and the faces it had no font for.
-import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, checkProfileVersion, PROFILE_META_PREFIX } from "@pdflapas/model";
+import { CSS_PX_PER_INCH, htmlDocument, inchesToPoints, MAX_ELEMENT_DEPTH, type MissingFont, PDF_PRODUCER, POINTS_PER_INCH, checkProfileVersion, PROFILE_META_PREFIX } from "@pdflapas/model";
 import PDFDocument from "pdfkit";
-import { attribute, children, descendants, hasAttribute, hasClass, MAX_DEPTH, parseTree, textContent } from "./dom";
+import { attribute, children, descendants, hasAttribute, hasClass, parseTree, textContent } from "./dom";
 import type { Face } from "./fonts";
 import { drawSlide } from "./slide";
 import { Effects } from "./effect/index";
@@ -30,7 +30,7 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const tree = parseTree(html, "document");
 
     if (tree.kind === "too-deep") {
-        throw new Error(`invalid PdfLapas HTML: elements nest deeper than ${MAX_DEPTH} levels (toHtml() nests about a dozen)`);
+        throw new Error(`invalid PdfLapas HTML: elements nest deeper than ${MAX_ELEMENT_DEPTH} levels (toHtml() nests about a dozen)`);
     }
 
     const root = tree.elements.find(element => element.tagName === "html");

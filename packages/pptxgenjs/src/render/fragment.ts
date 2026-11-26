@@ -2,6 +2,7 @@
  * Caller markup (chart SVG, component HTML) parsed and serialized with parse5, the parser and serializer
  * jsdom uses, so the bytes are the ones jsdom's `innerHTML` and `outerHTML` gave, without a DOM.
  */
+import { type DepthLimitedTree, parseWithinDepth } from "@pdflapas/model";
 import { type DefaultTreeAdapterTypes, defaultTreeAdapter, html, parseFragment, serialize as parse5Serialize, serializeOuter as parse5SerializeOuter } from "parse5";
 import type { Html } from "./markup";
 
@@ -18,11 +19,11 @@ export const HTML_NAMESPACE = html.NS.HTML;
 export const SVG_NAMESPACE = html.NS.SVG;
 
 /**
- * Parses `markup` as `innerHTML` does: as the content of a `<div>`, or, without one, of a `<template>`
- * (what parse5 and jsdom's `template.innerHTML` use).
+ * Parses `markup` as `innerHTML` does: as the content of a `<div>` or of a `<template>`
+ * (what parse5 and jsdom's `template.innerHTML` use). `too-deep` when its elements nest deeper than `maxDepth`.
  */
-export function parseMarkup(markup: string, context?: "div"): DefaultTreeAdapterTypes.DocumentFragment {
-    return context ? parseFragment(defaultTreeAdapter.createElement(context, html.NS.HTML, []), markup, {}) : parseFragment(markup);
+export function parseMarkup(markup: string, context: "div" | "template", maxDepth: number): DepthLimitedTree<DefaultTreeAdapterTypes.DocumentFragment> {
+    return parseWithinDepth(defaultTreeAdapter, treeAdapter => (context === "div" ? parseFragment(defaultTreeAdapter.createElement(context, html.NS.HTML, []), markup, { treeAdapter }) : parseFragment(markup, { treeAdapter })), "fragment", maxDepth);
 }
 
 function isElement(node: DefaultTreeAdapterTypes.ChildNode): node is FragmentElement {

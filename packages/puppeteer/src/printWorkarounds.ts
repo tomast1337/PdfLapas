@@ -6,8 +6,8 @@
  * finds the elements, and each change is spliced into the original string at its source offsets, so every
  * byte the print step does not change stays as it was. HTML outside the profile comes back unchanged.
  */
-import { applySourceEdits, degreesToRadians, LAYOUT_UNITS_PER_PX, type SourceEdit } from "@pdflapas/model";
-import { type DefaultTreeAdapterTypes, parse } from "parse5";
+import { applySourceEdits, degreesToRadians, LAYOUT_UNITS_PER_PX, MAX_ELEMENT_DEPTH, parseWithinDepth, type SourceEdit } from "@pdflapas/model";
+import { type DefaultTreeAdapterTypes, defaultTreeAdapter, parse } from "parse5";
 
 type Element = DefaultTreeAdapterTypes.Element;
 type Parent = DefaultTreeAdapterTypes.ParentNode;
@@ -174,8 +174,13 @@ export function printHtml(html: string): string {
         return head;
     });
     const edits: SourceEdit[] = [];
+    const parsed = parseWithinDepth(defaultTreeAdapter, treeAdapter => parse(masked, { sourceCodeLocationInfo: true, treeAdapter }), "document");
 
-    for (const element of descendants(parse(masked, { sourceCodeLocationInfo: true }))) {
+    if (parsed.kind === "too-deep") {
+        throw new Error(`Cannot print: the HTML's elements nest deeper than ${MAX_ELEMENT_DEPTH} levels (toHtml() nests about a dozen); flatten the markup`);
+    }
+
+    for (const element of descendants(parsed.root)) {
         if (hasClass(element, "slide-element")) {
             // Inner shadow: the profile draws one only on a picture, over it and inside its frame. Chromium paints an inset
             // box-shadow under the box's content, where the <img> hides it, so the shadow moves onto an empty box laid over

@@ -75,29 +75,40 @@ export function take(style: Style, property: string, absent: string): string {
     return value;
 }
 
-/** The property as a px length, taken from `style`; `otherwise` when it is absent or not a px length. */
+/**
+ * The property as a px length, taken from `style`; `otherwise` when it is absent or not a px length. A px length too
+ * large for a number (`1e999px`) is an invalid document, not the default.
+ */
 export function takePx(style: Style, property: string, otherwise: number): number {
-    const length = px(take(style, property, ""));
+    const value = take(style, property, "");
+    const length = px(value);
+
+    if (length.kind === "invalid" && PX_LENGTH.test(value)) {
+        throw new Error(`invalid PdfLapas HTML: ${property} '${value}' is not a finite px length`);
+    }
 
     return length.kind === "parsed" ? length.value : otherwise;
 }
 
-/** A `<n>px` length (or a bare `0`). */
+/** A finite `<n>px` length (or a bare `0`). */
 export function px(value: string): Parsed<number> {
     if (value === "0") {
         return { kind: "parsed", value: 0 };
     }
 
-    const match = PX_LENGTH.exec(value)?.[1];
-
-    return match === undefined ? { kind: "invalid" } : { kind: "parsed", value: Number(match) };
+    return finite(PX_LENGTH.exec(value)?.[1]);
 }
 
-/** An `<n>em` length. */
+/** A finite `<n>em` length. */
 export function em(value: string): Parsed<number> {
-    const match = EM_LENGTH.exec(value)?.[1];
+    return finite(EM_LENGTH.exec(value)?.[1]);
+}
 
-    return match === undefined ? { kind: "invalid" } : { kind: "parsed", value: Number(match) };
+/** The number a length's digits spell, invalid when there are none or it overflows to Infinity (`1e999`). */
+function finite(digits: string | undefined): Parsed<number> {
+    const value = Number(digits);
+
+    return digits !== undefined && Number.isFinite(value) ? { kind: "parsed", value } : { kind: "invalid" };
 }
 
 /** A px length, or a percentage of `base`. */

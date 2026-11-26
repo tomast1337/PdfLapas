@@ -51,6 +51,10 @@ const CJK_FALLBACK_BY_LANG: Readonly<Record<string, string>> = Object.freeze({
 });
 /** Tables that hold glyph outlines; a face without them (a bitmap color emoji font) cannot be drawn by PDFKit. */
 const OUTLINE_TABLES: readonly string[] = Object.freeze(["glyf", "CFF ", "CFF2"]);
+/** Tables fontkit reads to lay out and PDFKit to embed a face (`loca` with `glyf` only); a face without one fails mid-render. */
+const REQUIRED_TABLES: readonly string[] = Object.freeze(["head", "hhea", "maxp", "hmtx", "cmap", "loca"]);
+/** The character whose outline is read when a face is loaded ('A', or .notdef where the face has none). */
+const SAMPLE_CODE_POINT = 0x41;
 const BOLD_WEIGHT = 600;
 /** Name table ids: the family (1) and the typographic family (16), which groups weights beyond regular and bold. */
 const FAMILY_NAMES: readonly string[] = Object.freeze(["fontFamily", "preferredFamily"]);
@@ -85,6 +89,14 @@ export function parseFonts(files: readonly Uint8Array[]): Face[] {
         }
 
         for (const font of drawable) {
+            // `as`: as above, the table directory @types/fontkit does not declare.
+            const tables = (font as unknown as { directory?: { tables?: Record<string, unknown> } }).directory?.tables ?? {};
+            const missing = REQUIRED_TABLES.filter(tag => !(tag in tables) && (tag !== "loca" || "glyf" in tables));
+
+            if (missing.length) {
+                throw new Error(`Font #${index} has no '${missing.join("', '")}' table, which PDFKit needs to lay out and embed its glyphs; pass the complete font file`);
+            }
+
             const families: string[] = [];
 
             for (const name of FAMILY_NAMES) {
@@ -95,11 +107,22 @@ export function parseFonts(files: readonly Uint8Array[]): Face[] {
                 }
             }
 
+            if (!families.length) {
+                throw new Error(`Font #${index} has no family name in its 'name' table, so no run's font-family can select it; pass a font with a name table`);
+            }
+
+            // fontkit reads glyph data only when it is drawn: one outline now fails here, naming the file, not mid-render.
+            try {
+                void font.glyphForCodePoint(SAMPLE_CODE_POINT).path;
+            } catch (error) {
+                throw new Error(`Font #${index} cannot draw its glyphs (${error instanceof Error ? error.message : String(error)}); the file is damaged`, { cause: error });
+            }
+
             const os2 = font["OS/2"] as { usWeightClass?: number; fsSelection?: { italic?: boolean; bold?: boolean } } | undefined; // `as`: the declared Os2Table omits these fields
             const bold = (os2?.fsSelection?.bold ?? false) || (os2?.usWeightClass ?? 0) >= BOLD_WEIGHT;
             const italic = (os2?.fsSelection?.italic ?? false) || font.italicAngle !== 0;
 
-            faces.push({ key: `F${faces.length}`, font, families: [...new Set(families.length ? families : [font.familyName.toLowerCase()])], bold, italic });
+            faces.push({ key: `F${faces.length}`, font, families: [...new Set(families)], bold, italic });
         }
     }
 

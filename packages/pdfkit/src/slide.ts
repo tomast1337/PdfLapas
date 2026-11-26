@@ -200,6 +200,12 @@ export function drawSlide(slide: Element, context: SlideContext, size: { width: 
         }
 
         const opacity = Number(take(style, "opacity", "1"));
+
+        // `1e999` overflows: drawn, it would be no rotation and full opacity, a picture the HTML does not state.
+        if (!Number.isFinite(rotation) || !Number.isFinite(opacity)) {
+            throw new Error(`invalid PdfLapas HTML: object '${name}' has a rotation of ${rotation} deg and an opacity of ${opacity}; both must be finite numbers`);
+        }
+
         const box: Box = { x: left.value, y: top.value, width: takePx(style, "width", 0), height, rotation, flipH, flipV, opacity };
         // The object's shadow: `box-shadow` on the box (`inset`, a picture's inner shadow), or `filter: drop-shadow()`
         // on a shape's svg. pdf-core draws an inner shadow on pictures only and reports it on anything else.

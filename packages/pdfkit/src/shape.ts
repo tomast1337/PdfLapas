@@ -85,6 +85,10 @@ function paintGeometry(element: Element, paint: Paint, space: ShapeSpace, trace:
         }
     }
 
+    if (!Number.isFinite(width) || !dashes.every(Number.isFinite)) {
+        throw new Error(`invalid PdfLapas HTML: <${element.tagName}> has stroke-width '${attribute(element, "stroke-width", "1")}' and stroke-dasharray '${attribute(element, "stroke-dasharray", "")}'; both must be finite numbers`);
+    }
+
     doc.save();
     let stroked = strokeColor !== undefined && width > 0;
 
@@ -209,8 +213,8 @@ export function drawShapeSvg(svg: Element, paint: Paint, frame: Frame): void {
         .map(Number);
     const [, , boxWidth = Number.NaN, boxHeight = Number.NaN] = viewBox;
 
-    if (!(boxWidth > 0 && boxHeight > 0)) {
-        throw new Error("invalid PdfLapas HTML: svg.shape-svg has no positive viewBox size");
+    if (!(boxWidth > 0 && boxHeight > 0) || !viewBox.every(Number.isFinite)) {
+        throw new Error("invalid PdfLapas HTML: svg.shape-svg has no viewBox of four finite numbers with a positive size");
     }
 
     // A zero-length side's coordinates are all 0 (a straight line), so any scale maps them; take the other side's.

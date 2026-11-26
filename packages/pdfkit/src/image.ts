@@ -12,7 +12,8 @@ import { drawSvgImage } from "./svgImage";
 import type { Frame } from "./text/draw";
 import { reportUnread } from "./text/read";
 
-const DATA_URI = /^data:([^;,]*)(;base64)?,(.*)$/s;
+/** `data:<mime>[;<parameter>]...,<payload>`. */
+const DATA_URI = /^data:([^;,]*)((?:;[^;,]*)*),(.*)$/s;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47] as const;
 const JPEG_SIGNATURE = [0xff, 0xd8] as const;
 const GIF_SIGNATURE = [0x47, 0x49, 0x46, 0x38] as const; // "GIF8"
@@ -42,6 +43,11 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
     reportUnread(frame, frameStyle, [], paint.report, FRAME_LAYOUT);
     const style = readStyle(img);
     const opacity = Number(take(style, "opacity", "1"));
+
+    if (!Number.isFinite(opacity)) {
+        throw new Error(`invalid PdfLapas HTML: an image's opacity is ${opacity}, expected a finite number`);
+    }
+
     const offsetX = length(take(style, "left", ""), box.width);
     const offsetY = length(take(style, "top", ""), box.height);
     const x = offsetX.kind === "parsed" ? offsetX.value : 0;
@@ -66,7 +72,17 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
     }
 
     const payload = dataUri[3] ?? "";
-    const bytes = dataUri[2] ? Uint8Array.from(atob(payload.replace(/\s+/g, "")), char => char.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(payload));
+    // Base64 when the last parameter is `base64`, as Chromium and checkImagePixels read it (`;charset=utf-8;base64`).
+    const base64 = (dataUri[2] ?? "").split(";").at(-1)?.trim().toLowerCase() === "base64";
+    let bytes: Uint8Array;
+
+    try {
+        bytes = base64 ? Uint8Array.from(atob(payload.replace(/\s+/g, "")), char => char.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(payload));
+    } catch (error) {
+        throw new Error(`invalid PdfLapas HTML: image '${attribute(element, "data-object-name", "")}' has a data: URI whose payload is not ${base64 ? "base64" : "percent-encoded (%XX)"}; encode the image bytes as base64 after ';base64,'`, {
+            cause: error,
+        });
+    }
 
     if (imgWidth.kind === "invalid" || imgHeight.kind === "invalid") {
         throw new Error("invalid PdfLapas HTML: an image's img has no width and height in px or %");

@@ -272,6 +272,18 @@ Each release:
 Local publishes carry no npm provenance attestation (`--provenance` only works
 from CI); the attested tarballs are the ones on the GitHub release.
 
+`@pdflapas/native`'s platform packages (`@pdflapas/native-linux-x64-gnu`,
+`-linux-arm64-gnu`, `-linux-x64-musl`, `-linux-arm64-musl`) hold a library that
+only CI builds, each on a runner of its CPU ("Native build" jobs). The Release
+workflow checks each library against its build's checksum, packs the four
+platform tarballs into the release (listed in `SHA256SUMS`) and dry-runs them
+with the others. Once they and `@pdflapas/native` are public (#458),
+`bun run publish:npm` downloads those tarballs from the tag's GitHub release
+with `gh release download` (install the GitHub CLI and `gh auth login` first),
+checks them against `SHA256SUMS` and that each carries its library, and
+publishes them before `@pdflapas/native`. Until then all five are private and
+skipped.
+
 ## Compatibility changes
 
 PptxGenJS 4.0.1 is the compatibility baseline. When behavior is unclear,

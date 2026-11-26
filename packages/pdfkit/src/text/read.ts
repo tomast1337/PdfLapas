@@ -319,7 +319,13 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
 
     style.delete("overflow-wrap");
     style.delete("direction"); // each paragraph repeats it, and pdf-core reads it there only
-    const paddingSides = sides(take(style, "padding", ""));
+    const paddingValue = take(style, "padding", "");
+    const paddingSides = sides(paddingValue);
+
+    if (paddingValue && paddingSides.kind === "invalid") {
+        throw new Error(`invalid PdfLapas HTML: a text box's padding '${paddingValue}' is not four finite px lengths`);
+    }
+
     const padding: TextBox["padding"] = paddingSides.kind === "parsed" ? paddingSides.value : [0, 0, 0, 0];
 
     if (direction !== "horizontal") {

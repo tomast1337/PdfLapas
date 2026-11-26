@@ -142,6 +142,20 @@ describe("PDFKit renderer", () => {
         expect(content).toContain("96 0 0 -48 192 144 cm\n/I1 Do");
     });
 
+    test("reads a data URI's parameters before base64, and names the image whose payload does not decode (#448)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addImage({ data: PNG, x: 2, y: 1, w: 1, h: 0.5 });
+        const document = await pres.toHtml();
+        const html = (src: string) => ({ ...document, html: document.html.replace(PNG, src) });
+
+        expect(document.html).toContain(PNG);
+        expect(pageContents(await renderer.render(html(PNG.replace(";base64", ";charset=utf-8;base64"))))[0]).toContain("/I1 Do");
+        await expect(renderer.render(html("data:image/png;base64,!!!!"))).rejects.toThrow("invalid PdfLapas HTML: image 'Image 0' has a data: URI whose payload is not base64; encode the image bytes as base64 after ';base64,'");
+        await expect(renderer.render(html("data:image/png,%zz"))).rejects.toThrow("image 'Image 0' has a data: URI whose payload is not percent-encoded (%XX)");
+    });
+
     test("throws on what it cannot draw, or lists it in warnings() under onUnsupported: warn", async () => {
         const populate = (pres: PuppeteerGen) => pres.addSlide().addTable([[{ text: "cell", options: { textDirection: "vert" } }]], { x: 1, y: 1, w: 2 });
 
@@ -975,6 +989,32 @@ describe("PDFKit renderer", () => {
         expect(performance.now() - start).toBeLessThan(500);
     });
 
+    test("refuses a number too large to be finite with the input it read, and reports such a shadow (#448)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+        const slide = pres.addSlide();
+
+        slide.addShape("rect", { x: 1, y: 1, w: 2, h: 1, fill: { color: "4472C4" }, line: { color: "000000", width: 1 }, shadow: { type: "outer", blur: 6, offset: 4, angle: 45, color: "000000", opacity: 0.5 } });
+        slide.addText("Text", { x: 1, y: 3, w: 2, h: 1, margin: 4 });
+        const document = await pres.toHtml();
+        const replace = (pattern: RegExp, value: string) => {
+            expect(document.html).toMatch(pattern);
+
+            return renderer.render({ ...document, html: document.html.replace(pattern, value) });
+        };
+
+        await renderer.render(document);
+        expect(renderer.warnings()).toEqual([]);
+        await expect(replace(/top: 96px; width: 192px/, "top: 96px; width: 1e999px")).rejects.toThrow("invalid PdfLapas HTML: width '1e999px' is not a finite px length");
+        await expect(replace(/(style="left: 96px; top: 96px;[^"]*)"/, '$1 opacity: 1e999;"')).rejects.toThrow("an opacity of Infinity; both must be finite numbers");
+        await expect(replace(/(style="left: 96px; top: 96px;[^"]*)"/, '$1 transform: rotate(1e999deg);"')).rejects.toThrow("a rotation of Infinity deg");
+        await expect(replace(/stroke-width="[\d.]+"/, 'stroke-width="1e999"')).rejects.toThrow("has stroke-width '1e999'");
+        await expect(replace(/viewBox="0 0 [\d.]+/, 'viewBox="0 0 1e999')).rejects.toThrow("svg.shape-svg has no viewBox of four finite numbers");
+        await expect(replace(/padding: 5\.3+px/, "padding: 1e999px")).rejects.toThrow("a text box's padding '1e999px");
+        await replace(/drop-shadow\(([\d.]+)px/, "drop-shadow(1e999px");
+        expect(renderer.warnings()).toEqual([expect.stringMatching(/^slide 1: object 'Shape 0': shadow '1e999px .*' is not '<x>px <y>px <blur>px <color>'$/)]);
+    });
+
     test("refuses a shrink rule that never fits or takes more steps than toHtml() writes, and shrinks with its own (#448)", async () => {
         const renderer = await createPdfkitRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
@@ -1027,6 +1067,29 @@ describe("PDFKit renderer", () => {
         await expect(createBrowserPdfkitRenderer({ fonts: [new Uint8Array([1, 2, 3])] })).rejects.toThrow("Font #0 is not a TTF, OTF or TTC font file");
         await expect(browserLoadSystemFonts()).rejects.toThrow("only available under Node/Bun");
         await expect(createBrowserPdfkitRenderer({ fonts: systemFonts, onUnsupported: "ignore" as never })).rejects.toThrow('onUnsupported must be "error" or "warn"');
+    });
+
+    test("refuses a font it could not draw from when the renderer is created, naming the file (#448)", async () => {
+        const [font = new Uint8Array()] = await loadSystemFonts({ match: /^LiberationSans-Regular\.ttf$/ });
+        // The font with one table's tag in the table directory (16-byte records from byte 12) renamed, so fontkit finds no such table.
+        const without = (tag: string) => {
+            const bytes = font.slice();
+            const view = new DataView(bytes.buffer);
+            const tables = view.getUint16(4);
+
+            for (let record = 12; record < 12 + tables * 16; record += 16) {
+                if (String.fromCharCode(...bytes.subarray(record, record + 4)) === tag) {
+                    bytes[record] = "x".charCodeAt(0);
+                }
+            }
+
+            return bytes;
+        };
+
+        expect(await createBrowserPdfkitRenderer({ fonts: [font] })).toBeDefined();
+        await expect(createBrowserPdfkitRenderer({ fonts: [font, without("head")] })).rejects.toThrow("Font #1 has no 'head' table, which PDFKit needs to lay out and embed its glyphs");
+        await expect(createBrowserPdfkitRenderer({ fonts: [without("loca")] })).rejects.toThrow("Font #0 has no 'loca' table");
+        await expect(createBrowserPdfkitRenderer({ fonts: [without("name")] })).rejects.toThrow("Font #0 has no family name in its 'name' table");
     });
 
     test("breaks lines where Chromium does: after spaces, not inside a minus before a digit", () => {

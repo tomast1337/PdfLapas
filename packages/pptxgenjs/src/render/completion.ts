@@ -6,8 +6,8 @@
  * Pure and browser-safe: parse5 finds what is missing, and each missing value is spliced into the original
  * string, so a document that already states everything (every `toHtml()` result) comes back byte-identical.
  */
-import { applySourceEdits, htmlDocument, type HtmlPresentationDocument, inchesToPixels, pointsToPixels, checkProfileVersion, PROFILE_META_PREFIX, type SourceEdit } from "@pdflapas/model";
-import { type DefaultTreeAdapterTypes, parse } from "parse5";
+import { applySourceEdits, htmlDocument, type HtmlPresentationDocument, inchesToPixels, MAX_ELEMENT_DEPTH, parseWithinDepth, pointsToPixels, checkProfileVersion, PROFILE_META_PREFIX, type SourceEdit } from "@pdflapas/model";
+import { type DefaultTreeAdapterTypes, defaultTreeAdapter, parse } from "parse5";
 import { PPTX_DEFAULTS } from "#src/defaults";
 import { normalizeColor } from "#src/normalize/style";
 import { lineBoxOf } from "#src/normalize/text";
@@ -349,14 +349,21 @@ function metaContent(head: Element, name: string): { kind: "content"; content: s
  * Fills the values a profile document may omit (docs/HTML_PROFILE.md, "Completion") with PptxGenJS's
  * defaults. Throws when `html` is not a profile document: empty, without
  * `<meta name="pdflapas-profile" content="2">`, or of another
- * version. A complete document, such as any `toHtml()` result, is returned unchanged, byte for byte.
+ * version, or nesting elements deeper than MAX_ELEMENT_DEPTH. A complete document, such as any
+ * `toHtml()` result, is returned unchanged, byte for byte.
  */
 export function completeProfileHtml(html: string): string {
     if (typeof html !== "string" || !html.trim()) {
         throw new Error(`invalid PdfLapas HTML: expected a non-empty HTML string, got ${typeof html === "string" ? "an empty string" : typeof html}`);
     }
 
-    const document = parse(html, { sourceCodeLocationInfo: true });
+    const parsed = parseWithinDepth(defaultTreeAdapter, treeAdapter => parse(html, { sourceCodeLocationInfo: true, treeAdapter }), "document");
+
+    if (parsed.kind === "too-deep") {
+        throw new Error(`invalid PdfLapas HTML: elements nest deeper than ${MAX_ELEMENT_DEPTH} levels (toHtml() nests about a dozen)`);
+    }
+
+    const document = parsed.root;
     const head = findElement(document, element => element.tagName === "head");
 
     // Without a <head> there is no profile <meta>, so checkProfileVersion throws.

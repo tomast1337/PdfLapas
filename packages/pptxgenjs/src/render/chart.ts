@@ -9,7 +9,7 @@ import { PPTX_DEFAULTS } from "#src/defaults";
 import { builtInFontMetrics } from "#src/fontMetrics";
 import type { ChartExtensionInput } from "#src/chart/types";
 import type { NormalizedChart, NormalizedChartValueAxis, NormalizedObjectStyle } from "@pdflapas/model";
-import { pointsToPixels } from "@pdflapas/model";
+import { MAX_ELEMENT_DEPTH, pointsToPixels } from "@pdflapas/model";
 import { renderBar3DSvg } from "./chart3d";
 import { type InlineStyle, styleAttribute } from "./css";
 import { attributeName, descendants, firstElementChild, getAttribute, parseMarkup, SVG_NAMESPACE, serializeOuter, setAttribute } from "./fragment";
@@ -270,7 +270,13 @@ function chartContainer(svgSource: string, style: NormalizedObjectStyle, altText
     // The chart's SVG root as markup: parsed as `template.innerHTML` parses it, checked for external references,
     // its ids prefixed with `idScope` and its size set to the object box. Only the root's descendants are
     // checked and renamed (it was `svg.querySelectorAll()`), so the bytes match the DOM-built HTML.
-    const root = firstElementChild(parseMarkup(svgSource.trim()));
+    const parsed = parseMarkup(svgSource.trim(), "template", MAX_ELEMENT_DEPTH);
+
+    if (parsed.kind === "too-deep") {
+        throw new TypeError(`Chart renderer returned an SVG whose elements nest deeper than ${MAX_ELEMENT_DEPTH} levels`);
+    }
+
+    const root = firstElementChild(parsed.root);
 
     if (root.kind === "none" || root.element.namespaceURI !== SVG_NAMESPACE || root.element.tagName !== "svg") {
         throw new TypeError("Chart renderer did not return an SVG root element");

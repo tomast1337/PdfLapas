@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parse } from "parse5";
 import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { completeProfileHtml } from "../packages/pptxgenjs/src/render/completion";
-import { pointsToPixels } from "@pdflapas/model";
+import { MAX_ELEMENT_DEPTH, pointsToPixels } from "@pdflapas/model";
 import { HAND_WRITTEN_OBJECTS, handWrittenDocument } from "./handWrittenHtml";
 
 /** The `style` and attributes of the first element matching `selector` (a class name or a tag), from a parse. */
@@ -127,5 +127,18 @@ describe("completeProfileHtml()", () => {
         const em = handWrittenDocument(`<div class="slide-element slide-text" data-object-name="T"><div class="text-content"><div class="text-paragraph"><span class="text-run" style="font-size: 2em;">x</span></div></div></div>`);
 
         expect(() => completeProfileHtml(em)).toThrow("slide 1: object 'T': CSS property 'font-size': '2em' is not a px length");
+    });
+
+    test("stops parsing at the element depth limit, so deep nesting is refused in milliseconds", () => {
+        // html, body and the .slide-container hold the objects, so 253 nested divs reach MAX_ELEMENT_DEPTH (256).
+        const nested = (depth: number) => handWrittenDocument(`${"<div>".repeat(depth)}x${"</div>".repeat(depth)}`);
+
+        expect(completeProfileHtml(nested(MAX_ELEMENT_DEPTH - 3))).toContain("x</div>");
+        expect(() => completeProfileHtml(nested(MAX_ELEMENT_DEPTH - 2))).toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels (toHtml() nests about a dozen)");
+        const start = performance.now();
+
+        // Before the limit, 100k nested divs took 24 s and then overflowed the stack.
+        expect(() => completeProfileHtml(handWrittenDocument("<div>".repeat(100_000)))).toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels");
+        expect(performance.now() - start).toBeLessThan(500);
     });
 });

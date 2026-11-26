@@ -6,7 +6,7 @@ import { closeBrowser } from "../packages/puppeteer/src/browser";
 import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { PRINT_ZOOM, printHtml } from "../packages/puppeteer/src/printWorkarounds";
 import { PuppeteerPdfRenderer } from "../packages/puppeteer/src/puppeteerPdf";
-import { inchesToPixels, inchesToPoints, pixelsToInches } from "@pdflapas/model";
+import { inchesToPixels, inchesToPoints, MAX_ELEMENT_DEPTH, pixelsToInches } from "@pdflapas/model";
 
 /** The document Puppeteer prints, parsed for structural assertions. */
 async function printedPage(presentation: PuppeteerGen): Promise<Document> {
@@ -285,6 +285,22 @@ describe("Puppeteer print workarounds", () => {
         expect(printHtml(html)).toBe(`<!DOCTYPE html><html style="zoom: ${PRINT_ZOOM};" lang="en"><head></head><body></body></html>`);
         expect(printHtml(`<!DOCTYPE html><html style="color: red"><body></body></html>`)).toBe(`<!DOCTYPE html><html style="color: red; zoom: ${PRINT_ZOOM};"><body></body></html>`);
         expect(() => printHtml("<p>fragment")).toThrow("Cannot print: <html> must be written out in the document");
+    });
+
+    test("stops parsing at the element depth limit, so deep nesting is refused in milliseconds", () => {
+        // html and body take two levels, so 254 nested divs reach MAX_ELEMENT_DEPTH (256).
+        const nested = (depth: number) => `<!DOCTYPE html><html><body>${"<div>".repeat(depth)}x${"</div>".repeat(depth)}</body></html>`;
+        const refusal = "Cannot print: the HTML's elements nest deeper than 256 levels (toHtml() nests about a dozen); flatten the markup";
+
+        expect(printHtml(nested(MAX_ELEMENT_DEPTH - 2))).toContain("x</div>");
+        expect(() => printHtml(nested(MAX_ELEMENT_DEPTH - 1))).toThrow(refusal);
+        const start = performance.now();
+
+        // Before the limit, 100k nested divs took 28 s and then overflowed the stack. A <template>'s content has no
+        // parent, so nested templates are counted through the template that holds each one.
+        expect(() => printHtml(`<!DOCTYPE html><html><body>${"<div>".repeat(100_000)}</body></html>`)).toThrow(refusal);
+        expect(() => printHtml(`<!DOCTYPE html><html><body>${"<template><div>".repeat(100_000)}</body></html>`)).toThrow(refusal);
+        expect(performance.now() - start).toBeLessThan(500);
     });
 
     test("appends Chromium's fallback list to each run's and bullet's face", async () => {

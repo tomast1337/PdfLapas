@@ -8,3 +8,4 @@ export * from "./sourceEdits";
 export * from "./missingFont";
 export * from "./link";
 export * from "./imagePixels";
+export * from "./elementDepth";

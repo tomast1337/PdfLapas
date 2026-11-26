@@ -1,4 +1,4 @@
-import type { DataUri } from "@pdflapas/model";
+import { type DataUri, MAX_ELEMENT_DEPTH } from "@pdflapas/model";
 import type { DefaultTreeAdapterTypes } from "parse5";
 import type { normalizeComponent } from "#src/components/normalize";
 import type { ComponentDefinition } from "#src/components/types";
@@ -9,6 +9,9 @@ import { type Attribute, element, type Html } from "./markup";
 import { applyObjectStyle } from "./style";
 
 const REMOTE_URL = /^https?:\/\//i;
+// The elements above a component's content in toHtml(): <html>, <body>, the .slide-container and the component's host.
+// Its markup gets what is left of MAX_ELEMENT_DEPTH, so the deck's HTML stays within what every parser reads.
+const COMPONENT_CONTENT_ANCESTORS = 4;
 
 /** A rendered component: its host attributes and its parsed content, whose images resolve before it is written. */
 export type RenderedComponent = {
@@ -61,7 +64,16 @@ export function renderComponent(component: ReturnType<typeof normalizeComponent>
     }
 
     // Parsed as the host's innerHTML, so the markup is normalized as a DOM would have it.
-    const content = parseMarkup(markup, "div");
+    const maxDepth = MAX_ELEMENT_DEPTH - COMPONENT_CONTENT_ANCESTORS;
+    const parsed = parseMarkup(markup, "div", maxDepth);
+
+    if (parsed.kind === "too-deep") {
+        throw new Error(
+            `Component '${input.type}' version ${input.version} rendered markup whose elements nest deeper than ${maxDepth} levels (the deck's HTML allows ${MAX_ELEMENT_DEPTH}, and the slide takes ${COMPONENT_CONTENT_ANCESTORS}); flatten its markup`,
+        );
+    }
+
+    const content = parsed.root;
 
     for (const image of images(content)) {
         if (getAttribute(image, "srcset").kind === "value") {

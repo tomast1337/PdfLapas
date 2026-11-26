@@ -1,4 +1,4 @@
-import { CSS_PX_PER_INCH, POINTS_PER_INCH } from "@pdflapas/model";
+import { CSS_PX_PER_INCH, MAX_TEXT_FIT_STEPS, POINTS_PER_INCH } from "@pdflapas/model";
 
 export type FourSideMargin = [number, number, number, number];
 
@@ -145,7 +145,7 @@ export const PPTX_DEFAULTS = Object.freeze({
         // (data-text-fit-*) so both renderers apply the same rule.
         // shortcut: 0.95 steps approximate LibreOffice's font and spacing scale and PowerPoint's fontScale; match one of
         // them once a fixture measures the shrunk size against the reference.
-        shrink: Object.freeze({ step: 0.95, maxSteps: 20, tolerancePx: 0.5 } as const),
+        shrink: Object.freeze({ step: 0.95, maxSteps: MAX_TEXT_FIT_STEPS, tolerancePx: 0.5 } as const),
         flipH: false,
         flipV: false,
         rotate: 0,

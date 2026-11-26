@@ -1,5 +1,6 @@
 // Reads a text box of the profile (docs/HTML_PROFILE.md "Text") into the values the layout needs. Every inline
 // property and data-* attribute the renderer does not draw is reported through `report`, never dropped silently.
+import { MAX_TEXT_FIT_STEPS } from "@pdflapas/model";
 import { type Color, color, cssStrings, em, px, readStyle, type Style, sides, take, takePx } from "#src/css";
 import { attribute, children, type Element, hasAttribute, hasClass, isElement, textContent } from "#src/dom";
 import { type Effect, glowEffect } from "#src/effect/index";
@@ -712,8 +713,17 @@ export function readTextBox(box: Element, style: Style, report: Report): ReadTex
         fit = { kind: fitValue === "resize" ? "resize" : "none" };
     } else {
         const number = (name: string) => requiredNumber(box, name, `a shrink box's ${name}`);
+        const [step, maxSteps, tolerance] = [number("data-text-fit-step"), number("data-text-fit-max-steps"), number("data-text-fit-tolerance")];
 
-        fit = { kind: "shrink", step: number("data-text-fit-step"), maxSteps: number("data-text-fit-max-steps"), tolerance: number("data-text-fit-tolerance") };
+        // A step of 1 or more never fits, and each step lays the whole box out again: 100 000 steps of 20 KB of text
+        // took minutes (#448). The bounds are pdf-core's, plus the most steps toHtml() writes.
+        if (!(step > 0 && step < 1) || !Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > MAX_TEXT_FIT_STEPS || tolerance < 0) {
+            throw new Error(
+                `invalid PdfLapas HTML: a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to ${MAX_TEXT_FIT_STEPS} and data-text-fit-tolerance not negative, got ${step}, ${maxSteps} and ${tolerance}; toHtml() writes 0.95, ${MAX_TEXT_FIT_STEPS} and 0.5`,
+            );
+        }
+
+        fit = { kind: "shrink", step, maxSteps, tolerance };
     }
 
     return {

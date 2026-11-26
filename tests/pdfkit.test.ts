@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { crc32, deflateSync, inflateSync } from "node:zlib";
+import { MAX_TEXT_FIT_STEPS } from "@pdflapas/model";
 import { create as createFont, type Font } from "fontkit";
 import { JSDOM } from "jsdom";
 import PDFDocument from "pdfkit";
@@ -954,6 +955,29 @@ describe("PDFKit renderer", () => {
         start = performance.now();
         await expect(renderer.render({ ...document, html })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels");
         expect(performance.now() - start).toBeLessThan(500);
+    });
+
+    test("refuses a shrink rule that never fits or takes more steps than toHtml() writes, and shrinks with its own (#448)", async () => {
+        const renderer = await createPdfkitRenderer({ fonts: systemFonts });
+        const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+        pres.addSlide().addText("Shrink ".repeat(400), { x: 1, y: 1, w: 2, h: 1, fontSize: 18, fit: "shrink" });
+        const document = await pres.toHtml();
+
+        expect(document.html).toContain(`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`);
+        expect((await renderer.render(document)).byteLength).toBeGreaterThan(0);
+
+        for (const [from, to] of [
+            ['data-text-fit-step="0.95"', 'data-text-fit-step="1"'],
+            [`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`, 'data-text-fit-max-steps="100000"'],
+            [`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`, 'data-text-fit-max-steps="2.5"'],
+            ['data-text-fit-tolerance="0.5"', 'data-text-fit-tolerance="-1"'],
+        ] as const) {
+            const start = performance.now();
+
+            await expect(renderer.render({ ...document, html: document.html.replace(from, to) })).rejects.toThrow("invalid PdfLapas HTML: a shrink box needs data-text-fit-step between 0 and 1");
+            expect(performance.now() - start).toBeLessThan(500);
+        }
     });
 
     test("runs a right-to-left paragraph's words from the right, and reports mixed directions", async () => {

@@ -34,6 +34,19 @@ const MAX_SIDE = 4096;
  * reported and not drawn; an ordinary deck spends a few percent of it.
  */
 const MAX_RENDER_SAMPLES = 4 * MAX_SIDE * MAX_SIDE;
+/**
+ * Silhouette edge work one render may spend, in mask rows the edges cross (compositing walks each, 211 ns a row) and
+ * two rows for capturing each edge (flattening and outlining, about 400 ns): about the time MAX_RENDER_SAMPLES of
+ * dilate and blur takes (132 ns a sample). The sample budget does not see edges: a shadowed path of 40 000 curves
+ * (1.7 MB) made 2 million edges crossing 14 million rows, 3.9 s and +1 GB, under a mask of 224 000 samples (#448).
+ */
+const MAX_RENDER_EDGE_ROWS = MAX_RENDER_SAMPLES / 2;
+const EDGE_CAPTURE_ROWS = 2;
+/**
+ * Most edges one silhouette holds, each an array kept until the mask is drawn (about 350 bytes with what flattening
+ * makes): a text box of 4 000 glyphs holds about 250 000.
+ */
+const MAX_CAPTURE_EDGES = 500_000;
 /** Curve flattening tolerance (px). */
 const FLATTEN_TOLERANCE = 0.1;
 const CHANNEL_MAX = 255;
@@ -109,6 +122,8 @@ type Capture = {
     readonly lines: Line[];
     /** Each drawn outline: its lines and its opacity. */
     readonly shapes: { start: number; end: number; alpha: number }[];
+    /** Why capturing stopped, if it did: the silhouette passed MAX_CAPTURE_EDGES, or the render's MAX_RENDER_EDGE_ROWS. */
+    over: "edges" | "budget" | undefined;
 };
 
 /** An effect ready to draw: its mask (one alpha byte per sample), size in samples, and box in user space (px). */
@@ -129,6 +144,8 @@ export class Effects {
     #images = 0;
     /** Mask samples spent in this render, against MAX_RENDER_SAMPLES. */
     #samples = 0;
+    /** Edge work spent in this render, against MAX_RENDER_EDGE_ROWS. */
+    #edgeRows = 0;
 
     capturing(): boolean {
         return this.#active.length > 0;
@@ -162,7 +179,7 @@ export class Effects {
         const ctm = currentTransform(doc);
 
         for (const capture of this.#active) {
-            if (capture.glow && (!glow || !sameEffect(capture.glow, glow))) {
+            if (capture.over || (capture.glow && (!glow || !sameEffect(capture.glow, glow)))) {
                 continue;
             }
 
@@ -186,9 +203,11 @@ export class Effects {
 
             const tolerance = Math.max(FLATTEN_TOLERANCE, Math.max(x1 - x0, y1 - y0) / MAX_SIDE);
             const start = capture.lines.length;
-            const flat = flatten(segments, affine, tolerance, Number.POSITIVE_INFINITY);
+            // Each point flattened makes an edge at least.
+            const flat = flatten(segments, affine, tolerance, MAX_CAPTURE_EDGES - start);
 
             if (flat.kind === "too-many") {
+                capture.over = "edges";
                 continue;
             }
 
@@ -201,6 +220,16 @@ export class Effects {
                     }
                 }
             }
+
+            const added = capture.lines.length - start;
+
+            if (capture.lines.length > MAX_CAPTURE_EDGES || this.#edgeRows + added * EDGE_CAPTURE_ROWS > MAX_RENDER_EDGE_ROWS) {
+                capture.over = capture.lines.length > MAX_CAPTURE_EDGES ? "edges" : "budget";
+                capture.lines.length = 0;
+                continue;
+            }
+
+            this.#edgeRows += added * EDGE_CAPTURE_ROWS;
 
             if (capture.lines.length > start) {
                 capture.shapes.push({ start, end: capture.lines.length, alpha: Math.min(Math.max(alpha, 0), 1) });
@@ -224,11 +253,23 @@ export class Effects {
             return;
         }
 
-        this.#active.push({ glow: glowing ? effect : undefined, inverse: inverse.matrix, lines: [], shapes: [] });
+        this.#active.push({ glow: glowing ? effect : undefined, inverse: inverse.matrix, lines: [], shapes: [], over: undefined });
         draw();
         // Ends the innermost capture and rasterizes its silhouette into the effect's mask (pdf-core's
         // `Effects::render`); nothing is drawn when nothing was captured.
         const capture = this.#active.pop();
+
+        if (capture?.over === "edges") {
+            report(`a shadow or glow whose outline has more than ${MAX_CAPTURE_EDGES} edges is not rendered`);
+
+            return;
+        }
+
+        if (capture?.over === "budget") {
+            report(`shadows and glows past ${MAX_RENDER_EDGE_ROWS} mask rows of outline edges per render not rendered`);
+
+            return;
+        }
 
         if (!capture || !capture.lines.length) {
             return;
@@ -254,6 +295,15 @@ export class Effects {
 
         const scale = Math.min(SAMPLES_PER_PX, MAX_SIDE / Math.max(areaWidth, areaHeight));
         const [w, h] = [Math.ceil(areaWidth * scale), Math.ceil(areaHeight * scale)];
+        // The mask rows the edges cross, which compositing walks.
+        let rows = 0;
+
+        for (const [, ay, , by] of capture.lines) {
+            rows += Math.min(Math.ceil(Math.abs(by - ay) * scale) + 1, h);
+        }
+
+        // An inner shadow composites its offset copy too.
+        const edgeRows = rows * (effect.inner ? 2 : 1);
 
         if (this.#samples + w * h > MAX_RENDER_SAMPLES) {
             report(`shadows and glows past ${MAX_RENDER_SAMPLES} mask samples per render not rendered`);
@@ -261,7 +311,14 @@ export class Effects {
             return;
         }
 
+        if (!(this.#edgeRows + edgeRows <= MAX_RENDER_EDGE_ROWS)) {
+            report(`shadows and glows past ${MAX_RENDER_EDGE_ROWS} mask rows of outline edges per render not rendered`);
+
+            return;
+        }
+
         this.#samples += w * h;
+        this.#edgeRows += edgeRows;
         const toMask =
             (dx: number, dy: number) =>
             (line: Line): Line => [(line[0] - x0) * scale + dx, (line[1] - y0) * scale + dy, (line[2] - x0) * scale + dx, (line[3] - y0) * scale + dy];

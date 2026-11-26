@@ -226,6 +226,24 @@ describe("PDFKit renderer", () => {
             expect(drawn.slice(2).map(text => text.baseline)).toEqual([0, 1, 2, 3].map(line => expect.closeTo(144 + line * 19.2 + baseline, 3)));
             expect(renderer.warnings()).toEqual([]);
         });
+
+        test("reports a table whose grid has more cells than the renderer draws, in bounded time (#448)", async () => {
+            const renderer = await createPdfkitRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+            const pres = new PuppeteerGen(PAGE, { renderer, createDocument });
+
+            pres.addSlide().addTable([[{ text: "a" }, { text: "b" }]], grid);
+            const document = await pres.toHtml();
+            const [col = "", row = ""] = [/<col [^>]*>/.exec(document.html)?.[0], /<tr[\s\S]*?<\/tr>/.exec(document.html)?.[0]];
+            // 4 000 columns and 300 rows of two cells each: 1.2 million grid cells from 400 KB of HTML.
+            const html = document.html.replace(/<colgroup>[\s\S]*?<\/colgroup>/, `<colgroup>${col.repeat(4000)}</colgroup>`).replace(row, row.repeat(300));
+            const start = performance.now();
+
+            await renderer.render({ ...document, html });
+            expect(performance.now() - start).toBeLessThan(1000);
+            expect(renderer.warnings()).toEqual(["slide 1: object 'Table 0': a table of 300 rows and 4000 columns, past 1000000 grid cells, is not drawn; split it into several tables (addTable's autoPage)"]);
+            await renderer.render(document);
+            expect(renderer.warnings()).toEqual([]);
+        });
     });
 
     test(

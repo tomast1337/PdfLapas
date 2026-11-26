@@ -70,9 +70,6 @@ const TEXT_ATTRS: &[&str] = &["x", "y", "transform", "text-anchor", "dominant-ba
 /// `opacity`, which is not inherited, as an attribute or a `style` property.
 const OPACITY: &[&str] = &["opacity"];
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
-/// Deepest `<g>` nesting read (the renderers nest two levels): deeper input is an error rather
-/// than a deep recursion.
-const MAX_DEPTH: usize = 32;
 /// Largest magnitude of an SVG number, path data included. Past it a coordinate overflows f32 once
 /// transformed, where krilla unwraps the bounding box, and kurbo splits an arc into a number of
 /// cubics that grows with its radius (an arc of radius 1e38 made a 120 MB content stream,
@@ -168,12 +165,14 @@ fn read(dom: &Dom<'_>, svg: &Element<'_>, view_box: Option<[f32; 4]>, fit: Fit, 
         clip_ids: Vec::new(),
     };
     // References may point forward (ECharts writes its <defs> last), so definitions go first.
-    reader.definitions(svg, 0)?;
+    // `definitions` and `group` recurse once per `<g>`, bounded by the `MAX_ELEMENT_DEPTH` check
+    // `dom::parse` makes before any reading, as PDFKit draws every group within it.
+    reader.definitions(svg)?;
     let inherited = match root_paint {
         RootPaint::Inherit => reader.inherit(svg, &Style::of(svg)?, &Inherited::default())?,
         RootPaint::Ignore => Inherited::default(),
     };
-    reader.children(svg, &inherited, 0)?;
+    reader.children(svg, &inherited)?;
     Ok(reader.svg)
 }
 
@@ -297,7 +296,7 @@ impl Default for Inherited {
 
 impl Reader<'_, '_> {
     /// Reads every `<defs>` under `parent` (in the svg or a `<g>`).
-    fn definitions(&mut self, parent: &Element<'_>, depth: usize) -> Result<(), String> {
+    fn definitions(&mut self, parent: &Element<'_>) -> Result<(), String> {
         for child in self.dom.elements_of(&parent.children)? {
             match child.name {
                 "defs" => {
@@ -307,8 +306,7 @@ impl Reader<'_, '_> {
                         self.definition(definition)?;
                     }
                 }
-                "g" if depth < MAX_DEPTH => self.definitions(child, depth + 1)?,
-                "g" => return Err(format!("SVG groups nest deeper than {MAX_DEPTH} levels")),
+                "g" => self.definitions(child)?,
                 _ => {}
             }
         }
@@ -371,14 +369,14 @@ impl Reader<'_, '_> {
         Ok(())
     }
 
-    fn children(&mut self, parent: &Element<'_>, inherited: &Inherited, depth: usize) -> Result<(), String> {
+    fn children(&mut self, parent: &Element<'_>, inherited: &Inherited) -> Result<(), String> {
         for child in self.dom.elements_of(&parent.children)? {
             match child.name {
                 // Read by `definitions`.
                 "defs" => {}
                 // Metadata: drawn by nobody.
                 "title" | "desc" | "metadata" => {}
-                "g" => self.group(child, inherited, depth)?,
+                "g" => self.group(child, inherited)?,
                 "path" | "rect" | "circle" | "polygon" | "polyline" | "line" | "ellipse" => self.shape(child, inherited)?,
                 "text" => self.text(child, inherited)?,
                 name => return Err(format!("<{name}> is not in the SVG subset ({ELEMENTS})")),
@@ -387,10 +385,7 @@ impl Reader<'_, '_> {
         Ok(())
     }
 
-    fn group(&mut self, g: &Element<'_>, parent: &Inherited, depth: usize) -> Result<(), String> {
-        if depth >= MAX_DEPTH {
-            return Err(format!("SVG groups nest deeper than {MAX_DEPTH} levels"));
-        }
+    fn group(&mut self, g: &Element<'_>, parent: &Inherited) -> Result<(), String> {
         let css = Style::of(g)?;
         allow(
             g,
@@ -417,7 +412,7 @@ impl Reader<'_, '_> {
         if pops > 0 {
             self.svg.items.push(Item::Group { transform, opacity, clip });
         }
-        self.children(g, &inherited, depth + 1)?;
+        self.children(g, &inherited)?;
         if pops > 0 {
             self.svg.items.push(Item::End { pops });
         }
@@ -1129,8 +1124,6 @@ pub(crate) mod tests {
             assert!(error.starts_with("slide 1: object 'Chart 0': "), "{body}: {error}");
             assert!(error.contains(message), "{body}: {error}");
         }
-        let deep = format!("{}{}", "<g>".repeat(40), "</g>".repeat(40));
-        assert!(read(&deep).err().unwrap_or_default().contains("nest deeper than 32 levels"));
     }
 
     #[test]

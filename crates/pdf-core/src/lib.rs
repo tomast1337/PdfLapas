@@ -1030,12 +1030,20 @@ mod tests {
 
     #[test]
     fn reports_and_skips_svg_images_nested_past_the_element_depth() {
-        // The root <svg> is level 1, so 255 nested <g> reach the limit.
-        let groups = |depth: usize| format!("{}{}", "<g>".repeat(depth), "</g>".repeat(depth));
+        // The root <svg> is level 1, so 255 nested <g> reach the limit. Each group transforms,
+        // fades and clips, so the drawing nests as deep as the reading (#669).
+        let group = r#"<g transform="translate(0.1 0)" opacity="0.99" clip-path="url(#c)">"#;
+        let groups = |depth: usize| format!("{}{}", group.repeat(depth), "</g>".repeat(depth));
+        let clip = r#"<defs><clipPath id="c"><rect width="100" height="50"/></clipPath></defs>"#;
         let mut r = Renderer::new();
-        let drawn = render(&mut r, &build::deck(vec![picture(build::image(&svg_image(&groups(255))))]));
-        // Within the element limit, the reader's own `<g>` limit still names the problem.
-        assert!(drawn.is_err_and(|e| e.contains("SVG groups nest deeper than 32 levels")));
+        for depth in [33, 255] {
+            render(
+                &mut r,
+                &build::deck(vec![picture(build::image(&svg_image(&format!("{clip}{}", groups(depth)))))]),
+            )
+            .unwrap();
+            assert_eq!(r.warnings(), Vec::<String>::new());
+        }
         render(&mut r, &build::deck(vec![picture(build::image(&svg_image(&groups(256))))])).unwrap();
         assert_eq!(
             r.warnings(),

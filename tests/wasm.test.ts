@@ -861,6 +861,22 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         await expect(renderer.render({ html: `${"<div>".repeat(depth)}${"</div>".repeat(depth)}`, pageSize: PAGE })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels (toHtml() nests about a dozen)");
     });
 
+    test("an SVG image draws every group within MAX_ELEMENT_DEPTH and is reported and skipped past it, as PDFKit does (#669)", async () => {
+        const renderer = await createWasmRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE, { renderer });
+        // Every level transforms, fades and clips, so the wasm stack holds the deepest reading and drawing.
+        const group = '<g transform="translate(0.01 0)" opacity="0.99" clip-path="url(#c)">';
+        const svg = (depth: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs>${group.repeat(depth)}${"</g>".repeat(depth)}</svg>`;
+
+        // The root <svg> is level 1, so 255 nested <g> reach the limit.
+        for (const depth of [33, 255, 256]) {
+            pres.addSlide().addImage({ data: `data:image/svg+xml;base64,${btoa(svg(depth))}`, x: 1, y: 1, w: 1, h: 1 });
+        }
+
+        expect(ascii((await pres.toPdf()).subarray(0, 5))).toBe("%PDF-");
+        expect(renderer.warnings()).toEqual(["image 'Image 0': an SVG image's elements nest deeper than 256 levels; the picture is not drawn"]);
+    });
+
     test("an edited toHtml() document renders through pptxHtmlDocument() and draws the edit", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE);

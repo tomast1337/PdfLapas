@@ -52,6 +52,12 @@ const TABLE_LAYOUT: ReadonlySet<string> = new Set(["width", "height", "table-lay
 const CELL_LAYOUT: ReadonlySet<string> = new Set(["overflow", "position", "vertical-align"]);
 const CELL_TEXT_LAYOUT: ReadonlySet<string> = new Set(["display", "box-sizing", "position", "inset", "width", "overflow"]);
 const CELL_ATTRIBUTES = SIDES.map(side => `data-border-${side}-dash-array`);
+/**
+ * Most rows x columns a table's grid may have: borders keep a slot per grid edge, so a grid costs its area whatever its
+ * cells. 4 000 x 4 000 `<col>`s and rows of one cell each (1.2 MB) took +445 MB (#448); a dense table of a million
+ * cells is about 270 MB of HTML.
+ */
+const MAX_TABLE_GRID_CELLS = 1_000_000;
 
 function invalid(what: string): Error {
     return new Error(`invalid PdfLapas HTML: ${what}`);
@@ -262,6 +268,12 @@ export function drawTable(container: Element, paint: Paint, box: Frame): void {
 
             rows.push({ height, cells });
         }
+    }
+
+    if (rows.length * columns.length > MAX_TABLE_GRID_CELLS) {
+        report(`a table of ${rows.length} rows and ${columns.length} columns, past ${MAX_TABLE_GRID_CELLS} grid cells, is not drawn; split it into several tables (addTable's autoPage)`);
+
+        return;
     }
 
     // HTML's cell placement, which is also how PptxGenJS expands `colspan`/`rowspan` into `hMerge`/`vMerge` slots: each

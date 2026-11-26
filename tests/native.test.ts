@@ -137,12 +137,16 @@ describe.skipIf(!canRender)("native backend render", () => {
     });
 
     test("the pool applies onMissingFont, frees the event loop and rejects what is in flight when closed", async () => {
-        const pool = await createNativeRendererPool({ fonts: systemFonts, threads: 1, onMissingFont: "throw" });
+        const strict = await createNativeRendererPool({ fonts: systemFonts, threads: 1, onMissingFont: "throw" });
         const pres = new PuppeteerGen(PAGE);
 
         pres.addSlide().addText("Hi", { x: 1, y: 1, w: 3, h: 1, fontFace: "No Such Face", objectName: "Body" });
-        await expect(pool.render(await pres.toHtml())).rejects.toThrow("No Such Face");
-        expect(pool.missingFonts()).toMatchObject([{ face: "No Such Face", objects: ["slide 1 'Body'"] }]);
+        await expect(strict.render(await pres.toHtml())).rejects.toThrow("No Such Face");
+        expect(strict.missingFonts()).toMatchObject([{ face: "No Such Face", objects: ["slide 1 'Body'"] }]);
+        await strict.close();
+        // The shapes deck asks for Arial, which a CI image (Alpine) may not have.
+        const pool = await createNativeRendererPool({ fonts: systemFonts, threads: 1, onMissingFont: "ignore" });
+
         // render() returns before the thread has drawn anything: a timer queued after it fires first.
         const big = DECKS.shapes!.populate(new PuppeteerGen(PAGE));
         const order: string[] = [];

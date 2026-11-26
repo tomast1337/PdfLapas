@@ -254,6 +254,14 @@ export function normalizeTextRun(
     // every character takes `charSpacing`.
     const { advanceGridPt, escapementSizeRatio } = RENDERING_TARGETS[target];
     const charSpacing = options.charSpacing ?? 0;
+    const charSpacingLimit = PPTX_DEFAULTS.limits.charSpacingPt;
+
+    // Not through checkedSize: a negative charSpacing condenses the text. Past ST_TextPoint's range the `.pptx` is
+    // schema-invalid, and a dashed underline under it cost the renderers a path per dash, seconds per run (#448).
+    if (typeof charSpacing !== "number" || !Number.isFinite(charSpacing) || Math.abs(charSpacing) > charSpacingLimit) {
+        throw new RangeError(`charSpacing must be a number of points from -${charSpacingLimit} to ${charSpacingLimit}, got ${typeof charSpacing === "number" ? charSpacing : JSON.stringify(charSpacing)}`);
+    }
+
     const sizePt = (options.fontSize ?? PPTX_DEFAULTS.text.fontSizePt) * (escapement === undefined ? 1 : escapementSizeRatio);
     const advances = advanceGridPt === undefined ? undefined : fontMetrics.glyphAdvances?.(fontFace, bold, italic);
     // A U+2011 drawn with the hyphen-minus glyph takes its advance.

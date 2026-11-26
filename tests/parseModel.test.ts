@@ -148,6 +148,21 @@ describe("parseModel()", () => {
         expect(invalid(withGlow(-1)).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].glow.blur");
     });
 
+    // #448: characterSpacing 1e8 px with a dashed underline cost the PDFKit renderer 30 s and 17 GB.
+    test("rejects a letter-spacing past what the API's ±4000 pt charSpacing reaches and accepts it within", () => {
+        const run = ["slides", 0, "objects", 0, "text", "paragraphs", 0, "runs", 0] as const;
+        const limit = pointsToPixels(PPTX_DEFAULTS.limits.charSpacingPt + PPTX_DEFAULTS.limits.fontSizePt);
+
+        expect(rejection([...run, "characterSpacing"], 1e8).message).toContain(`runs[0].characterSpacing: is 100000000 px, past the API limit of ${limit} px`);
+        expect(rejection([...run, "characterSpacing"], -limit - 1).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].characterSpacing");
+        expect(rejection([...run, "wordCharacterSpacing"], [limit + 1]).issues[0]?.path).toBe("model.slides[0].objects[0].text.paragraphs[0].runs[0].wordCharacterSpacing[0]");
+
+        const model = smallModel() as { slides: { objects: { text: { paragraphs: { runs: Json[] }[] } }[] }[] };
+
+        model.slides[0]!.objects[0]!.text.paragraphs[0]!.runs[0]!.characterSpacing = -limit;
+        expect(() => parseModel(model)).not.toThrow();
+    });
+
     test("rejects word letter-spacing that is not one finite value per word of the run", () => {
         const spacing = ["slides", 0, "objects", 0, "text", "paragraphs", 0, "runs", 0, "wordCharacterSpacing"] as const;
 

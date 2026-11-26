@@ -7,6 +7,7 @@ import type { Face } from "./fonts";
 import { drawSlide } from "./slide";
 import { Effects } from "./effect/index";
 import { embedImagesInOrder } from "./internals";
+import type { RenderBudget } from "./paint";
 import { createShaper } from "./text/shaper";
 
 export type RenderResult = {
@@ -114,6 +115,7 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
     const shaper = createShaper(faces);
     const registered = new Set<string>();
     const effects = new Effects();
+    const budget: RenderBudget = { decorationPieces: 0 };
     const numbers = slides.map((slide, index) => Number(SLIDE_ID.exec(attribute(slide, "id", ""))?.[1] ?? index + 1));
 
     for (const element of descendants(slides)) {
@@ -141,6 +143,7 @@ export async function renderHtml(html: string, faces: readonly Face[]): Promise<
                     shaper,
                     registered,
                     effects,
+                    budget,
                     report,
                     missingFace: (face, chain) => {
                         // The family the text was drawn in: the chain's first face, the first fallback family the caller supplied.

@@ -292,3 +292,120 @@ jobs:
         env:
           VISUAL_IMAGE: ${{ steps.image.outputs.ref }}
         run: sh scripts/test-visual-docker.sh test:visual:wasm
+
+  # The library of each @pdflapas/native platform package (#612 phase 2), built on a runner of its CPU:
+  # glibc with the pinned toolchain on the runner, musl in the pinned Alpine Rust image (build-native.sh).
+  # Release downloads these artifacts. Not a required check yet: that is the maintainer's choice.
+  native:
+    name: Native build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64-gnu, runner: ubuntu-latest }
+          - { target: linux-arm64-gnu, runner: ubuntu-24.04-arm }
+          - { target: linux-x64-musl, runner: ubuntu-latest }
+          - { target: linux-arm64-musl, runner: ubuntu-24.04-arm }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The musl build keeps its registry under crates/target (CARGO_HOME in the container).
+      - name: Cache cargo registry and target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            crates/target
+          key: native-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'crates/wasm-toolchain.env', 'crates/Cargo.lock') }}
+          restore-keys: native-${{ matrix.target }}-
+
+      - name: Install pinned Rust toolchain
+        if: endsWith(matrix.target, '-gnu')
+        # rustup reads rust-toolchain.toml; installed first where the runner image lacks it.
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install && rustc --version
+
+      - name: Build the native library
+        run: sh packages/native/build-native.sh ${{ matrix.target }}
+
+      - name: Record its checksum
+        run: |
+          (cd packages/native-${{ matrix.target }} && sha256sum pdflapas_native.so | tee pdflapas_native.so.sha256)
+          echo "${{ matrix.target }} sha256 $(cut -d' ' -f1 packages/native-${{ matrix.target }}/pdflapas_native.so.sha256)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            packages/native-${{ matrix.target }}/pdflapas_native.so
+            packages/native-${{ matrix.target }}/pdflapas_native.so.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  # tests/native.test.ts on each built library: every visual deck and the parity fixture render to the WASM bytes,
+  # alone and on a 4-thread pool. NATIVE_TEST_REQUIRED turns a skip (library, WASM or fonts missing) into a failure.
+  native-identity:
+    name: Native byte identity (${{ matrix.target }})
+    needs: [wasm, native]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64-gnu, runner: ubuntu-latest }
+          - { target: linux-arm64-gnu, runner: ubuntu-24.04-arm }
+          - { target: linux-x64-musl, runner: ubuntu-latest }
+          - { target: linux-arm64-musl, runner: ubuntu-24.04-arm }
+    env:
+      NATIVE_TEST_REQUIRED: "1"
+      # The test never starts Chromium, and Chrome for Testing has no linux-arm64 build to download.
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      # Bun on musl, for the musl libraries (multi-arch digest; same Bun as setup-bun below).
+      BUN_ALPINE_IMAGE: oven/bun:1.4.4-alpine@sha256:4cf82f5686b196504fe119db3fcd9185b191f82ece82c40680e597228ec6070a
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wasm
+          path: packages/wasm/src
+
+      - name: Download native artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-${{ matrix.target }}
+          path: packages/native-${{ matrix.target }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      # Pure JavaScript dependencies, so the Alpine step below runs on this install too.
+      - name: Install locked dependencies
+        run: bun ci
+
+      - name: Compare native and WASM PDFs
+        if: endsWith(matrix.target, '-gnu')
+        run: bun test tests/native.test.ts
+
+      - name: Compare native and WASM PDFs in Alpine
+        if: endsWith(matrix.target, '-musl')
+        run: |
+          docker run --rm --volume "$PWD:/repo" --workdir /repo --env NATIVE_TEST_REQUIRED "$BUN_ALPINE_IMAGE" \
+            sh -c 'apk add --no-cache font-dejavu && bun test tests/native.test.ts'

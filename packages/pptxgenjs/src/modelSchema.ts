@@ -53,6 +53,14 @@ const effectBlur = (field: string, limitPt: number) => {
     });
 };
 
+// A run's letter-spacing in px: the API's charSpacing (ST_TextPoint, ±4000 pt) plus what the advance grid and kerning
+// add to it, less than a glyph's advance and so than the largest font size. Past it is no deck the API writes, and with
+// a dashed underline it cost the renderers a path per dash (#448).
+const letterSpacingPx = pointsToPixels(PPTX_DEFAULTS.limits.charSpacingPt + PPTX_DEFAULTS.limits.fontSizePt);
+const letterSpacing = finite
+    .min(-letterSpacingPx, { error: issue => `is ${String(issue.input)} px, past the API limit of -${letterSpacingPx} px: use at least -${letterSpacingPx} px` })
+    .max(letterSpacingPx, { error: issue => `is ${String(issue.input)} px, past the API limit of ${letterSpacingPx} px: use at most ${letterSpacingPx} px` });
+
 const shadow = z.strictObject({ visible: z.boolean(), color: cssColor, blur: effectBlur("shadow.blur", PPTX_DEFAULTS.limits.shadowBlurPt), offsetX: finite, offsetY: finite, inset: z.boolean() });
 // The glow reuses NormalizedShadow and carries its size (the API's `glow.size`) in `blur`; its limit differs from a shadow's.
 const glow = z.strictObject({ visible: z.boolean(), color: cssColor, blur: effectBlur("glow.blur", PPTX_DEFAULTS.limits.glowSizePt), offsetX: finite, offsetY: finite, inset: z.boolean() });
@@ -123,9 +131,9 @@ const textRun = z
         }),
         verticalAlign: z.enum(["baseline", "sub", "super"]),
         baselineOffset: finite,
-        characterSpacing: finite,
-        wordCharacterSpacing: z.array(z.union([finite, z.array(z.strictObject({ characters: z.number().int().positive(), spacing: finite })).min(1)])).optional(),
-        spaceCharacterSpacing: z.array(finite).optional(),
+        characterSpacing: letterSpacing,
+        wordCharacterSpacing: z.array(z.union([letterSpacing, z.array(z.strictObject({ characters: z.number().int().positive(), spacing: letterSpacing })).min(1)])).optional(),
+        spaceCharacterSpacing: z.array(letterSpacing).optional(),
         kerning: z.literal(false).optional(),
         syntheticBold: nonNegative.optional(),
         syntheticItalic: finite.optional(),

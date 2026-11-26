@@ -82,6 +82,13 @@ function metrics(face: Face, size: number) {
 const MIN_THICKNESS = 0.5;
 /** Widest gap, px, between two underline stretches of a line that one continues (pdf-core's SEGMENT_JOIN_PX). */
 const JOIN_PX = 1e-3;
+/**
+ * Dashes, half-waves and zigzag halves one render draws for underlines and strikes, as many as tiny-skia dashes one
+ * stroke into (path.ts MAX_DASH_COUNT). Each is a path in the PDF (about 0.4 us and 190 bytes of PDFKit buffer), and
+ * their count grows with a run's width over its dash length, not with the HTML: four letters spaced 1e7 pt with a
+ * dashed underline cut millions (4 s, +1.7 GB). A slide of dotted lines spends a few thousand.
+ */
+const MAX_RENDER_DECORATION_PIECES = 1_000_000;
 
 /** A decoration's band in px at `size`: the HTML's em band, else the face's (`fallback`). */
 function decorationBand(decoration: Decoration, fallback: Band, size: number): Band {
@@ -108,6 +115,35 @@ function decorate(paint: Paint, decoration: Decoration, band: Band, stretch: Str
     const { start, end } = stretch;
     const width = end - start;
     const filled: DecorationPiece[] = [];
+    // The dashes, half-waves and zigzag halves the pieces cut the stretch into, counted before any is drawn.
+    let count = 0;
+
+    for (const piece of decoration.pieces) {
+        if (piece.kind === "line") {
+            let period = 0;
+
+            for (const length of piece.dashes) {
+                period += length * t;
+            }
+
+            count += period > 0 ? Math.ceil(width / period) * (piece.dashes.length / 2) : 1;
+        } else if (piece.kind === "wave") {
+            count += Math.ceil(width / (piece.half * t));
+        } else {
+            const line = piece.lineInBand ? piece.line * t : piece.line;
+
+            count += 2 * Math.ceil(width / Math.max(piece.height * t - line, line));
+        }
+    }
+
+    // Not a finite count within the budget (a huge letter-spacing or a tiny dash makes millions): reported, not drawn.
+    if (!(paint.budget.decorationPieces + count <= MAX_RENDER_DECORATION_PIECES)) {
+        paint.report(`underlines and strikes past ${MAX_RENDER_DECORATION_PIECES} dashes, waves and zigzag steps per render are not drawn`);
+
+        return;
+    }
+
+    paint.budget.decorationPieces += count;
 
     for (const piece of decoration.pieces) {
         if (piece.kind !== "wave") {

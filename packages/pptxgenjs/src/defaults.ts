@@ -39,6 +39,8 @@ export const PPTX_DEFAULTS = Object.freeze({
     limits: Object.freeze({
         // ST_TextFontSize: sz 100-400000, so 4000pt, also PowerPoint's largest font size.
         fontSizePt: 4000,
+        // ST_TextPoint: spc -400000-400000, so charSpacing from -4000pt to 4000pt (it may be negative, condensed).
+        charSpacingPt: 4000,
         // ST_LineWidth: w 0-20116800 EMU, 1584pt, also PowerPoint's largest line width.
         lineWidthPt: 1584,
         glowSizePt: 150,

@@ -117,7 +117,8 @@ an image's inner shadow and a chart marker's outline are drawn for the PowerPoin
 throws before rendering. A size in points that PptxGenJS writes unchecked throws a `RangeError` naming the option where
 it is added when it is negative, not finite, or past its OOXML or PowerPoint maximum: `fontSize` (and a chart's
 `titleFontSize` and `legendFontSize`) up to 4000, `outline.size`, `line.width`, `lineSize`, `lineDataSymbolLineSize` and a border's `pt` up to
-1584, `glow.size` up to 150, `shadow.blur` up to 100, `shadow.offset` up to 200 and `lineDataSymbolSize` up to 72. A
+1584, `glow.size` up to 150, `shadow.blur` up to 100, `shadow.offset` up to 200 and `lineDataSymbolSize` up to 72; `charSpacing`, which may be
+negative, from -4000 to 4000 (OOXML's `ST_TextPoint`). A
 `resolveImage` option must return the image as a
 `data:image/<type>;base64,<data>` URI: `toHtml()` throws `UnresolvedImageError` for anything else, such
 as a URL or a file path, since the PDF must not depend on the network or the filesystem (an `https:`

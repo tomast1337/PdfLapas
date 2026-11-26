@@ -117,6 +117,24 @@ describe("shared object normalization", () => {
         }
     });
 
+    // #448: a run spaced 1e6 pt with a dashed underline drew millions of dashes. ST_TextPoint bounds `spc` to ±4000 pt.
+    test("rejects a charSpacing past ST_TextPoint's ±4000 pt or not finite, and keeps a negative one", async () => {
+        const draw = async (charSpacing: number) => {
+            const pres = new PuppeteerGen();
+
+            pres.addSlide().addText([{ text: "a", options: { charSpacing, underline: { style: "dash" } } }], { x: 0, y: 0, w: 2, h: 1 });
+
+            return pres.toHtml();
+        };
+
+        for (const value of [4001, -4001, Number.NaN, Number.POSITIVE_INFINITY, 1e6]) {
+            await expect(draw(value), String(value)).rejects.toThrow(`charSpacing must be a number of points from -4000 to 4000, got ${value}`);
+        }
+
+        expect((await draw(4000)).html).toContain("letter-spacing: 5333.333");
+        expect((await draw(-4000)).html).toContain("letter-spacing: -5333.333");
+    });
+
     test("an outline or glow without a size takes PptxGenJS's 0.75pt and 8pt", () => {
         expect(normalizeTextRun("a", { outline: { color: "FF0000" } as PptxGenJS.TextPropsOptions["outline"] }).outline?.width).toBe(pointsToPixels(0.75));
         expect(normalizeTextRun("a", { glow: { opacity: 1 } as PptxGenJS.TextGlowProps }).glow?.blur).toBe(pointsToPixels(8));

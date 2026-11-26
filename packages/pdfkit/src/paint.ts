@@ -20,6 +20,14 @@ export type Paint = {
     readonly registered: Set<string>;
     /** The document's shadow and glow captures: what is drawn adds to their silhouettes. */
     readonly effects: Effects;
+    /** The render's work counts, shared by every object, each held to its limit. */
+    readonly budget: RenderBudget;
+};
+
+/** Work one render has spent where the input, not its size, sets the count. */
+export type RenderBudget = {
+    /** Dashes, half-waves and zigzag halves drawn for underlines and strikes (text/draw.ts). */
+    decorationPieces: number;
 };
 
 /** Adds the area the path `trace` builds (filled with `alpha`, drawn now) to the silhouettes being captured. */

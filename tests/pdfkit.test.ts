@@ -686,6 +686,22 @@ describe("PDFKit renderer", () => {
             expect(last[2]).toBeLessThanOrEqual(4 * t + 1e-6);
         });
 
+        // #448: a dash, half-wave or zigzag step is a path each, and a run spaced 1e7 pt took 4 s and 1.7 GB.
+        test("reports and skips decorations past the render's piece budget, in bounded time", async () => {
+            for (const pieces of ["line(0 1 0.01 0.01)", "wave(0.5 2 0.01 0.03px)", "zigzag(-0.5 0.01 0.01)"]) {
+                const start = performance.now();
+                const wide = await underlined(html =>
+                    html.replace('<span class="text-run"', `<span class="text-run" data-underline="${pieces}"`).replace("text-decoration-line: underline;", "text-decoration-line: underline; letter-spacing: 1000000px;").replace(">Ab cd<", ">Abcd<"),
+                );
+
+                expect(performance.now() - start, pieces).toBeLessThan(1000);
+                expect(wide.rects, pieces).toEqual([]);
+                expect(wide.warnings, pieces).toEqual(["slide 1: object 'Text 0': underlines and strikes past 1000000 dashes, waves and zigzag steps per render are not drawn"]);
+            }
+
+            expect((await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="line(0 1 4 2)"'))).warnings).toEqual([]);
+        });
+
         test("strokes a wave and fills a zigzag around the band", async () => {
             const wave = await underlined(html => html.replace('<span class="text-run"', '<span class="text-run" data-underline="wave(0.5 2 4 0.03px)"'));
 

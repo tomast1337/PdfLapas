@@ -31,7 +31,7 @@ const PROFILE_META: &str = "pdflapas-profile";
 
 /// Parses a profile document into the presentation it describes.
 pub(crate) fn parse(html: &str) -> Result<Presentation, String> {
-    let dom = dom::parse(html)?;
+    let dom = dom::parse(html).map_err(|e| e.to_string())?;
     let [root] = dom.elements_of(&dom.children)?[..] else {
         return Err("the document must hold exactly one <html> element".into());
     };

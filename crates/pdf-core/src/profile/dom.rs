@@ -20,6 +20,33 @@ const VOID_ELEMENTS: [&str; 13] = [
 const RAW_TEXT_ELEMENTS: [&str; 9] = ["style", "script", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript"];
 /// Longest character reference name read before the `;` (`&#x10FFFF;` is 9 bytes after `&`).
 const MAX_REFERENCE_LEN: usize = 10;
+/// Deepest element nesting a parse reads: `MAX_ELEMENT_DEPTH` in `packages/model/src/elementDepth.ts`,
+/// so every backend refuses the same HTML (`tests/wasm.test.ts` keeps the two equal).
+pub(crate) const MAX_ELEMENT_DEPTH: usize = 256;
+
+/// Why `parse` refused its input.
+#[derive(Debug)]
+pub(crate) enum DomError {
+    /// Elements nest deeper than `MAX_ELEMENT_DEPTH`.
+    TooDeep,
+    Malformed(String),
+}
+
+impl From<String> for DomError {
+    fn from(message: String) -> Self {
+        DomError::Malformed(message)
+    }
+}
+
+impl std::fmt::Display for DomError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // The text the TypeScript parses throw (`completeProfileHtml`, PDFKit).
+            DomError::TooDeep => write!(f, "elements nest deeper than {MAX_ELEMENT_DEPTH} levels (toHtml() nests about a dozen)"),
+            DomError::Malformed(message) => f.write_str(message),
+        }
+    }
+}
 
 pub(crate) struct Element<'a> {
     pub(crate) name: &'a str,
@@ -275,8 +302,8 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-/// Parses `html` into its element tree.
-pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
+/// Parses `html` into its element tree. Its top-level elements are at depth 1.
+pub(crate) fn parse(html: &str) -> Result<Dom<'_>, DomError> {
     let mut t = Tokenizer { input: html, rest: html };
     let mut dom = Dom {
         elements: Vec::new(),
@@ -287,6 +314,9 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
     let mut open: Vec<usize> = Vec::new();
     // How many open elements are `svg`: `/>` closes any element inside one, as in foreign content.
     let mut svg_depth = 0usize;
+    // How many open elements are HTML `<template>`s: parse5 puts a template's content in a fragment
+    // below it, one level more, and the TypeScript depth check counts it.
+    let mut templates = 0usize;
     let mut doctype_allowed = true;
     while !t.rest.is_empty() {
         let text_len = t.rest.find('<').unwrap_or(t.rest.len());
@@ -303,7 +333,7 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
         } else if t.rest.get(..2) == Some("<!") {
             let doctype = t.until(">", "doctype")?;
             if !doctype_allowed || !doctype.eq_ignore_ascii_case("<!DOCTYPE html") {
-                return Err(t.error(format!("unexpected '{}>'", preview(doctype))));
+                return Err(t.error(format!("unexpected '{}>'", preview(doctype))).into());
             }
         } else if t.eat("</") {
             let name = t.name("end tag")?;
@@ -312,15 +342,22 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
             let id = open.pop().ok_or_else(|| t.error(format!("</{name}> closes nothing")))?;
             let element = dom.element(id)?;
             if !element.name.eq_ignore_ascii_case(name) {
-                return Err(t.error(format!("</{name}> closes <{}>", element.name)));
+                return Err(t.error(format!("</{name}> closes <{}>", element.name)).into());
             }
             if element.name == "svg" {
                 svg_depth = svg_depth.saturating_sub(1);
+            }
+            // Strict nesting closes a template opened outside an <svg> while no <svg> is open.
+            if svg_depth == 0 && element.name.eq_ignore_ascii_case("template") {
+                templates = templates.saturating_sub(1);
             }
         } else {
             t.expect("<")?;
             let name = t.name("tag")?;
             let (attrs, self_closing) = t.attributes()?;
+            if open.len() + templates >= MAX_ELEMENT_DEPTH {
+                return Err(DomError::TooDeep);
+            }
             let id = dom.elements.len();
             push(&mut dom, &open, Node::Element(id))?;
             dom.elements.push(Element {
@@ -330,7 +367,7 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
             });
             let void = VOID_ELEMENTS.iter().any(|v| v.eq_ignore_ascii_case(name));
             if self_closing && !void && svg_depth == 0 && name != "svg" {
-                return Err(t.error(format!("<{name}/>: only void and SVG elements may close themselves")));
+                return Err(t.error(format!("<{name}/>: only void and SVG elements may close themselves")).into());
             }
             if void || self_closing {
                 // Nothing to open.
@@ -344,6 +381,8 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
             } else {
                 if name == "svg" {
                     svg_depth += 1;
+                } else if svg_depth == 0 && name.eq_ignore_ascii_case("template") {
+                    templates += 1;
                 }
                 open.push(id);
             }
@@ -351,7 +390,7 @@ pub(crate) fn parse(html: &str) -> Result<Dom<'_>, String> {
         doctype_allowed = false;
     }
     match open.last() {
-        Some(id) => Err(t.error(format!("<{}> is not closed", dom.element(*id)?.name))),
+        Some(id) => Err(t.error(format!("<{}> is not closed", dom.element(*id)?.name)).into()),
         None => Ok(dom),
     }
 }
@@ -437,11 +476,35 @@ mod tests {
         }
     }
 
+    fn nested(open: &str, depth: usize, close: &str) -> String {
+        format!("{}{}", open.repeat(depth), close.repeat(depth))
+    }
+
     #[test]
     fn deep_nesting_does_not_recurse() {
         let depth = 100_000;
-        let html = format!("{}{}", "<div>".repeat(depth), "</div>".repeat(depth));
-        assert!(parse(&html).is_ok());
-        assert!(parse(&"<div>".repeat(depth)).is_err());
+        for html in [nested("<div>", depth, "</div>"), "<div>".repeat(depth)] {
+            let error = parse(&html).err().map(|e| e.to_string()).unwrap_or_default();
+            assert_eq!(error, "elements nest deeper than 256 levels (toHtml() nests about a dozen)");
+        }
+    }
+
+    #[test]
+    fn reads_up_to_max_element_depth_as_parse5_counts_it() {
+        let too_deep = |html: &str| matches!(parse(html), Err(DomError::TooDeep));
+        assert!(parse(&nested("<div>", MAX_ELEMENT_DEPTH, "</div>")).is_ok());
+        assert!(too_deep(&nested("<div>", MAX_ELEMENT_DEPTH + 1, "</div>")));
+        // A void element is a level; text inside the deepest element is not.
+        let inner = MAX_ELEMENT_DEPTH - 1;
+        assert!(parse(&format!("{}<br>x{}", "<div>".repeat(inner), "</div>".repeat(inner))).is_ok());
+        assert!(too_deep(&format!("{}<div><br></div>{}", "<div>".repeat(inner), "</div>".repeat(inner))));
+        // A template's content is one level more, outside an <svg> only.
+        let around = |open: &str, depth: usize, close: &str| format!("{open}{}{close}", nested("<g>", depth, "</g>"));
+        assert!(parse(&around("<template>", MAX_ELEMENT_DEPTH - 2, "</template>")).is_ok());
+        assert!(too_deep(&around("<template>", MAX_ELEMENT_DEPTH - 1, "</template>")));
+        assert!(parse(&around("<svg><template>", MAX_ELEMENT_DEPTH - 2, "</template></svg>")).is_ok());
+        assert!(too_deep(&around("<svg><template>", MAX_ELEMENT_DEPTH - 1, "</template></svg>")));
+        // A closed template no longer counts.
+        assert!(parse(&format!("<template></template>{}", nested("<div>", MAX_ELEMENT_DEPTH, "</div>"))).is_ok());
     }
 }

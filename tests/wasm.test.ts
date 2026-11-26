@@ -17,7 +17,7 @@ import { completeProfileHtml, pptxHtmlDocument } from "../packages/pptxgenjs/src
 import { loadSystemFonts as browserLoadSystemFonts, type MissingFontBinding, type TextPdfBinding, WasmRenderer, type WasmSource } from "../packages/wasm/src/browser";
 import { createWasmRenderer, loadSystemFonts } from "../packages/wasm/src/node";
 import type { InitInput, Renderer } from "../packages/wasm/src/pdf_wasm.js";
-import { inchesToPoints, pointsToPixels } from "@pdflapas/model";
+import { inchesToPoints, MAX_ELEMENT_DEPTH, pointsToPixels } from "@pdflapas/model";
 import { HAND_WRITTEN_OBJECTS, handWrittenDocument } from "./handWrittenHtml";
 import { pdfContentStreams } from "./pdfContentStreams";
 import { boxFloorCases, boxFloorDeck } from "./boxFloorCases";
@@ -854,6 +854,13 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         await expect(renderer.render({ html: handWrittenDocument(HAND_WRITTEN_OBJECTS.text), pageSize: PAGE })).rejects.toThrow("invalid PdfLapas HTML: the stylesheet has no '@page");
     });
 
+    test("HTML nested deeper than MAX_ELEMENT_DEPTH is refused as the other backends refuse it (#667)", async () => {
+        const renderer = await createWasmRenderer({ fonts: systemFonts });
+        const depth = 100_000;
+
+        await expect(renderer.render({ html: `${"<div>".repeat(depth)}${"</div>".repeat(depth)}`, pageSize: PAGE })).rejects.toThrow("invalid PdfLapas HTML: elements nest deeper than 256 levels (toHtml() nests about a dozen)");
+    });
+
     test("an edited toHtml() document renders through pptxHtmlDocument() and draws the edit", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE);
@@ -876,4 +883,10 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         );
         await expect(render(HAND_WRITTEN_OBJECTS.text.replace("font-weight: bold;", "font-family: &quot;Calibri&quot;, Arial;"))).rejects.toThrow("font-family '\"Calibri\", Arial' is not a list of quoted families");
     });
+});
+
+test("the Rust renderer's MAX_ELEMENT_DEPTH is the model's", async () => {
+    const source = await Bun.file(resolve(import.meta.dir, "../crates/pdf-core/src/profile/dom.rs")).text();
+
+    expect(Number(/const MAX_ELEMENT_DEPTH: usize = (\d+);/.exec(source)?.[1])).toBe(MAX_ELEMENT_DEPTH);
 });

@@ -81,7 +81,8 @@ root=$PWD
 # +99 B: HTML nested deeper than MAX_ELEMENT_DEPTH refused and too-deep SVG images reported, as the other backends do (#667: the depth check in profile/dom.rs), 1,066,276 -> 1,066,375 B measured; budget = that size.
 # +182 B: pdf-core shares one font collection across renderers for the native pool (#612: add_shared_font), 1,066,267 -> 1,066,449 B measured; budget = that size.
 # +603 B: underlines and strikes past MAX_RENDER_DECORATION_PIECES per render reported, as the PDFKit renderer does (#671: piece_count and the per-render budget), 1,066,449 -> 1,067,052 B measured; budget = that size.
-GZIP_BUDGET=1067052
+# +127 B: a shrink rule past MAX_TEXT_FIT_STEPS refused with the PDFKit renderer's message (#671: the bound in profile/text.rs), 1,067,052 -> 1,067,179 B measured; budget = that size.
+GZIP_BUDGET=1067179
 
 locked=$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;}' crates/Cargo.lock)
 if [ "$locked" != "$WASM_BINDGEN_VERSION" ]; then

@@ -37,7 +37,7 @@ use crate::image::Picture;
 use crate::link::page_quad;
 use crate::model::{Presentation, SlideObject, TextFit};
 use crate::path::rect_path;
-use crate::table::TableLayout;
+use crate::table::{MAX_TABLE_GRID_CELLS, TableLayout};
 use crate::text::draw::LinkQuad;
 pub use crate::text::font::MissingFont;
 /// Font file bytes behind an `Arc`, which renderers on several threads can register without copying them.
@@ -239,6 +239,17 @@ impl Renderer {
             SlideObject::Table(o) => (&o.style, None, Some(&o.table)),
             SlideObject::Svg(o) => (&o.style, None, None),
         };
+        if let Some(table) = table
+            && table.rows.len().saturating_mul(table.columns.len()) > MAX_TABLE_GRID_CELLS
+        {
+            self.warn(format!(
+                "a table of {} rows and {} columns, past {} grid cells, is not drawn; split it into several tables (addTable's autoPage)",
+                table.rows.len(),
+                table.columns.len(),
+                MAX_TABLE_GRID_CELLS
+            ));
+            return Ok(());
+        }
         let g = &style.geometry;
         let (x, y, w) = (g.x, g.y, g.width.unwrap_or(0.0));
         let mut h = g.height.unwrap_or(0.0);
@@ -550,6 +561,32 @@ mod tests {
         assert_eq!(r.warnings(), Vec::<String>::new());
         render(&mut r, &table(Some(cell(1, 1, build::SHRINK, TextDirection::Horizontal)))).unwrap();
         assert_eq!(r.warnings(), vec!["table cells beyond the column grid not rendered".to_string()]);
+    }
+
+    #[test]
+    fn reports_a_table_whose_grid_is_past_the_cell_limit() {
+        // 1 001 rows of one cell over 1 000 columns: a sparse grid just past MAX_TABLE_GRID_CELLS.
+        let rows = (0..1001)
+            .map(|_| TableRow {
+                height: None,
+                cells: vec![cell(1, 1, TextFit::None, TextDirection::Horizontal)],
+            })
+            .collect();
+        let deck = build::deck(vec![SlideObject::Table(TableObject {
+            style: build::style(48.0, 96.0, 200.0, 0.0),
+            table: Table {
+                columns: vec![1.0; 1000],
+                rows,
+            },
+        })]);
+        let mut r = Renderer::new();
+        assert!(render(&mut r, &deck).unwrap().starts_with(b"%PDF"));
+        assert_eq!(
+            r.warnings(),
+            vec![
+                "a table of 1001 rows and 1000 columns, past 1000000 grid cells, is not drawn; split it into several tables (addTable's autoPage)".to_string()
+            ]
+        );
     }
 
     /// A filled shape with a dashed line, rotated and flipped, over the box (10, 20, 200, 100)

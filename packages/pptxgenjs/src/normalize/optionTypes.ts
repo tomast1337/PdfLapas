@@ -4,7 +4,8 @@ type JsType = "string" | "number" | "boolean" | "object" | "array";
 /** The types an option accepts, and the types of the fields or entries it holds. */
 export type OptionType = {
     readonly types: readonly JsType[];
-    readonly fields?: Readonly<Record<string, OptionType>>;
+    /** Each field's name and type, as entries listed once here rather than on every check. */
+    readonly fields?: readonly (readonly [string, OptionType])[];
     readonly items?: OptionType;
     /** Whether an entry may be missing (null or undefined); otherwise each one is checked against `items`. */
     readonly holes?: boolean;
@@ -13,6 +14,8 @@ export type OptionType = {
 const STRING: OptionType = { types: ["string"] };
 const NUMBER: OptionType = { types: ["number"] };
 const OBJECT: OptionType = { types: ["object"] };
+
+const fields = (record: Readonly<Record<string, OptionType>>) => Object.entries(record);
 
 const TYPE_WORDS: Readonly<Record<JsType, string>> = { string: "a string", number: "a number", boolean: "true or false", object: "an object", array: "an array" };
 
@@ -23,7 +26,7 @@ const TYPE_WORDS: Readonly<Record<JsType, string>> = { string: "a string", numbe
  */
 const OPTIONS: OptionType = {
     types: ["object"],
-    fields: {
+    fields: fields({
         fontFace: STRING,
         lang: STRING,
         objectName: STRING,
@@ -38,9 +41,9 @@ const OPTIONS: OptionType = {
         shadow: OBJECT,
         tabStops: { types: ["array"], items: OBJECT },
         points: { types: ["array"], items: OBJECT },
-        hyperlink: { types: ["object"], fields: { url: STRING, tooltip: STRING } },
-        bullet: { types: ["boolean", "object"], fields: { style: STRING } },
-        sizing: { types: ["object"], fields: { type: STRING } },
+        hyperlink: { types: ["object"], fields: fields({ url: STRING, tooltip: STRING }) },
+        bullet: { types: ["boolean", "object"], fields: fields({ style: STRING }) },
+        sizing: { types: ["object"], fields: fields({ type: STRING }) },
         // One object for every side, or [top, right, bottom, left]; a missing side is none, as in PptxGenJS.
         border: { types: ["object", "array"], items: OBJECT, holes: true },
         lineDataSymbol: STRING,
@@ -52,13 +55,13 @@ const OPTIONS: OptionType = {
         valLabelFormatCode: STRING,
         valAxisMinVal: NUMBER,
         valAxisMaxVal: NUMBER,
-        valAxes: { types: ["array"], items: { types: ["object"], fields: { valAxisMinVal: NUMBER, valAxisMaxVal: NUMBER, valAxisLabelFormatCode: STRING } } },
-        catAxes: { types: ["array"], items: { types: ["object"], fields: { catLabelFormatCode: STRING } } },
-    },
+        valAxes: { types: ["array"], items: { types: ["object"], fields: fields({ valAxisMinVal: NUMBER, valAxisMaxVal: NUMBER, valAxisLabelFormatCode: STRING }) } },
+        catAxes: { types: ["array"], items: { types: ["object"], fields: fields({ catLabelFormatCode: STRING }) } },
+    }),
 };
 
 /** A chart series: its labels, values and bubble sizes are iterated. */
-const SERIES: OptionType = { types: ["object"], fields: { labels: { types: ["array"] }, values: { types: ["array"] }, sizes: { types: ["array"] } } };
+const SERIES: OptionType = { types: ["object"], fields: fields({ labels: { types: ["array"] }, values: { types: ["array"] }, sizes: { types: ["array"] } }) };
 
 /**
  * Throws a TypeError naming the option when `value` (an options object of `method`, or a chart series with
@@ -107,7 +110,7 @@ function checkType(value: unknown, type: OptionType, method: string, name: strin
     }
 
     if (type.fields && typeof value === "object") {
-        for (const [key, field] of Object.entries(type.fields)) {
+        for (const [key, field] of type.fields) {
             // `as`: a non-null, non-array object, read by key.
             checkType((value as Record<string, unknown>)[key], field, method, name === "" ? key : `${name}.${key}`);
         }

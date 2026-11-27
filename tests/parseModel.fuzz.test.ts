@@ -9,9 +9,9 @@ import { InvalidModelError, parseModel } from "../packages/pptxgenjs/src/modelSc
 import { modelToHtml } from "../packages/pptxgenjs/src/render/document";
 import type { WasmRenderer } from "../packages/wasm/src/browser";
 import { createWasmRenderer, loadSystemFonts } from "../packages/wasm/src/node";
+import { FUZZ_SEED, fuzzRuns, fuzzTimeout } from "./fuzzConfig";
 
-const SEED = 661;
-const RUNS = 500;
+const RUNS = fuzzRuns(500);
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -319,29 +319,33 @@ async function attempt(model: unknown, render: WasmRenderer): Promise<void> {
 }
 
 describe.skipIf(!canRender)("parseModel() fuzz (#661)", () => {
-    test("a mutated model is refused with InvalidModelError or its HTML renders, within 2 seconds", async () => {
-        const render = renderer;
+    test(
+        "a mutated model is refused with InvalidModelError or its HTML renders, within 2 seconds",
+        async () => {
+            const render = renderer;
 
-        await fc.assert(
-            fc.asyncProperty(fc.nat(), mutations, async (index, operations) => {
-                if (render === undefined) {
-                    return;
-                }
+            await fc.assert(
+                fc.asyncProperty(fc.nat(), mutations, async (index, operations) => {
+                    if (render === undefined) {
+                        return;
+                    }
 
-                const base = bases[index % bases.length] ?? {};
-                const started = performance.now();
-                const model = mutate(structuredClone(base), operations);
+                    const base = bases[index % bases.length] ?? {};
+                    const started = performance.now();
+                    const model = mutate(structuredClone(base), operations);
 
-                await attempt(model, render);
+                    await attempt(model, render);
 
-                const elapsed = performance.now() - started;
+                    const elapsed = performance.now() - started;
 
-                // The base decks render in a few milliseconds; the slowest accepted mutation here took well under
-                // 100 ms. 2 s leaves an order of magnitude for a slow CI machine without hiding a case that grows
-                // without bound (a huge page size or length, say).
-                expect(elapsed).toBeLessThan(2000);
-            }),
-            { seed: SEED, numRuns: RUNS },
-        );
-    }, 120_000);
+                    // The base decks render in a few milliseconds; the slowest accepted mutation here took well under
+                    // 100 ms. 2 s leaves an order of magnitude for a slow CI machine without hiding a case that grows
+                    // without bound (a huge page size or length, say).
+                    expect(elapsed).toBeLessThan(2000);
+                }),
+                { seed: FUZZ_SEED, numRuns: RUNS },
+            );
+        },
+        fuzzTimeout(120_000),
+    );
 });

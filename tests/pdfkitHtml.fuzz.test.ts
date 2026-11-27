@@ -9,9 +9,9 @@ import type { HtmlPresentationDocument } from "../packages/model/src/index";
 import type { PdfkitRenderer } from "../packages/pdfkit/src/browser";
 import { createPdfkitRenderer, loadSystemFonts } from "../packages/pdfkit/src/node";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/html";
+import { FUZZ_SEED, fuzzRuns, fuzzTimeout } from "./fuzzConfig";
 
-const SEED = 661;
-const RUNS = 150;
+const RUNS = fuzzRuns(150);
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const SVG = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>').toString("base64")}`;
@@ -240,26 +240,30 @@ describe("PdfkitRenderer.render() over mutated profile HTML (#661)", () => {
         await expect(base && html ? renderer.render({ ...base, html }) : Promise.reject(new Error("no base document"))).rejects.toThrow(/^invalid PdfLapas HTML: a length, or one computed from it, is -?\d.*e\+\d+, which a PDF cannot hold/);
     });
 
-    test("mutated HTML renders to a PDF or is refused with an error that is not an engine error", async () => {
-        await fc.assert(
-            fc.asyncProperty(fc.nat(), mutations, async (which, operations) => {
-                const base = bases[which % bases.length];
+    test(
+        "mutated HTML renders to a PDF or is refused with an error that is not an engine error",
+        async () => {
+            await fc.assert(
+                fc.asyncProperty(fc.nat(), mutations, async (which, operations) => {
+                    const base = bases[which % bases.length];
 
-                if (base === undefined) {
-                    return;
-                }
+                    if (base === undefined) {
+                        return;
+                    }
 
-                const document = { ...base, html: mutate(base.html, operations) };
+                    const document = { ...base, html: mutate(base.html, operations) };
 
-                try {
-                    const pdf = await renderer.render(document);
+                    try {
+                        const pdf = await renderer.render(document);
 
-                    expect(new TextDecoder().decode(pdf.subarray(0, 5))).toBe("%PDF-");
-                } catch (error) {
-                    expectRefusal(error);
-                }
-            }),
-            { seed: SEED, numRuns: RUNS },
-        );
-    }, 120_000);
+                        expect(new TextDecoder().decode(pdf.subarray(0, 5))).toBe("%PDF-");
+                    } catch (error) {
+                        expectRefusal(error);
+                    }
+                }),
+                { seed: FUZZ_SEED, numRuns: RUNS },
+            );
+        },
+        fuzzTimeout(120_000),
+    );
 });

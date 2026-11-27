@@ -3,9 +3,9 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { checkImagePixels, IMAGE_PIXEL_LIMITS } from "../packages/model/src/index";
+import { FUZZ_SEED, fuzzRuns } from "./fuzzConfig";
 
 // Every property fixes its seed, so a red build names the same counterexample on every machine until it is fixed.
-const SEED = 661;
 
 /** The messages checkImagePixels is allowed to refuse with; any other error escaping it is a bug. */
 const REFUSALS = [
@@ -248,7 +248,7 @@ describe("checkImagePixels fuzz (#661)", () => {
             fc.property(fc.string({ unit: "binary", maxLength: 2000, size: "max" }), html => {
                 checkOnlyDocumentedRefusals(html);
             }),
-            { seed: SEED, numRuns: 500 },
+            { seed: FUZZ_SEED, numRuns: fuzzRuns(500) },
         );
     });
 
@@ -259,7 +259,7 @@ describe("checkImagePixels fuzz (#661)", () => {
 
                 checkOnlyDocumentedRefusals(html);
             }),
-            { seed: SEED, numRuns: 1000 },
+            { seed: FUZZ_SEED, numRuns: fuzzRuns(1000) },
         );
     });
 
@@ -286,7 +286,7 @@ describe("checkImagePixels fuzz (#661)", () => {
                 // scan, which on this input would take minutes.
                 expect(elapsed).toBeLessThan(1000);
             }),
-            { seed: SEED, numRuns: 20 },
+            { seed: FUZZ_SEED, numRuns: fuzzRuns(20) },
         );
     });
 
@@ -299,7 +299,7 @@ describe("checkImagePixels fuzz (#661)", () => {
                 expect(() => checkImagePixels(markupFor(hugePng, rasterWriting), IMAGE_PIXEL_LIMITS)).toThrow(OVER_LIMIT);
                 expect(() => checkImagePixels(markupFor(hugeSvg, svgWriting), IMAGE_PIXEL_LIMITS)).toThrow(OVER_LIMIT);
             }),
-            { seed: SEED, numRuns: 500 },
+            { seed: FUZZ_SEED, numRuns: fuzzRuns(500) },
         );
     });
 
@@ -312,7 +312,7 @@ describe("checkImagePixels fuzz (#661)", () => {
                 expect(() => checkImagePixels(markupFor(smallPng, rasterWriting), IMAGE_PIXEL_LIMITS)).not.toThrow();
                 expect(() => checkImagePixels(markupFor(smallSvg, svgWriting), IMAGE_PIXEL_LIMITS)).not.toThrow();
             }),
-            { seed: SEED, numRuns: 500 },
+            { seed: FUZZ_SEED, numRuns: fuzzRuns(500) },
         );
     });
 });

@@ -20,6 +20,11 @@ const GIF_SIGNATURE = [0x47, 0x49, 0x46, 0x38] as const; // "GIF8"
 const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
 const WEBP_FORM = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP", at byte 8 of the RIFF header
 const ROUNDED = "50%";
+/** PNG's 8-byte signature, then chunks: a 4-byte length, a 4-byte type, the data and a 4-byte CRC. */
+const PNG_HEADER_BYTES = 8;
+const PNG_CHUNK_OVERHEAD = 12;
+/** The bit depths each PNG colour type allows (PNG spec 11.2.2, IHDR). */
+const PNG_BIT_DEPTHS: Readonly<Record<number, readonly number[]>> = Object.freeze({ 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] });
 /** `img` properties that only restate the frame layout `toHtml()` writes for Chromium. */
 const IMG_LAYOUT: ReadonlySet<string> = new Set(["display", "position"]);
 const FRAME_LAYOUT: ReadonlySet<string> = new Set(["width", "height", "overflow", "position"]);
@@ -104,7 +109,7 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
         try {
             image = decodePng({ data: bytes });
         } catch (error) {
-            throw new Error(`cannot decode ${mime} data: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`cannot decode ${mime} data: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
 
         if (!image) {
@@ -112,7 +117,34 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
         }
 
         raster = encodePng({ image, singleFrame: true });
-    } else if (startsWith(bytes, PNG_SIGNATURE) || startsWith(bytes, JPEG_SIGNATURE)) {
+    } else if (startsWith(bytes, PNG_SIGNATURE)) {
+        // PDFKit's PNG reader (png-js) trusts each chunk's length: one past the end of the file makes it copy that many
+        // bytes one at a time, minutes of CPU and gigabytes of memory for a few kilobytes. The chunks must fit up to
+        // IEND, and IHDR must name a colour type and bit depth PNG has, or PDFKit writes an image no viewer can read.
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        let at = PNG_HEADER_BYTES;
+        let ended = false;
+
+        while (!ended && at + PNG_CHUNK_OVERHEAD <= bytes.length) {
+            const size = view.getUint32(at);
+
+            if (size > bytes.length - at - PNG_CHUNK_OVERHEAD) {
+                throw new Error(`cannot decode ${mime} data: a chunk at byte ${at} is ${size} bytes long, past the end of the ${bytes.length}-byte file`);
+            }
+
+            ended = String.fromCharCode(bytes[at + 4] ?? 0, bytes[at + 5] ?? 0, bytes[at + 6] ?? 0, bytes[at + 7] ?? 0) === "IEND";
+            at += PNG_CHUNK_OVERHEAD + size;
+        }
+
+        // IHDR is the first chunk: its colour type at byte 25 and bit depth at byte 24.
+        const depths = PNG_BIT_DEPTHS[bytes[25] ?? -1];
+
+        if (!ended || depths === undefined || !depths.includes(bytes[24] ?? 0)) {
+            throw new Error(`cannot decode ${mime} data: ${ended ? `its header names colour type ${bytes[25]} at bit depth ${bytes[24]}, which PNG does not have` : "it ends before its IEND chunk"}`);
+        }
+
+        raster = bytes;
+    } else if (startsWith(bytes, JPEG_SIGNATURE)) {
         raster = bytes;
     } else if (startsWith(bytes, GIF_SIGNATURE) || (startsWith(bytes, RIFF_SIGNATURE) && startsWith(bytes, WEBP_FORM, 8))) {
         // The first frame of a GIF or WebP as a PNG file, for PDFKit, which embeds only PNG and JPEG. Its pixels are
@@ -203,7 +235,12 @@ export function drawImage(element: Element, objectStyle: Map<string, string>, pa
         // An image XObject is painted with the fill alpha (ISO 32000-1 11.6.4.4).
         doc.fillOpacity(opacity * paint.opacity);
         // `as`: a slice owns a fresh ArrayBuffer of exactly its bytes (never shared memory), which PDFKit takes whole.
-        doc.image(raster.slice().buffer as ArrayBuffer, left, top, { width, height });
+        try {
+            doc.image(raster.slice().buffer as ArrayBuffer, left, top, { width, height });
+        } catch (error) {
+            // PDFKit's JPEG reader throws a bare string ("Invalid JPEG."), not an Error.
+            throw new Error(`cannot decode ${mime} data: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        }
     } else {
         // The picture's area was captured above: what the SVG draws casts no shadow of its own.
         // The picture fades as one, as Chromium composites an `<img>`.

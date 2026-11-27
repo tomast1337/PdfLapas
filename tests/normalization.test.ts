@@ -241,6 +241,16 @@ describe("shared object normalization", () => {
         expect(normalizeLine({ width: 2.25, endArrowType: "triangle" }).dashArray).toBeUndefined();
     });
 
+    test("refuses a dashed line with heads whose shaft needs more dashes than the limit", () => {
+        // A hair-thin pattern, or a very long line, would make shaftDashes write billions of entries.
+        expect(() => normalizeLine({ width: 1e-9, dashType: "sysDot", endArrowType: "triangle" }, { kind: "straight", length: 96 })).toThrow(/needs more than 200000 dashes; make it wider, shorter or solid/);
+        expect(() => normalizeLine({ width: 1, dashType: "sysDot", endArrowType: "triangle" }, { kind: "straight", length: 1e11 })).toThrow(RangeError);
+        // A hairline dotted diagonal of the largest slide stays under it.
+        expect(normalizeLine({ width: 0.25, dashType: "sysDot", endArrowType: "triangle" }, { kind: "straight", length: Math.hypot(56, 56) * 96 }).dashArray).toBeDefined();
+        // Without heads the pattern is not written out along the line, so a thin dashed line still draws.
+        expect(normalizeLine({ width: 1e-9, dashType: "sysDot" }, { kind: "straight", length: 96 }).dashArray).toBeDefined();
+    });
+
     test("rotates a dash pattern without breaking dash/gap parity", () => {
         expect(startDashAt([4, 3], 0)).toEqual([4, 3]);
         expect(startDashAt([4, 3], 7)).toEqual([4, 3]);

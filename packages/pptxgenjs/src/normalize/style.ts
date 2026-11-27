@@ -200,10 +200,27 @@ export function normalizeLine(value?: PptxGenJS.ShapeLineProps, outline: LineOut
     const beginArrow = value.beginArrowType ?? "none";
     const endArrow = value.endArrowType ?? "none";
     const pattern = width > 0 ? PPTX_DEFAULTS.shape.dashPatterns[dash]?.map(part => part * width) : undefined;
-    const dashArray =
-        outline.kind === "straight" && (beginArrow !== "none" || endArrow !== "none")
-            ? shaftDashes(pattern ?? [outline.length, outline.length], arrowShaftStart(beginArrow, width), outline.length - arrowShaftStart(endArrow, width), outline.length)
-            : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
+    const trimmed = outline.kind === "straight" && (beginArrow !== "none" || endArrow !== "none");
+
+    // shaftDashes writes one entry per dash and gap along the shaft, so a hair-thin or very long dashed line would
+    // allocate without bound; `!(<=)` also refuses the Infinity and NaN a pattern that rounds to zero gives.
+    if (trimmed && pattern) {
+        let period = 0;
+
+        for (const part of pattern) {
+            period += part;
+        }
+
+        const entries = (outline.length / period) * pattern.length;
+
+        if (!(entries <= PPTX_DEFAULTS.limits.lineShaftDashEntries)) {
+            throw new RangeError(`line: a ${dash} line with an arrow head, ${Math.round(outline.length)} px long and ${width} px wide, needs more than ${PPTX_DEFAULTS.limits.lineShaftDashEntries} dashes; make it wider, shorter or solid`);
+        }
+    }
+
+    const dashArray = trimmed
+        ? shaftDashes(pattern ?? [outline.length, outline.length], arrowShaftStart(beginArrow, width), outline.length - arrowShaftStart(endArrow, width), outline.length)
+        : pattern && startDashAt(pattern, arrowShaftStart(beginArrow, width));
 
     return {
         visible: true,

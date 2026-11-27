@@ -16,11 +16,13 @@ memory is a bug.
 
 cargo-fuzz needs a nightly toolchain (libFuzzer and sanitizer flags). The repository pins stable in
 `rust-toolchain.toml` for the wasm build, so run the fuzzer with `+nightly`. The fuzz crate is its own
-workspace and is not part of the wasm build or of CI.
+workspace and is not part of the wasm build or of the required CI checks. The nightly job (below) pins the
+nightly date and the cargo-fuzz version in `.github/workflows/fuzz.yml`; use the same ones to reproduce what it
+found.
 
 ```sh
 rustup toolchain install nightly
-cargo install cargo-fuzz
+cargo install cargo-fuzz --version 0.13.2 --locked
 ```
 
 ## Seeds
@@ -61,3 +63,24 @@ A crash leaves its input in `crates/fuzz/artifacts/<target>/`. Reproduce it with
 `cargo +nightly fuzz run <target> <artifact>`. Before fixing the crash, turn the input into a unit test in
 `pdf-core`: the smallest HTML or font that still fails, with the error or warning it must give instead.
 `cargo +nightly fuzz tmin <target> <artifact>` shrinks the input.
+
+## Nightly job
+
+`.github/workflows/fuzz.yml` runs every night, and on demand from the Actions tab (`workflow_dispatch`, with the
+seconds per target and the property scale as inputs). It is not a required check.
+
+- **Rust targets.** `render_html` and `add_font` run for 600 seconds each, with the seeds and limits above.
+  The corpus each night grows is kept in the Actions cache, so the next night starts from it.
+- **TypeScript properties.** The fast-check properties in `tests/*.fuzz.test.ts` (PptxGenJS API options,
+  `parseModel()`, the image pixel scan, `PdfkitRenderer.render()` over mutated HTML) run with a new seed and 20
+  times their usual runs. On every `bun test` they use a fixed seed (`tests/fuzzConfig.ts`).
+
+When a property fails, the log prints its seed. Reproduce it locally:
+
+```sh
+FUZZ_SEED=<seed> FUZZ_SCALE=20 bun test --timeout 1800000 tests/<file>.fuzz.test.ts
+```
+
+When a Rust target fails, its crash input is uploaded as the `fuzz-crash-<target>` artifact and kept for 7 days.
+Anyone who can read the repository can download it. Triage it within that week: if it is exploitable, report it as
+a private security advisory and do not discuss it in a public issue. Failures are never filed automatically.

@@ -10,10 +10,10 @@ import { PuppeteerGen } from "../packages/pptxgenjs/src/html";
 import { InvalidModelError } from "../packages/pptxgenjs/src/modelSchema";
 import { UNDERLINE_TYPES } from "../packages/pptxgenjs/src/target";
 import { UnsupportedFeatureError } from "../packages/pptxgenjs/src/UnsupportedFeatureError";
+import { FUZZ_SEED, fuzzRuns, fuzzTimeout } from "./fuzzConfig";
 
 // Every property fixes its seed, so a red build names the same counterexample on every machine until it is fixed.
-const SEED = 661;
-const RUNS = 1000;
+const RUNS = fuzzRuns(1000);
 
 // A 1x1 pixel PNG: the smallest valid image data URI, so addImage() exercises the image path without a decoder.
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -519,56 +519,68 @@ async function outcome(call: ApiCall): Promise<{ readonly kind: "html"; readonly
 }
 
 describe("PptxGenJS API options fuzz (#661)", () => {
-    test("each call and toHtml() succeed or refuse with a documented error, within 2 seconds", async () => {
-        await fc.assert(
-            fc.asyncProperty(call, async input => {
-                const started = performance.now();
+    test(
+        "each call and toHtml() succeed or refuse with a documented error, within 2 seconds",
+        async () => {
+            await fc.assert(
+                fc.asyncProperty(call, async input => {
+                    const started = performance.now();
 
-                try {
-                    await runCall(input);
-                } catch (error) {
-                    expectDocumentedFailure(error);
-                }
+                    try {
+                        await runCall(input);
+                    } catch (error) {
+                        expectDocumentedFailure(error);
+                    }
 
-                const elapsed = performance.now() - started;
+                    const elapsed = performance.now() - started;
 
-                // A valid deck of a few objects builds and renders in a few milliseconds; the slowest valid cases here
-                // (a table with autoPage, a chart) take well under 100 ms. 2 s leaves an order of magnitude for a slow
-                // CI machine without hiding a case that loops (a structural count large enough to make a grid loop).
-                expect(elapsed).toBeLessThan(2000);
-            }),
-            { seed: SEED, numRuns: RUNS },
-        );
-    }, 60_000);
+                    // A valid deck of a few objects builds and renders in a few milliseconds; the slowest valid cases here
+                    // (a table with autoPage, a chart) take well under 100 ms. 2 s leaves an order of magnitude for a slow
+                    // CI machine without hiding a case that loops (a structural count large enough to make a grid loop).
+                    expect(elapsed).toBeLessThan(2000);
+                }),
+                { seed: FUZZ_SEED, numRuns: RUNS },
+            );
+        },
+        fuzzTimeout(60_000),
+    );
 
-    test("no call writes onto what the caller passes", async () => {
-        await fc.assert(
-            fc.asyncProperty(call, async input => {
-                // Frozen first: a write onto the caller's object throws in these strict-mode modules.
-                const frozen = deepFreeze(input);
-                const before = structuredClone(input);
+    test(
+        "no call writes onto what the caller passes",
+        async () => {
+            await fc.assert(
+                fc.asyncProperty(call, async input => {
+                    // Frozen first: a write onto the caller's object throws in these strict-mode modules.
+                    const frozen = deepFreeze(input);
+                    const before = structuredClone(input);
 
-                try {
-                    await runCall(frozen);
-                } catch (error) {
-                    expectDocumentedFailure(error);
-                }
+                    try {
+                        await runCall(frozen);
+                    } catch (error) {
+                        expectDocumentedFailure(error);
+                    }
 
-                expect(frozen).toEqual(before);
-            }),
-            { seed: SEED, numRuns: RUNS },
-        );
-    }, 60_000);
+                    expect(frozen).toEqual(before);
+                }),
+                { seed: FUZZ_SEED, numRuns: RUNS },
+            );
+        },
+        fuzzTimeout(60_000),
+    );
 
-    test("building the same deck twice gives byte-identical HTML", async () => {
-        await fc.assert(
-            fc.asyncProperty(call, async input => {
-                const first = await outcome(input);
-                const second = await outcome(input);
+    test(
+        "building the same deck twice gives byte-identical HTML",
+        async () => {
+            await fc.assert(
+                fc.asyncProperty(call, async input => {
+                    const first = await outcome(input);
+                    const second = await outcome(input);
 
-                expect(second).toEqual(first);
-            }),
-            { seed: SEED, numRuns: RUNS },
-        );
-    }, 60_000);
+                    expect(second).toEqual(first);
+                }),
+                { seed: FUZZ_SEED, numRuns: RUNS },
+            );
+        },
+        fuzzTimeout(60_000),
+    );
 });

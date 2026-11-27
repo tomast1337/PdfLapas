@@ -917,6 +917,25 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         expect(performance.now() - start).toBeLessThan(500);
     });
 
+    // #671: a 10 000 x 10 000 grid took 2.6 s and +2.4 GB before the limit, and 20 000 x 20 000 ran out of wasm memory.
+    test("reports a table whose grid has more cells than the renderer draws, in bounded time (#671)", async () => {
+        const renderer = await createWasmRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE);
+
+        pres.addSlide().addTable([[{ text: "a" }, { text: "b" }]], { x: 0.5, y: 0.5, w: 9, colW: [4.5, 4.5], border: { type: "solid", pt: 1, color: "000000" } });
+        const document = await pres.toHtml();
+        const [col = "", row = ""] = [/<col [^>]*>/.exec(document.html)?.[0], /<tr[\s\S]*?<\/tr>/.exec(document.html)?.[0]];
+        // 10 000 columns and 10 000 rows of two cells each: 100 million grid cells from a few MB of HTML.
+        const html = document.html.replace(/<colgroup>[\s\S]*?<\/colgroup>/, `<colgroup>${col.repeat(10_000)}</colgroup>`).replace(row, row.repeat(10_000));
+        const start = performance.now();
+
+        await renderer.render({ ...document, html });
+        expect(performance.now() - start).toBeLessThan(1000);
+        expect(renderer.warnings()).toEqual(["a table of 10000 rows and 10000 columns, past 1000000 grid cells, is not drawn; split it into several tables (addTable's autoPage)"]);
+        await renderer.render(document);
+        expect(renderer.warnings()).toEqual([]);
+    });
+
     test("an edited toHtml() document renders through pptxHtmlDocument() and draws the edit", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE);

@@ -23,6 +23,12 @@ use crate::text::layout::BoxLayout;
 /// cell's content decides its row's height rather than the other way round.
 const UNBOUNDED: f32 = 1.0e6;
 
+/// Most grid cells (rows x columns) a table is drawn with: `MAX_TABLE_GRID_CELLS` in packages/pdfkit/src/table.ts.
+/// The border edges take a slot per grid cell side whatever cells the rows hold, so a sparse table costs its grid
+/// area: 10 000 x 10 000 from a few hundred KB of HTML took 2.6 s and +2.4 GB, and 20 000 x 20 000 ran out of wasm
+/// memory.
+pub(crate) const MAX_TABLE_GRID_CELLS: usize = 1_000_000;
+
 /// One origin cell on the column grid.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PlacedCell {

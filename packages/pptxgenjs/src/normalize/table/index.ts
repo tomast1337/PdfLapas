@@ -310,7 +310,7 @@ export function normalizeTable(
             const rowspan = span(cellOptions.rowspan);
             const fill = cellOptions.fill ? normalizeFill(cellOptions.fill) : undefined;
             const border = cellOptions.border;
-            const sides = Array.isArray(border) ? border : [border, border, border, border];
+            const sides = Array.isArray(border) ? [border[0], border[1], border[2], border[3]] : [border, border, border, border];
             // PptxGenJS 4.0.1 (addTableDefinition) gives a missing side { type: "none" } and fills a given one from
             // DEF_CELL_BORDER with `||`: `{ color, pt }` is a solid line.
             const borders = sides.map((side): NormalizedTableBorder => {

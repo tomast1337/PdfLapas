@@ -85,13 +85,6 @@ const EDGE_NUMBERS = [0, -1, 1, 0.5, 2, 100, 1000, -100, 1e6, -1e6, Number.MAX_S
 // the non-finite values the API must refuse (the same bound a table would get from any caller).
 const EDGE_COUNTS = [0, -1, 1, 2, 3, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
 
-// shortcut: a value of the wrong type for a field the PptxGenJS types declare as a string (fontFace, lang,
-// objectName, shapeName, altText, fit, vert, textDirection, bullet.style, sizing.type, lineDataSymbol, a hyperlink's
-// url or tooltip and the format codes) reaches a string method or an HTML attribute and throws a JavaScript-engine
-// TypeError today; so does a non-object shadow, a null line, a margin that is neither a number nor an array, a border
-// array that is not four entries, a non-array tabStops, chart labels/values/sizes, valAxes or catAxes, and a non-number
-// valAxisMinVal or valAxisMaxVal. Those keys get their declared type with edge values until each is validated at the
-// boundary (#674); then the wrong types go in too.
 const magnitude = fc.oneof(fc.integer({ min: -10_000, max: 10_000 }), fc.double({ min: -1e9, max: 1e9, noNaN: true }), fc.constantFrom(...EDGE_NUMBERS));
 const count = fc.oneof(fc.integer({ min: -2, max: 5 }), fc.constantFrom(...EDGE_COUNTS));
 const wrongNumber = fc.constantFrom("x", "", "50%", null, true, false, [], {}, [1, 2]);
@@ -109,20 +102,17 @@ const coord = fc.oneof(
 const TEXT_LITERALS = ["", " ", "x", "Arial", 'Arial";}', "\n", "\t", "é", "漢字", "0".repeat(64), "FF0000", "50%", `line${String.fromCharCode(0x2028)}break`];
 const text = fc.oneof(fc.string({ maxLength: 100 }), fc.constantFrom(...TEXT_LITERALS));
 
-// A string option that the renderers write into an attribute or read with a string method; a non-string reaches
-// markup.ts as-is and crashes with "value.replace is not a function" (#674, "shortcut" above).
-const stringOption = text;
-
 const HEX_OR_SCHEME = ["000000", "FFFFFF", "FF0000", "ff0000", "123456", "tx1", "tx2", "bg1", "bg2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "", "red", "#FF0000", "12345", "1234567", "red;background:url(x)"];
 const color = fc.oneof(fc.constantFrom(...HEX_OR_SCHEME), fc.string({ maxLength: 20 }), numberOrWrong, fc.constantFrom({}, { color: "FF0000" }, { transparency: 50 }, { color: "x" }, { transparency: Number.NaN }, []));
 
 const boolOrWrong = fc.oneof({ weight: 5, arbitrary: fc.boolean() }, { weight: 1, arbitrary: fc.constantFrom(0, 1, "true", "", null, {}, []) });
-const maybe = <T>(arbitrary: fc.Arbitrary<T>): fc.Arbitrary<T | undefined> => fc.oneof({ weight: 6, arbitrary }, { weight: 1, arbitrary: fc.constant(undefined) });
+// Any option may also be absent, null (which PptxGenJS reads as absent) or of a type it does not declare.
+const wrongType = fc.constantFrom(null, 5, -1, true, "x", {}, [], ["x"], [{}]);
+const maybe = <T>(arbitrary: fc.Arbitrary<T>): fc.Arbitrary<unknown> => fc.oneof({ weight: 6, arbitrary }, { weight: 1, arbitrary: fc.constant(undefined) }, { weight: 1, arbitrary: wrongType });
 
 const align = fc.oneof(fc.constantFrom("left", "center", "right", "justify", "x", "", "LEFT"), fc.constantFrom(0, "", false, null), wrongNumber);
 const valign = fc.oneof(fc.constantFrom("top", "middle", "bottom", "x", "", "MIDDLE"), fc.constantFrom(0, "", false, null), wrongNumber);
 
-// A shadow object (the WeakSet noteSharedShadow() reads needs an object, so a primitive is excluded; #674).
 const shadow: fc.Arbitrary<Record<string, unknown>> = fc.record({
     type: maybe(fc.constantFrom("outer", "inner", "none", "x", "")),
     opacity: maybe(numberOrWrong),
@@ -133,7 +123,6 @@ const shadow: fc.Arbitrary<Record<string, unknown>> = fc.record({
     rotateWithShape: maybe(boolOrWrong),
 });
 
-// A line object; `null` is excluded because addText()'s normalizeTextLine() reads `null.width` (#674).
 const line = fc.oneof(
     fc.record({
         color: maybe(color),
@@ -155,7 +144,6 @@ const bullet = fc.oneof(
         type: maybe(fc.oneof(fc.constantFrom("bullet", "number", "x", ""), numberOrWrong)),
         characterCode: maybe(fc.oneof(text, numberOrWrong)),
         indent: maybe(numberOrWrong),
-        // The writer reads the deprecated `style` as the number type; a non-string crashes in markup.ts (#674).
         style: maybe(bulletNumberType),
         numberType: maybe(numberOrWrong),
         numberStartAt: maybe(numberOrWrong),
@@ -168,16 +156,14 @@ const bullet = fc.oneof(
 const underline = fc.oneof(fc.boolean(), fc.constantFrom(...UNDERLINE_TYPES), fc.string({ maxLength: 8 }), fc.record({ style: maybe(fc.oneof(fc.constantFrom(...UNDERLINE_TYPES), fc.string({ maxLength: 8 }))), color: maybe(color) }));
 
 const hyperlink = fc.record({
-    // A non-string url or tooltip reaches an attribute and crashes in markup.ts (#674); a wrong `slide` is refused.
     url: maybe(fc.oneof(fc.constantFrom("https://example.com", "http://example.com", "mailto:a@example.com", "", "javascript:alert(1)"), fc.string({ maxLength: 30 }))),
     slide: maybe(numberOrWrong),
-    tooltip: maybe(stringOption),
+    tooltip: maybe(text),
 });
 
 const tabStop = fc.record({ position: maybe(numberOrWrong), alignment: maybe(fc.oneof(fc.constantFrom("l", "r", "ctr", "dec"), fc.string({ maxLength: 4 }), numberOrWrong)) });
 const tabStops = fc.oneof({ weight: 6, arbitrary: fc.array(tabStop, { maxLength: 3 }) }, { weight: 1, arbitrary: fc.constant(undefined) });
 
-// An object per side, or exactly four of them, the only shapes the table's border reader can index (#674).
 const borderSide = fc.record({ type: maybe(fc.constantFrom("none", "solid", "dash", "x", "")), color: maybe(color), pt: maybe(numberOrWrong) });
 const border = fc.oneof(borderSide, fc.tuple(borderSide, borderSide, borderSide, borderSide));
 
@@ -191,8 +177,7 @@ const textOptionFields = {
     // PptxGenJS ignores an option it does not know; so must PdfLapas.
     unknownOption: maybe(fc.jsonValue({ maxDepth: 1 })),
     fontSize: maybe(numberOrWrong),
-    // String options are strings only: a number for one of these is the known internal TypeError in #674.
-    fontFace: maybe(stringOption),
+    fontFace: maybe(text),
     color: maybe(color),
     align: maybe(align),
     valign: maybe(valign),
@@ -224,17 +209,14 @@ const textOptionFields = {
     strike: maybe(fc.oneof(fc.boolean(), fc.constantFrom("sngStrike", "dblStrike", "x", ""))),
     subscript: maybe(boolOrWrong),
     superscript: maybe(boolOrWrong),
-    // Read with a string method (`vert?.includes`); a non-string crashes (#674).
     vert: maybe(fc.oneof(fc.constantFrom("horz", "vert", "vert270", "wordArtVert", "eaVert", "mongolianVert", "x", ""), fc.string({ maxLength: 8 }))),
     textDirection: maybe(fc.oneof(fc.constantFrom("horz", "vert", "vert270", "wordArtVert", "x", ""), fc.string({ maxLength: 8 }))),
     rtlMode: maybe(boolOrWrong),
     tabStops,
-    // Split with "-" when the fallback chain is built; a non-string crashes (#674).
     lang: maybe(fc.oneof(fc.constantFrom("en-US", "zh-CN", "fr-CA", "x", ""), fc.string({ maxLength: 8 }))),
     highlight: maybe(color),
     baseline: maybe(numberOrWrong),
-    // Written into an attribute by markup.ts; a non-string crashes (#674).
-    objectName: maybe(stringOption),
+    objectName: maybe(text),
     placeholder: maybe(fc.string({ maxLength: 10 })),
 };
 
@@ -282,9 +264,8 @@ const shapeOptions = fc.record({
     lineDash: maybe(fc.oneof(fc.constantFrom("solid", "dash", "dashDot", "lgDash", "lgDashDot", "lgDashDotDot", "sysDash", "sysDot", "x"), numberOrWrong)),
     lineHead: maybe(fc.oneof(fc.constantFrom("none", "arrow", "diamond", "oval", "stealth", "triangle", "x"), numberOrWrong)),
     lineTail: maybe(fc.oneof(fc.constantFrom("none", "arrow", "diamond", "oval", "stealth", "triangle", "x"), numberOrWrong)),
-    // Written into an attribute by markup.ts; a non-string crashes (#674).
-    shapeName: maybe(stringOption),
-    objectName: maybe(stringOption),
+    shapeName: maybe(text),
+    objectName: maybe(text),
 });
 
 const shapeInput = fc.record({ shapeName, options: shapeOptions, points: fc.array(point, { maxLength: 4 }) });
@@ -295,7 +276,7 @@ const imageOptions = fc.record({
     data: maybe(fc.oneof(fc.constant(PNG), fc.string({ maxLength: 40 }), numberOrWrong)),
     path: maybe(fc.oneof(fc.constantFrom("logo.png", "https://example.com/a.png", "missing", ""), fc.string({ maxLength: 20 }))),
     unknownOption: maybe(fc.jsonValue({ maxDepth: 1 })),
-    altText: maybe(stringOption),
+    altText: maybe(text),
     flipH: maybe(boolOrWrong),
     flipV: maybe(boolOrWrong),
     hyperlink: maybe(hyperlink),
@@ -303,10 +284,9 @@ const imageOptions = fc.record({
     rotate: maybe(numberOrWrong),
     rounding: maybe(boolOrWrong),
     shadow: maybe(shadow),
-    // The sizing type is written into an attribute; a non-string crashes (#674).
     sizing: maybe(fc.record({ type: maybe(fc.oneof(fc.constantFrom("contain", "cover", "crop", "x", ""), fc.string({ maxLength: 8 }))), w: maybe(coord), h: maybe(coord), x: maybe(coord), y: maybe(coord) })),
     transparency: maybe(numberOrWrong),
-    objectName: maybe(stringOption),
+    objectName: maybe(text),
     x: maybe(coord),
     y: maybe(coord),
     w: maybe(coord),
@@ -330,7 +310,7 @@ const tableOptions = fc.record({
     rowH: maybe(fc.oneof(magnitude, fc.array(numberOrWrong, { maxLength: 4 }))),
     verbose: maybe(boolOrWrong),
     newSlideStartY: maybe(numberOrWrong),
-    fontFace: maybe(stringOption),
+    fontFace: maybe(text),
     fontSize: maybe(numberOrWrong),
     color: maybe(color),
     align: maybe(align),
@@ -342,7 +322,7 @@ const tableOptions = fc.record({
     charSpacing: maybe(numberOrWrong),
     highlight: maybe(color),
     indentLevel: maybe(numberOrWrong),
-    lang: maybe(stringOption),
+    lang: maybe(text),
     paraSpaceAfter: maybe(numberOrWrong),
     paraSpaceBefore: maybe(numberOrWrong),
     strike: maybe(fc.oneof(fc.boolean(), fc.constantFrom("sngStrike", "dblStrike", "x", ""))),
@@ -354,7 +334,7 @@ const tableOptions = fc.record({
     wrap: maybe(boolOrWrong),
     breakLine: maybe(boolOrWrong),
     shadow: maybe(shadow),
-    objectName: maybe(stringOption),
+    objectName: maybe(text),
     x: maybe(coord),
     y: maybe(coord),
     w: maybe(coord),
@@ -370,8 +350,6 @@ const chartType = fc.constantFrom("bar", "line", "area", "pie", "doughnut", "rad
 const formatCode = fc.oneof(fc.constantFrom("#%", "0.00%", "$0.00", "0", "", "x"), fc.string({ maxLength: 8 }));
 const gridLine = fc.record({ cap: maybe(fc.constantFrom("flat", "round", "square", "x")), color: maybe(color), size: maybe(numberOrWrong), style: maybe(fc.constantFrom("solid", "dash", "dot", "none", "x")) });
 
-// A value or category axis: an array of these is what the multi-axis options take; a non-array crashes in
-// normalizeChart (#674), so the element fields stay type-correct with edge values.
 const valueAxis = fc.record({
     showValAxisTitle: maybe(boolOrWrong),
     valAxisTitle: maybe(text),
@@ -410,7 +388,7 @@ const chartOptionFields = {
     y: maybe(coord),
     w: maybe(coord),
     h: maybe(coord),
-    objectName: maybe(stringOption),
+    objectName: maybe(text),
     unknownOption: maybe(fc.jsonValue({ maxDepth: 1 })),
     chartColors: maybe(fc.array(fc.oneof(fc.constantFrom(...HEX_OR_SCHEME), fc.string({ maxLength: 8 })), { maxLength: 4 })),
     chartColorsOpacity: maybe(numberOrWrong),
@@ -435,12 +413,10 @@ const chartOptionFields = {
     lineSize: maybe(numberOrWrong),
     lineDataSymbolSize: maybe(numberOrWrong),
     lineDataSymbol: maybe(fc.oneof(fc.constantFrom("circle", "dash", "diamond", "dot", "none", "square", "triangle", "x"), fc.string({ maxLength: 8 }))),
-    // Read with `toPrecision`; a non-number crashes (#674).
     valAxisMinVal: maybe(magnitude),
     valAxisMaxVal: maybe(magnitude),
     valAxisMajorUnit: maybe(magnitude),
     valAxisLogScaleBase: maybe(magnitude),
-    // The multi-axis options take arrays; a non-array crashes (#674).
     valAxes: maybe(fc.array(valueAxis, { maxLength: 2 })),
     catAxes: maybe(fc.array(categoryAxis, { maxLength: 2 })),
     catAxisMinVal: maybe(magnitude),
@@ -471,8 +447,6 @@ const chartOptionFields = {
 
 const chartOptions = fc.record(chartOptionFields);
 const chartLabel = fc.oneof(fc.string({ maxLength: 20 }), numberOrWrong);
-// Series arrays stay arrays at the container level: a non-array labels, values or sizes is the known internal TypeError
-// in #674. Their elements get the edge values.
 const chartSeries = fc.record({
     name: maybe(fc.oneof(fc.string({ maxLength: 20 }), numberOrWrong)),
     unknownSeriesOption: maybe(fc.jsonValue({ maxDepth: 1 })),

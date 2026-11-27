@@ -120,7 +120,9 @@ it is added when it is negative, not finite, or past its OOXML or PowerPoint max
 1584, `glow.size` up to 150, `shadow.blur` up to 100, `shadow.offset` up to 200 and `lineDataSymbolSize` up to 72; `charSpacing`, which may be
 negative, from -4000 to 4000 (OOXML's `ST_TextPoint`). A dashed straight line with an arrow head whose shaft would
 need more than 200,000 dash and gap entries (a hair-thin width, or a line far longer than any slide) throws a
-`RangeError` too: its dashes are written out one by one between the heads. A
+`RangeError` too: its dashes are written out one by one between the heads. An option of a type PptxGenJS does not
+declare for it, such as a number for `fontFace` or a string for `tabStops`, throws a `TypeError` naming the option where
+it is added; `null` is read as the option left out, as PptxGenJS's truthiness checks read it. A
 `resolveImage` option must return the image as a
 `data:image/<type>;base64,<data>` URI: `toHtml()` throws `UnresolvedImageError` for anything else, such
 as a URL or a file path, since the PDF must not depend on the network or the filesystem (an `https:`

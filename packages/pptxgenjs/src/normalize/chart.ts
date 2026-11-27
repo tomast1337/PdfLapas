@@ -1224,7 +1224,8 @@ export function normalizeChart(type: ChartInputType, data: readonly PptxGenJS.Op
     }
 
     // A scatter or bubble chart's x axis keeps its General numbers in LibreOffice 26.2.6 whatever catLabelFormatCode says.
-    const requestedFormatCode = XY_TYPES.has(normalizedType) ? undefined : options.catLabelFormatCode;
+    // `??`: PptxGenJS reads a null catLabelFormatCode as absent (a truthiness check).
+    const requestedFormatCode = XY_TYPES.has(normalizedType) ? undefined : (options.catLabelFormatCode ?? undefined);
     const timeUnits: Partial<Record<"catAxisBaseTimeUnit" | "catAxisMajorTimeUnit" | "catAxisMinorTimeUnit", ChartTimeUnit>> = {};
     const axisNumbers: Partial<Record<"catAxisMajorUnit" | "catAxisMinorUnit" | "catAxisMinVal" | "catAxisMaxVal", number>> = {};
 

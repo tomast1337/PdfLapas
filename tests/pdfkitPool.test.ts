@@ -158,6 +158,7 @@ describe("createPdfkitRendererPool", () => {
         await expect(closing.render(first)).rejects.toThrow(/is closed/);
         await expect(createPdfkitRendererPool({ fonts: [] })).rejects.toThrow(/requires at least one font/);
         await expect(createPdfkitRendererPool({ fonts, workers: 0 })).rejects.toThrow(/positive integer number of workers, got 0/);
+        await expect(createPdfkitRendererPool({ fonts, workers: 1, workerHeapMb: 0.5 })).rejects.toThrow(/workerHeapMb, each worker's heap limit in MB, as a positive integer, got 0.5/);
         // @ts-expect-error: a policy outside the type, as untyped callers pass it.
         await expect(createPdfkitRendererPool({ fonts, workers: 1, onUnsupported: "ignore" })).rejects.toThrow(/onUnsupported must be "error" or "warn", got "ignore"/);
         await expect(createPdfkitRendererPool({ fonts, workers: 1, imageLimits: { maxImagePixels: -1 } })).rejects.toThrow(/imageLimits.maxImagePixels must be a positive integer/);

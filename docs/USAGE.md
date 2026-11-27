@@ -901,6 +901,10 @@ await renderer.close();
 - **Memory.** Each worker parses the fonts into its own fontkit faces; the font bytes passed in are shared once.
   With `loadSystemFonts()`'s default set, 8 workers took the process from 0.4 GB (one renderer) to 3.3-4.5 GB RSS
   under load; load only the faces your decks use to lower it.
+- **Font files are trusted input.** fontkit, which PDFKit lays text out with, can exhaust memory on a damaged
+  OpenType layout table (`GSUB`, `GPOS`, `GDEF`) instead of failing. Pass fonts you control. Under Node each pool
+  worker has a heap limit, `workerHeapMb` (default 2048), so such a render rejects with an error naming the limit and
+  the pool replaces the worker; Bun does not apply worker resource limits, so there the process runs out of memory.
 
 Measured with `BENCH_LOAD_ENGINES=pdfkit,pdfkit-pool,wasm-pool BENCH_LOAD_CONCURRENCY=1,16 BENCH_LOAD_SECONDS=30 bun run bench:load`
 (Linux x64, 32 cores, Bun 1.4.4, 8 workers, the mixed decks above):

@@ -35,6 +35,13 @@ export type PdfkitRendererPoolOptions = PdfkitRendererOptions & {
      * one per core but one, at most 8.
      */
     workers?: number;
+    /**
+     * Each worker's JavaScript heap limit, in MB (Node's `resourceLimits.maxOldGenerationSizeMb`). A render that needs
+     * more ends its worker with an error, and the pool replaces the worker, instead of the whole process running out
+     * of memory. Default 2048. Bun does not apply worker resource limits: there a render that runs away takes the
+     * process with it.
+     */
+    workerHeapMb?: number;
 };
 
 /** What createPdfkitRendererPool() returns (Node/Bun): a renderer whose renders run in worker threads. */

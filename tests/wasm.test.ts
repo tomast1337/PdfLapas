@@ -877,6 +877,28 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         expect(renderer.warnings()).toEqual(["image 'Image 0': an SVG image's elements nest deeper than 256 levels; the picture is not drawn"]);
     });
 
+    // #671: a 1e7 px letter-spacing under a dashed underline took 16.6 s and +1.4 GB before the budget.
+    test("reports decorations past the render's piece budget, as the PDFKit renderer does (#671)", async () => {
+        const renderer = await createWasmRenderer({ fonts: systemFonts, onUnsupported: "warn" });
+        const pres = new PuppeteerGen(PAGE);
+
+        pres.addSlide().addText("Abcd", { x: 1, y: 1, w: 5, h: 1, fontSize: 18, underline: { style: "dash" } });
+        const document = await pres.toHtml();
+
+        await renderer.render(document);
+        expect(renderer.warnings()).toEqual([]);
+
+        for (const pieces of ["line(0 1 4 2)", "wave(0.5 2 0.01 0.03px)", "zigzag(-0.5 0.01 0.01)"]) {
+            const html = document.html.replace(/data-underline="[^"]*"/, `data-underline="${pieces}"`).replace("text-decoration-line: underline;", "text-decoration-line: underline; letter-spacing: 10000000px;");
+            const start = performance.now();
+
+            expect(html, pieces).not.toBe(document.html);
+            await renderer.render({ ...document, html });
+            expect(performance.now() - start, pieces).toBeLessThan(1000);
+            expect(renderer.warnings(), pieces).toEqual(["underlines and strikes past 1000000 dashes, waves and zigzag steps per render are not drawn"]);
+        }
+    });
+
     test("an edited toHtml() document renders through pptxHtmlDocument() and draws the edit", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE);

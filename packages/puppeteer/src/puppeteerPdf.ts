@@ -6,6 +6,7 @@ import {
     type ImagePixelLimits,
     imagePixelLimits,
     inchesToPixels,
+    MAX_TEXT_FIT_STEPS,
     type MissingFont,
     type MissingFontPolicy,
     missingFontPolicy,
@@ -77,7 +78,7 @@ export class PuppeteerPdfRenderer implements PresentationRenderer {
                 // Images are inlined by resolveDocumentImages; prepareForPrint waits for fonts and decoding.
                 // The print workarounds are in the document before anything measures it: its text shrinking scales them.
                 await page.setContent(printHtml(html), { waitUntil: "load" });
-                const failed = await page.evaluate(prepareForPrint);
+                const failed = await page.evaluate(prepareForPrint, MAX_TEXT_FIT_STEPS);
 
                 if (failed.length) {
                     throw new Error(`Image failed to decode: ${failed.join(", ")}`);
@@ -135,9 +136,9 @@ const ALLOWED_REQUEST = /^(?:data:|about:blank$)/;
 
 /**
  * Settles the document for printing in one page.evaluate round trip, and returns the names of the images that did
- * not decode.
+ * not decode. `maxTextFitSteps` is MAX_TEXT_FIT_STEPS, passed in because the page cannot import it.
  */
-async function prepareForPrint(): Promise<string[]> {
+async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
     await document.fonts.ready;
     await Promise.all(Array.from(document.images, settled));
 
@@ -225,11 +226,12 @@ async function prepareForPrint(): Promise<string[]> {
         const maxSteps = Number(box.dataset.textFitMaxSteps);
         const tolerance = Number(box.dataset.textFitTolerance);
 
-        if (!(step > 0 && step < 1) || !Number.isInteger(maxSteps) || maxSteps < 0 || !(tolerance >= 0)) {
+        // Each step lays the box out again, so a step that never fits costs max-steps layouts: bounded as the other renderers bound it.
+        if (!(step > 0 && step < 1) || !Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > maxTextFitSteps || !(tolerance >= 0)) {
             const name = box.dataset.objectName ?? "unnamed text box";
 
             throw new Error(
-                `Cannot print '${name}': a data-text-fit="shrink" box needs data-text-fit-step (between 0 and 1), data-text-fit-max-steps (a whole number) and data-text-fit-tolerance (px); complete hand-written HTML with completeProfileHtml()`,
+                `Cannot print '${name}': a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to ${maxTextFitSteps} and data-text-fit-tolerance not negative, got ${step}, ${maxSteps} and ${tolerance}; toHtml() writes 0.95, ${maxTextFitSteps} and 0.5 (complete hand-written HTML with completeProfileHtml())`,
             );
         }
 

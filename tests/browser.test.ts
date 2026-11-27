@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { MAX_TEXT_FIT_STEPS } from "@pdflapas/model";
 import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { closeBrowser, withBrowser } from "../packages/puppeteer/src/browser";
@@ -50,7 +51,7 @@ test("PuppeteerPdfRenderer launches Chromium with its launch options", async () 
     await expect(renderer.render(document)).rejects.toThrow("/nonexistent/chromium");
 });
 
-test("PuppeteerPdfRenderer shrinks by the rule the box states, and names a shrink box without one", async () => {
+test("PuppeteerPdfRenderer shrinks by the rule the box states, and names a shrink box without one or past toHtml()'s steps (#671)", async () => {
     const presentation = new PuppeteerGen();
 
     presentation.addSlide().addText("Shrink this oversized text until it fits", { x: 1, y: 1, w: 1, h: 0.5, fit: "shrink", fontSize: 24, objectName: "Fit" });
@@ -61,5 +62,12 @@ test("PuppeteerPdfRenderer shrinks by the rule the box states, and names a shrin
     const html = document.html.replace(/ data-text-fit-step="[^"]*"/, "");
 
     expect(html).not.toBe(document.html);
-    await expect(renderer.render({ ...document, html })).rejects.toThrow(`Cannot print 'Fit': a data-text-fit="shrink" box needs data-text-fit-step`);
+    await expect(renderer.render({ ...document, html })).rejects.toThrow("Cannot print 'Fit': a shrink box needs data-text-fit-step between 0 and 1");
+    // A million steps of a step that never fits took Chromium 7.7 s; past MAX_TEXT_FIT_STEPS the rule is refused first.
+    const steps = document.html.replace('data-text-fit-step="0.95"', 'data-text-fit-step="0.999999"').replace(`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`, 'data-text-fit-max-steps="1000000"');
+
+    expect(steps).not.toBe(document.html);
+    await expect(renderer.render({ ...document, html: steps })).rejects.toThrow(
+        `Cannot print 'Fit': a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to ${MAX_TEXT_FIT_STEPS} and data-text-fit-tolerance not negative, got 0.999999, 1000000 and 0.5`,
+    );
 });

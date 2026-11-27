@@ -1,4 +1,4 @@
-# Fuzzing the WASM renderer
+# Fuzzing
 
 The WASM renderer must not panic on any input. In the wasm build a panic traps the instance, and every
 later render on the same `WasmRenderer` fails ([GHSA-fmx3-qwqc-h37c](https://github.com/tomast1337/PdfLapas/security/advisories/GHSA-fmx3-qwqc-h37c)).
@@ -72,8 +72,11 @@ seconds per target and the property scale as inputs). It is not a required check
 - **Rust targets.** `render_html` and `add_font` run for 600 seconds each, with the seeds and limits above.
   The corpus each night grows is kept in the Actions cache, so the next night starts from it.
 - **TypeScript properties.** The fast-check properties in `tests/*.fuzz.test.ts` (PptxGenJS API options,
-  `parseModel()`, the image pixel scan, `PdfkitRenderer.render()` over mutated HTML) run with a new seed and 20
-  times their usual runs. On every `bun test` they use a fixed seed (`tests/fuzzConfig.ts`).
+  `parseModel()`, the image pixel scan, `PdfkitRenderer.render()` over mutated HTML, and the font and image bytes
+  the PDFKit renderer decodes) run with a new seed and 20 times their usual runs. On every `bun test` they use a
+  fixed seed (`tests/fuzzConfig.ts`). They are property tests rather than coverage-guided fuzzing (Jazzer.js):
+  they run under Bun in the test suite, with no Node-only native build, and each mutates the parts of its input a
+  decoder reads first.
 
 When a property fails, the log prints its seed. Reproduce it locally:
 

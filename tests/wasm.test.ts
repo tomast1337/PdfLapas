@@ -17,7 +17,7 @@ import { completeProfileHtml, pptxHtmlDocument } from "../packages/pptxgenjs/src
 import { loadSystemFonts as browserLoadSystemFonts, type MissingFontBinding, type TextPdfBinding, WasmRenderer, type WasmSource } from "../packages/wasm/src/browser";
 import { createWasmRenderer, loadSystemFonts } from "../packages/wasm/src/node";
 import type { InitInput, Renderer } from "../packages/wasm/src/pdf_wasm.js";
-import { inchesToPoints, MAX_ELEMENT_DEPTH, pointsToPixels } from "@pdflapas/model";
+import { inchesToPoints, MAX_ELEMENT_DEPTH, MAX_TEXT_FIT_STEPS, pointsToPixels } from "@pdflapas/model";
 import { HAND_WRITTEN_OBJECTS, handWrittenDocument } from "./handWrittenHtml";
 import { pdfContentStreams } from "./pdfContentStreams";
 import { boxFloorCases, boxFloorDeck } from "./boxFloorCases";
@@ -899,6 +899,24 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
         }
     });
 
+    // #671: 1 000 steps of a step that never fits took 7.2 s, and 100 000 over 10 minutes, before the bound.
+    test("refuses a shrink rule past the steps toHtml() writes, with the PDFKit renderer's message (#671)", async () => {
+        const renderer = await createWasmRenderer({ fonts: systemFonts });
+        const pres = new PuppeteerGen(PAGE);
+
+        pres.addSlide().addText("Shrink ".repeat(400), { x: 1, y: 1, w: 2, h: 1, fontSize: 18, fit: "shrink", objectName: "Fit" });
+        const document = await pres.toHtml();
+
+        expect(document.html).toContain(`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`);
+        await renderer.render(document);
+        const start = performance.now();
+
+        await expect(renderer.render({ ...document, html: document.html.replace(`data-text-fit-max-steps="${MAX_TEXT_FIT_STEPS}"`, 'data-text-fit-max-steps="100000"') })).rejects.toThrow(
+            `invalid PdfLapas HTML: slide 1: object 'Fit': a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to ${MAX_TEXT_FIT_STEPS} and data-text-fit-tolerance not negative, got 0.95, 100000 and 0.5; toHtml() writes 0.95, ${MAX_TEXT_FIT_STEPS} and 0.5`,
+        );
+        expect(performance.now() - start).toBeLessThan(500);
+    });
+
     test("an edited toHtml() document renders through pptxHtmlDocument() and draws the edit", async () => {
         const renderer = await createWasmRenderer({ fonts: systemFonts });
         const pres = new PuppeteerGen(PAGE);
@@ -923,8 +941,10 @@ describe.skipIf(!canRender)("WASM HTML profile input", () => {
     });
 });
 
-test("the Rust renderer's MAX_ELEMENT_DEPTH is the model's", async () => {
+test("the Rust renderer's MAX_ELEMENT_DEPTH and MAX_TEXT_FIT_STEPS are the model's", async () => {
     const source = await Bun.file(resolve(import.meta.dir, "../crates/pdf-core/src/profile/dom.rs")).text();
+    const model = await Bun.file(resolve(import.meta.dir, "../crates/pdf-core/src/model.rs")).text();
 
     expect(Number(/const MAX_ELEMENT_DEPTH: usize = (\d+);/.exec(source)?.[1])).toBe(MAX_ELEMENT_DEPTH);
+    expect(Number(/const MAX_TEXT_FIT_STEPS: u32 = (\d+);/.exec(model)?.[1])).toBe(MAX_TEXT_FIT_STEPS);
 });

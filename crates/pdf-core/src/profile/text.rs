@@ -7,8 +7,8 @@ use super::object::link;
 use super::style::{Style, font_families, integer, keyword, number, px, shadow, size_px, split_top_level};
 use crate::color::parse_color;
 use crate::model::{
-    Bullet, Decoration, DecorationPiece, DecorationShape, EmBand, LineBox, Outline, Paragraph, ParagraphAlign, Run, Shadow, ShadowKind, Shrink, Synthesis,
-    TabAlign, TabStop, TextBox, TextDirection, TextFit, VerticalAlign, WordSpacing, ZigzagLine,
+    Bullet, Decoration, DecorationPiece, DecorationShape, EmBand, LineBox, MAX_TEXT_FIT_STEPS, Outline, Paragraph, ParagraphAlign, Run, Shadow, ShadowKind,
+    Shrink, Synthesis, TabAlign, TabStop, TextBox, TextDirection, TextFit, VerticalAlign, WordSpacing, ZigzagLine,
 };
 
 /// Attributes of the element that holds a text box.
@@ -182,19 +182,19 @@ pub(crate) fn text_box(dom: &Dom<'_>, element: &Element<'_>, style: &Style<'_>, 
     })
 }
 
-/// The rule of a `data-text-fit="shrink"` box: its three required `data-text-fit-*` attributes.
+/// The rule of a `data-text-fit="shrink"` box: its three required `data-text-fit-*` attributes, in the bounds the PDFKit
+/// renderer checks, with its message.
 fn shrink(element: &Element<'_>) -> Result<Shrink, String> {
     let step = number_attr(element, "data-text-fit-step")?;
-    if !(step > 0.0 && step < 1.0) {
-        return Err(format!("attribute 'data-text-fit-step': '{step}' is not between 0 and 1"));
-    }
     let max_steps = element
         .attr("data-text-fit-max-steps")?
         .ok_or("attribute 'data-text-fit-max-steps' is missing")?;
     let max_steps = integer(&max_steps).map_err(|e| format!("attribute 'data-text-fit-max-steps': {e}"))?;
     let tolerance = number_attr(element, "data-text-fit-tolerance")?;
-    if tolerance < 0.0 {
-        return Err(format!("attribute 'data-text-fit-tolerance': '{tolerance}' is negative"));
+    if !(step > 0.0 && step < 1.0) || max_steps > MAX_TEXT_FIT_STEPS || tolerance < 0.0 {
+        return Err(format!(
+            "a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to {MAX_TEXT_FIT_STEPS} and data-text-fit-tolerance not negative, got {step}, {max_steps} and {tolerance}; toHtml() writes 0.95, {MAX_TEXT_FIT_STEPS} and 0.5"
+        ));
     }
     Ok(Shrink { step, max_steps, tolerance })
 }
@@ -1041,7 +1041,11 @@ mod tests {
             ),
             (
                 r#" data-text-fit-step="1" data-text-fit-max-steps="7" data-text-fit-tolerance="0.25""#,
-                "'1' is not between 0 and 1",
+                "a shrink box needs data-text-fit-step between 0 and 1, data-text-fit-max-steps a whole number from 0 to 20 and data-text-fit-tolerance not negative, got 1, 7 and 0.25; toHtml() writes 0.95, 20 and 0.5",
+            ),
+            (
+                r#" data-text-fit-step="0.9" data-text-fit-max-steps="100000" data-text-fit-tolerance="0.25""#,
+                "got 0.9, 100000 and 0.25",
             ),
             (
                 r#" data-text-fit-step="0.9" data-text-fit-tolerance="0.25""#,
@@ -1057,7 +1061,7 @@ mod tests {
             ),
             (
                 r#" data-text-fit-step="0.9" data-text-fit-max-steps="7" data-text-fit-tolerance="-1""#,
-                "'-1' is negative",
+                "got 0.9, 7 and -1",
             ),
         ] {
             let error = shrink(attrs).err().unwrap_or_default();

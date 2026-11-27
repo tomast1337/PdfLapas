@@ -280,6 +280,11 @@ pub(crate) enum TextFit {
     Resize,
 }
 
+/// Most shrink steps a box takes, the number `toHtml()` writes: `MAX_TEXT_FIT_STEPS` in
+/// packages/model/src/textFit.ts (tests/wasm.test.ts compares them). Each step lays the box out again, so a step that
+/// never fits cost max-steps layouts: 1 000 steps of a 21 KB box took 7 s.
+pub(crate) const MAX_TEXT_FIT_STEPS: u32 = 20;
+
 /// The shrink rule a `data-text-fit="shrink"` box states (`data-text-fit-*`): scale by `step` while the text
 /// overflows by more than `tolerance` px, at most `max_steps` times.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -490,7 +495,7 @@ pub(crate) mod build {
     /// The shrink rule `toHtml()` writes (`PPTX_DEFAULTS.text.shrink`).
     pub(crate) const SHRINK: TextFit = TextFit::Shrink(Shrink {
         step: 0.95,
-        max_steps: 20,
+        max_steps: MAX_TEXT_FIT_STEPS,
         tolerance: 0.5,
     });
 

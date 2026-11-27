@@ -14,7 +14,7 @@ export function normalizeTextLine(options: PptxGenJS.TextPropsOptions, outline: 
         return normalizeShapeLine(options as unknown as PptxGenJS.ShapeProps, line => normalizeLine(line, outline));
     }
 
-    if (typeof options.line !== "object") {
+    if (typeof options.line !== "object" || options.line === null) {
         return normalizeLine(undefined);
     }
 

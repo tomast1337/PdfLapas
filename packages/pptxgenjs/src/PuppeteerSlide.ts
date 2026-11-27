@@ -7,6 +7,7 @@ import type { ComponentInput, ComponentOptions } from "./components/types";
 import { PPTX_DEFAULTS } from "./defaults";
 import { normalizeChart, valueAxisDataRange } from "./normalize/chart";
 import { normalizeImage } from "./normalize/image";
+import { checkOptionTypes } from "./normalize/optionTypes";
 import { slideMarginInches } from "./normalize/margin";
 import { normalizeObjectStyle } from "./normalize/object";
 import { normalizeShape, normalizeShapeTextBox } from "./normalize/shape";
@@ -271,6 +272,15 @@ export class PuppeteerSlide implements PptxSlide {
         // IChartMulti[] calls; each mixed entry already carries its own data.
         // `as`: PptxGenJS types `data` as an array, which this call shape breaks; it is the options object here.
         const chartOptions = Array.isArray(type) && !Array.isArray(data) ? (data as unknown as PptxGenJS.IChartOpts) : (options ?? {});
+
+        checkOptionTypes(chartOptions, "addChart");
+        for (const entry of Array.isArray(type) ? type : [{ data, options: undefined }]) {
+            checkOptionTypes(entry.options, "addChart");
+            for (const series of Array.isArray(entry.data) ? entry.data : []) {
+                checkOptionTypes(series, "addChart", true);
+            }
+        }
+
         const style = normalizeObjectStyle(
             {
                 x: chartOptions.x,
@@ -429,6 +439,8 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     addImage(input: PptxGenJS.ImageProps): PptxGenJS.Slide {
+        checkOptionTypes(input, "addImage");
+
         const placeholder = input.placeholder ? this.context.master?.placeholders.get(input.placeholder) : undefined;
 
         if (input.placeholder && !placeholder) {
@@ -472,6 +484,7 @@ export class PuppeteerSlide implements PptxSlide {
     addShape(shapeName: PptxGenJS.SHAPE_NAME | "custGeom", options?: PptxGenJS.ShapeProps | undefined): PptxGenJS.Slide {
         const shapeOptions = options ?? {};
 
+        checkOptionTypes(shapeOptions, "addShape");
         this.noteSharedShadow(shapeOptions.shadow, "addShape");
         const style = normalizeObjectStyle(shapeOptions, PPTX_DEFAULTS.shape, this.pageSize, this.nextObjectName("Shape", shapeOptions.objectName ?? shapeOptions.shapeName), { fill: true, shadow: true });
 
@@ -483,6 +496,18 @@ export class PuppeteerSlide implements PptxSlide {
 
     addTable(tableRows: PptxGenJS.TableRow[], options?: PptxGenJS.TableProps | undefined): PptxGenJS.Slide {
         const tableOptions = options ?? {};
+
+        checkOptionTypes(tableOptions, "addTable");
+        for (const row of Array.isArray(tableRows) ? tableRows : []) {
+            for (const cell of Array.isArray(row) ? row : []) {
+                if (typeof cell === "object" && cell !== null) {
+                    checkOptionTypes(cell.options, "addTable");
+                    for (const run of Array.isArray(cell.text) ? cell.text : []) {
+                        checkOptionTypes(run?.options, "addTable");
+                    }
+                }
+            }
+        }
 
         this.newAutoPagedSlides = [];
         if (tableOptions.autoPage) {
@@ -529,6 +554,11 @@ export class PuppeteerSlide implements PptxSlide {
     }
 
     addText(input: TextInput, options?: PptxGenJS.TextPropsOptions | undefined): PptxGenJS.Slide {
+        checkOptionTypes(options, "addText");
+        for (const run of Array.isArray(input) ? input : []) {
+            checkOptionTypes(run?.options, "addText");
+        }
+
         // A placeholder fill is drawn again when the deck is (toModel), so it keeps a copy: a later change to the caller's
         // runs must not reach it. One clone of both keeps runs that share an options object sharing it (normalizeText).
         const [text, ownOptions] = options?.placeholder ? structuredClone([input, options] as const) : [input, options];

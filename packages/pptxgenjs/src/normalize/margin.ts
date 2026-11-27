@@ -48,7 +48,7 @@ export function slideMarginInches(margin: number | Sides<number> = PPTX_DEFAULTS
  * Returned in CSS pixels as [top, right, bottom, left].
  */
 export function textMarginPixels(margin?: number | Sides<number>, inset?: number): FourSideMargin {
-    if (margin === undefined) {
+    if (margin === undefined || margin === null) {
         if (typeof inset === "number" && !Number.isNaN(inset)) {
             return mapSides([inset, inset, inset, inset], inch2EmuToPixels);
         }

@@ -365,7 +365,8 @@ export function normalizeImage(options: PptxGenJS.ImageProps, pageSize: PageSize
         const width = sourceWidth * scale;
         const height = sourceHeight * scale;
 
-        normalizedSizing = { type: sizing.type, x: px((boxWidth - width) / 2), y: px((boxHeight - height) / 2), width: px(width), height: px(height) };
+        // `??`: a null type is absent, as for PptxGenJS (a truthiness check).
+        normalizedSizing = { type: sizing.type ?? undefined, x: px((boxWidth - width) / 2), y: px((boxHeight - height) / 2), width: px(width), height: px(height) };
     }
 
     const transparency = Math.max(0, Math.min(100, options.transparency ?? PPTX_DEFAULTS.image.transparency));

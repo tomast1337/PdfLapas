@@ -111,18 +111,21 @@ export function parseFonts(files: readonly Uint8Array[]): Face[] {
                 throw new Error(`Font #${index} has no family name in its 'name' table, so no run's font-family can select it; pass a font with a name table`);
             }
 
-            // fontkit reads glyph data only when it is drawn: one outline now fails here, naming the file, not mid-render.
+            // fontkit reads a table only when it is first used: one outline and the style tables now fail here, naming the
+            // file, not mid-render.
+            let style: { readonly bold: boolean; readonly italic: boolean };
+
             try {
                 void font.glyphForCodePoint(SAMPLE_CODE_POINT).path;
+
+                const os2 = font["OS/2"] as { usWeightClass?: number; fsSelection?: { italic?: boolean; bold?: boolean } } | undefined; // `as`: the declared Os2Table omits these fields
+
+                style = { bold: (os2?.fsSelection?.bold ?? false) || (os2?.usWeightClass ?? 0) >= BOLD_WEIGHT, italic: (os2?.fsSelection?.italic ?? false) || font.italicAngle !== 0 };
             } catch (error) {
                 throw new Error(`Font #${index} cannot draw its glyphs (${error instanceof Error ? error.message : String(error)}); the file is damaged`, { cause: error });
             }
 
-            const os2 = font["OS/2"] as { usWeightClass?: number; fsSelection?: { italic?: boolean; bold?: boolean } } | undefined; // `as`: the declared Os2Table omits these fields
-            const bold = (os2?.fsSelection?.bold ?? false) || (os2?.usWeightClass ?? 0) >= BOLD_WEIGHT;
-            const italic = (os2?.fsSelection?.italic ?? false) || font.italicAngle !== 0;
-
-            faces.push({ key: `F${faces.length}`, font, families: [...new Set(families)], bold, italic });
+            faces.push({ key: `F${faces.length}`, font, families: [...new Set(families)], ...style });
         }
     }
 

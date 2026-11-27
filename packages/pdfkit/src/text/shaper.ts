@@ -48,7 +48,13 @@ export function createShaper(faces: readonly Face[]): Shaper {
             let em = advances.get(key);
 
             if (em === undefined) {
-                em = face.font.layout(text, { ...featureSet }).advanceWidth / face.font.unitsPerEm;
+                try {
+                    em = face.font.layout(text, { ...featureSet }).advanceWidth / face.font.unitsPerEm;
+                } catch (error) {
+                    // fontkit reads a face's tables only as text needs them: a damaged one fails here, in its own words.
+                    throw new Error(`the font '${face.families[0] ?? face.key}' cannot lay out its text (${error instanceof Error ? error.message : String(error)}); the font file is damaged, pass an intact copy`, { cause: error });
+                }
+
                 advances.set(key, em);
             }
 

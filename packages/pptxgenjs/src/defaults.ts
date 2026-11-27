@@ -43,6 +43,9 @@ export const PPTX_DEFAULTS = Object.freeze({
         charSpacingPt: 4000,
         // ST_LineWidth: w 0-20116800 EMU, 1584pt, also PowerPoint's largest line width.
         lineWidthPt: 1584,
+        // Not an Office limit: a bound on the dash array of a dashed straight line with heads (normalizeLine). A
+        // hairline (0.25pt) dotted diagonal of the largest slide (56in square) needs about 23,000 entries.
+        lineShaftDashEntries: 200_000,
         glowSizePt: 150,
         shadowBlurPt: 100,
         shadowOffsetPt: 200,

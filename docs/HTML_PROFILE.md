@@ -277,7 +277,7 @@ height becomes `min-height` and `height: auto`. With `fit: shrink` the box also 
 `line-height` and the baseline shifts (`data-line-baseline`, `data-mark-baseline` and `data-break-baseline`
 within it) by the step, at most max-steps
 times. The step is between 0 and 1, max-steps a whole number and the tolerance not negative; a reader
-rejects a shrink box without all three. Each step lays the text out again, so the PDFKit renderer also
+rejects a shrink box without all three. Each step lays the text out again, so every renderer also
 rejects more than 20 steps (`MAX_TEXT_FIT_STEPS`, what `toHtml()` writes). A soft break is a `<br>` before the run and
 `data-soft-break-before` on it. A run is an `a` when it has a link, a `span` otherwise. Model values that
 CSS cannot state exactly are `data-*` on the run: `data-vertical-align` (`sub`, `super`),

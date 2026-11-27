@@ -33,6 +33,11 @@ const SEGMENT_JOIN_PX: f32 = 1e-3;
 /// Widest a font's box reaches from a glyph's pen position, in em: the full i16 range of `head`'s
 /// box over the smallest units per em (1), so the text placement check holds for any font.
 const FONT_BOX_EM: f64 = 65536.0;
+/// Dashes, half-waves and zigzag halves one render draws for underlines and strikes: `MAX_RENDER_DECORATION_PIECES` in
+/// packages/pdfkit/src/text/draw.ts. Their count grows with a run's width over its dash length, not with the HTML:
+/// four letters spaced 1e7 px with a dashed underline took 16.6 s and +1.4 GB. A slide of dotted lines spends a few
+/// thousand.
+pub(crate) const MAX_RENDER_DECORATION_PIECES: usize = 1_000_000;
 
 /// A decoration band in px: its top `offset` above the baseline (below it when negative), `size` tall.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -211,6 +216,30 @@ fn piece_path(piece: &DecorationPiece, start: f32, end: f32, top: f32, t: f32) -
                 ZigzagLine::Thicknesses(n) => n * t,
             };
             (zigzag(start, top + at * t, end - start, height * t, line), None)
+        }
+    }
+}
+
+/// The dashes, half-waves or zigzag halves `piece_path` cuts a `width` px segment into around a band `t` px thick, as
+/// the PDFKit renderer counts them; not finite for a width that is not.
+fn piece_count(piece: &DecorationPiece, width: f32, t: f32) -> f64 {
+    let width = f64::from(width);
+    match piece {
+        DecorationPiece::Line { dashes, .. } => {
+            let period: f64 = dashes.iter().map(|&length| f64::from(length * t)).sum();
+            if period > 0.0 {
+                (width / period).ceil() * (dashes.len() / 2) as f64
+            } else {
+                1.0
+            }
+        }
+        DecorationPiece::Wave { half, .. } => (width / f64::from(half * t)).ceil(),
+        DecorationPiece::Zigzag { height, line, .. } => {
+            let line = match *line {
+                ZigzagLine::Px(px) => px,
+                ZigzagLine::Thicknesses(n) => n * t,
+            };
+            2.0 * (width / f64::from((height * t - line).max(line))).ceil()
         }
     }
 }
@@ -422,6 +451,17 @@ impl Renderer {
             return;
         }
         let (top, t) = (segment.baseline - band.offset, band.size.max(MIN_DECORATION_PX));
+        let count: f64 = shape.pieces.iter().map(|piece| piece_count(piece, segment.end - segment.start, t)).sum();
+        // Not a finite count within the budget (a huge letter-spacing makes millions): reported, not drawn.
+        let total = self.decoration_pieces as f64 + count;
+        if !total.is_finite() || total > MAX_RENDER_DECORATION_PIECES as f64 {
+            self.warn(format!(
+                "underlines and strikes past {MAX_RENDER_DECORATION_PIECES} dashes, waves and zigzag steps per render are not drawn"
+            ));
+            return;
+        }
+        // A whole count within the budget, so the cast is exact.
+        self.decoration_pieces += count as usize;
         for piece in &shape.pieces {
             match piece_path(piece, segment.start, segment.end, top, t) {
                 (path, None) => self.fill(surface, &path, color),
@@ -662,6 +702,31 @@ mod tests {
         let reach = 4.0 - 0.25;
         assert!((y0 - 19.0).abs() < 1e-4 && (y1 - 23.0).abs() < 1e-4, "{y0}..{y1}");
         assert!(x0 == 10.0 && (x1 - (10.0 + reach * (100.0_f64 / reach).ceil())).abs() < 1e-3, "{x0}..{x1}");
+    }
+
+    #[test]
+    fn piece_counts_are_the_pieces_drawn_and_a_huge_width_passes_the_budget() {
+        let wave = DecorationPiece::Wave {
+            centre: 0.5,
+            amplitude: 2.0,
+            half: 4.0,
+            stroke: 0.25,
+        };
+        let zigzag = DecorationPiece::Zigzag {
+            top: -0.5,
+            height: 2.0,
+            line: ZigzagLine::Thicknesses(0.125),
+        };
+        // 100px around a 2px band: 6 dot-dash periods of 18px, 2 dashes each; the last period's dot falls past the end.
+        let dot_dash = line(0.0, 1.0, &[4.0, 2.0, 1.0, 2.0]);
+        assert_eq!(piece_count(&dot_dash, 100.0, 2.0), filled(&dot_dash).len() as f64 + 1.0);
+        assert_eq!(piece_count(&line(0.0, 1.0, &[]), 100.0, 2.0), 1.0);
+        assert_eq!(piece_count(&wave, 100.0, 2.0), 13.0);
+        // Halves of 4 - 0.25 px over 100px, counted twice as the PDFKit renderer counts them.
+        assert_eq!(piece_count(&zigzag, 100.0, 2.0), 2.0 * (100.0_f64 / 3.75).ceil());
+        // A run 1e7 px wide under 4/2 dashes passes the per-render budget; an infinite one counts as not finite.
+        assert!(piece_count(&line(0.0, 1.0, &[4.0, 2.0]), 1e7, 1.0) > MAX_RENDER_DECORATION_PIECES as f64);
+        assert!(!piece_count(&wave, f32::INFINITY, 1.0).is_finite());
     }
 
     #[test]

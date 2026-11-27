@@ -72,6 +72,8 @@ pub struct Renderer {
     link_quads: Vec<LinkQuad>,
     /// Shadow and glow silhouettes being captured, and the buffers their masks are made in.
     effects: Effects,
+    /// Decoration pieces drawn in the current render, against `text::draw::MAX_RENDER_DECORATION_PIECES`.
+    decoration_pieces: usize,
     // Scratch buffers for the per-object, per-paragraph and per-glyph-run paths: each user
     // clear()s one before filling it, so its capacity survives across objects and renders.
     text_layout: BoxLayout,
@@ -113,6 +115,7 @@ impl Renderer {
             links: Vec::new(),
             link_quads: Vec::new(),
             effects: Effects::default(),
+            decoration_pieces: 0,
             text_layout: BoxLayout::default(),
             table_layout: TableLayout::default(),
             span_ranges: Vec::new(),
@@ -191,6 +194,7 @@ impl Renderer {
         self.links.clear();
         self.effects.samples = 0;
         self.effects.over_budget = false;
+        self.decoration_pieces = 0;
     }
 
     fn draw_presentation(&mut self, model: &Presentation) -> Result<Vec<u8>, String> {

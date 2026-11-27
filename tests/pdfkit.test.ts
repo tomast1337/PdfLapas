@@ -468,6 +468,24 @@ describe("PDFKit renderer", () => {
 
             expect((await render(renderer, pres => pres.addSlide().addImage({ data: bomb, x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
             expect(performance.now() - start).toBeLessThan(500);
+
+            // An RGB PNG goes to PDFKit as it is, whose reader copies as many bytes as a chunk's length says, one at a
+            // time: an IDAT claiming 3 GB ran minutes and took gigabytes. A bad colour type wrote an image no viewer reads.
+            const rgb = (colourType: number, idatLength: number) => {
+                const ihdr = Buffer.from([0, 0, 0, 4, 0, 0, 0, 4, 8, colourType, 0, 0, 0]);
+                const idat = chunk("IDAT", deflateSync(Buffer.alloc(52)));
+
+                idat.writeUInt32BE(idatLength, 0);
+
+                return `data:image/png;base64,${Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), idat, chunk("IEND", Buffer.alloc(0))]).toString("base64")}`;
+            };
+            const goodLength = deflateSync(Buffer.alloc(52)).length;
+
+            expect((await render(renderer, pres => pres.addSlide().addImage({ data: rgb(2, goodLength), x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
+            await expect(render(renderer, pres => pres.addSlide().addImage({ data: rgb(2, 0xc770c064), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow(
+                /cannot decode image\/png data: a chunk at byte 33 is 3346055268 bytes long, past the end of the \d+-byte file/,
+            );
+            await expect(render(renderer, pres => pres.addSlide().addImage({ data: rgb(255, goodLength), x: 1, y: 1, w: 1, h: 1 }))).rejects.toThrow("cannot decode image/png data: its header names colour type 255 at bit depth 8, which PNG does not have");
         });
 
         test("reports image formats it does not decode", async () => {

@@ -4,6 +4,9 @@ import { checkImagePixels, type HtmlPresentationDocument, type ImagePixelLimits,
 import { renderHtml } from "./document";
 import { type Face, parseFonts } from "./fonts";
 
+/** How PDFKit's number() begins the error it throws for a number it cannot write (pdfkit/js/pdfkit.js). */
+const PDFKIT_UNSUPPORTED_NUMBER = "unsupported number: ";
+
 export { type MissingFont, MissingFontError, type MissingFontPolicy } from "@pdflapas/model";
 
 export type UnsupportedPolicy = "error" | "warn";
@@ -82,7 +85,19 @@ export class PdfkitRenderer implements PresentationRenderer {
     async render(document: HtmlPresentationDocument): Promise<Uint8Array> {
         // Before PDFKit decodes a PNG with transparency in JavaScript, or a GIF or WebP is decoded for it.
         checkImagePixels(document.html, this.#imageLimits);
-        const result = await renderHtml(document.html, this.#faces);
+        let result: Awaited<ReturnType<typeof renderHtml>>;
+
+        try {
+            result = await renderHtml(document.html, this.#faces);
+        } catch (error) {
+            // PDFKit writes no number at or past 1e21 (nor NaN) and throws its own message, which names no input: a
+            // length in the HTML, or one it is multiplied into (an em thickness times the font size), is that large.
+            if (error instanceof Error && error.message.startsWith(PDFKIT_UNSUPPORTED_NUMBER)) {
+                throw new Error(`invalid PdfLapas HTML: a length, or one computed from it, is ${error.message.slice(PDFKIT_UNSUPPORTED_NUMBER.length)}, which a PDF cannot hold; keep the document's lengths near the slide's size`, { cause: error });
+            }
+
+            throw error;
+        }
 
         this.#warnings = result.warnings;
         this.#missingFonts = result.missingFonts;

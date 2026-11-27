@@ -24,6 +24,9 @@ export {
 
 // Caps the default worker count by memory rather than cores: each worker parses the fonts into its own faces.
 const MAX_DEFAULT_POOL_WORKERS = 8;
+// A worker's default heap limit: room for the largest decks the visual and load benches render, which stay far below
+// it, while eight workers at the limit still fit a 16 GB host.
+const DEFAULT_WORKER_HEAP_MB = 2048;
 
 type PoolJob = { readonly document: HtmlPresentationDocument; readonly resolve: (pdf: Uint8Array) => void; readonly reject: (error: unknown) => void };
 
@@ -118,7 +121,13 @@ export class PdfkitWorkerPool implements PdfkitRendererPool {
         slot.thread.on("exit", code => {
             this.#slots.splice(this.#slots.indexOf(slot), 1);
             if (slot.job !== undefined) {
-                slot.job.reject(new Error(`A PdfkitRendererPool worker exited (code ${code}) while rendering this document; the pool replaced the worker, render the document again`, { cause: slot.crash ?? this.#startError }));
+                // `as`: Node's worker errors carry a string `code`; ERR_WORKER_OUT_OF_MEMORY is the heap limit (workerHeapMb).
+                const outOfMemory = (slot.crash as { code?: unknown } | undefined)?.code === "ERR_WORKER_OUT_OF_MEMORY";
+                const message = outOfMemory
+                    ? "A PdfkitRendererPool worker reached its heap limit (workerHeapMb) while rendering this document, and the pool replaced it; check the document's images and the pool's fonts, or raise workerHeapMb"
+                    : `A PdfkitRendererPool worker exited (code ${code}) while rendering this document; the pool replaced the worker, render the document again`;
+
+                slot.job.reject(new Error(message, { cause: slot.crash ?? this.#startError }));
                 slot.job = undefined;
             }
 
@@ -241,6 +250,12 @@ export async function createPdfkitRendererPool(options: PdfkitRendererPoolOption
         throw new Error(`createPdfkitRendererPool() needs a positive integer number of workers, got ${workers}`);
     }
 
+    const heapMb = options.workerHeapMb ?? DEFAULT_WORKER_HEAP_MB;
+
+    if (!Number.isInteger(heapMb) || heapMb < 1) {
+        throw new Error(`createPdfkitRendererPool() needs workerHeapMb, each worker's heap limit in MB, as a positive integer, got ${heapMb}`);
+    }
+
     // The font bytes once, in shared memory, rather than a copy per worker.
     const fonts: Uint8Array[] = [];
 
@@ -255,7 +270,7 @@ export async function createPdfkitRendererPool(options: PdfkitRendererPoolOption
     const workerData: PoolWorkerData = { fonts, onUnsupported, imageLimits: imagePixelLimits(options.imageLimits) };
     // The worker's file sits next to this one: nodeWorker.ts beside the sources, nodeWorker.js in dist/.
     const script = new URL(`./nodeWorker${extname(fileURLToPath(import.meta.url))}`, import.meta.url);
-    const pool = new PdfkitWorkerPool(() => new Worker(script, { workerData }), workers, options.onMissingFont);
+    const pool = new PdfkitWorkerPool(() => new Worker(script, { workerData, resourceLimits: { maxOldGenerationSizeMb: heapMb } }), workers, options.onMissingFont);
 
     try {
         await pool.started();

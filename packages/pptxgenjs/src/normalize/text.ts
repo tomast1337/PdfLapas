@@ -60,7 +60,19 @@ type PieceGroup = {
 
 /** `options` without the keys whose value is undefined or null, which PptxGenJS treats as unset. */
 function setOptions(options: PptxGenJS.TextPropsOptions): PptxGenJS.TextPropsOptions {
-    return Object.fromEntries(Object.entries(options).filter(([, value]) => value != null));
+    const set: Record<string, unknown> = {};
+
+    // Own enumerable keys, as Object.entries reads them, without its array of pairs per call (once per run and cell).
+    for (const key of Object.keys(options)) {
+        // `as`: a key Object.keys just listed.
+        const value: unknown = options[key as keyof PptxGenJS.TextPropsOptions];
+
+        if (value != null) {
+            set[key] = value;
+        }
+    }
+
+    return set;
 }
 
 function inheritedOptions(parent: PptxGenJS.TextPropsOptions, child: PptxGenJS.TextPropsOptions = {}): PptxGenJS.TextPropsOptions {
@@ -639,9 +651,10 @@ export function normalizeText(
             // `as`: the same record, written by name; its pieces read the writes.
             const run = lineOptions as Record<string, unknown>;
 
-            for (const [name, value] of Object.entries(written)) {
+            // `for...in`: the record's own keys (a spread copy has no inherited ones), read live, without an array per run.
+            for (const name in written) {
                 if (!run[name] && !UNWRITTEN_RUN_OPTIONS.has(name) && !(name === "color" && run.hyperlink)) {
-                    run[name] = value;
+                    run[name] = written[name];
                 }
             }
 
@@ -724,19 +737,22 @@ export function normalizeText(
         const normalizedRuns: NormalizedTextRun[] = [];
         // The East Asian face the last piece ended in, and that piece's options (FallbackHold).
         const hold: FallbackHold = { face: undefined };
-        let heldOptions: ReadonlyMap<string, unknown> = new Map();
+        let heldOptions: Readonly<Record<string, unknown>> = {};
+        let heldCount = 0;
 
         for (const [pieceIndex, piece] of paragraphPieces.entries()) {
             const runOptions = pieceOptions(piece);
-            const options = new Map<string, unknown>(Object.entries(runOptions));
+            // `as`: a fresh options object (inheritedOptions), never written after, compared by name with the held piece's.
+            const options = runOptions as Readonly<Record<string, unknown>>;
+            const keys = Object.keys(options);
 
             // PowerPoint carries the held face into a run of identical options only: measured against its PDF export of a
             // synthetic deck, "这"|"是" is all Microsoft JhengHei, where a change of colour or weight, or a line break,
             // starts 是 over in MS Gothic.
-            let same = options.size === heldOptions.size && !runOptions.softBreakBefore;
+            let same = keys.length === heldCount && !runOptions.softBreakBefore;
 
-            for (const [key, value] of options) {
-                same &&= heldOptions.get(key) === value;
+            for (const key of keys) {
+                same &&= heldOptions[key] === options[key];
             }
 
             if (!same) {
@@ -744,6 +760,7 @@ export function normalizeText(
             }
 
             heldOptions = options;
+            heldCount = keys.length;
             // The text after this piece that PowerPoint kerns with it, up to `wordAfter`: the next pieces while both are
             // kerned in one face, size, weight and style, before a soft break. Measured against PowerPoint's PDF export of
             // a synthetic deck: a pair split by a change of colour, underline or nothing is kerned, by bold or size it is

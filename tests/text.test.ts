@@ -7,7 +7,7 @@ import { renderedPage } from "./renderedPage";
 import { PPTX_DEFAULTS } from "../packages/pptxgenjs/src/defaults";
 import { normalizeTable } from "../packages/pptxgenjs/src/normalize/table/index";
 import { normalizeText, paragraphLineBox } from "../packages/pptxgenjs/src/normalize/text";
-import { PuppeteerGen } from "../packages/pptxgenjs/src/node";
+import { PuppeteerGen, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
 import { presentationCSS } from "../packages/pptxgenjs/src/render/slide";
 import { PAGE_SIZES } from "../packages/pptxgenjs/src/pageLayouts";
 import { pointsToPixels } from "@pdflapas/model";
@@ -980,6 +980,42 @@ describe("text DOM rendering", () => {
         expect(none).toEqual({ height: 0, margin: [0, 9.6, 0, 9.6] });
         expect(thin).toEqual({ height: 4.8, margin: [2.4, 2.667, 2.4, 9.333] });
         expect(tall?.margin).toEqual([4.8, 9.6, 4.8, 9.6]);
+    });
+
+    // #690: PptxGenJS writes no insets for a box without margin or inset; LibreOffice turns the defaults with the text,
+    // PowerPoint keeps them on the shape's sides, as both do written ones.
+    test("turns a vertical text box's default insets on the LibreOffice target only", () => {
+        const margins = (presentation: PuppeteerGen) => {
+            const slide = presentation.addSlide();
+
+            slide.addText("Down", { x: 1, y: 1, w: 1, h: 3, vert: "vert" });
+            slide.addText("Up", { x: 2, y: 1, w: 1, h: 3, vert: "vert270" });
+            slide.addText("Written", { x: 3, y: 1, w: 1, h: 3, vert: "vert", margin: [4, 10, 16, 24] });
+            slide.addText("Inset", { x: 4, y: 1, w: 1, h: 3, vert: "vert270", inset: 0.2 });
+            slide.addText("Stacked", { x: 5, y: 1, w: 1, h: 3, vert: "wordArtVert" });
+            slide.addText("Across", { x: 6, y: 1, w: 2, h: 1 });
+            slide.addTable([[{ text: "Cell", options: { textDirection: "vert" } }]], { x: 1, y: 4.5, w: 1, h: 1 });
+
+            const result: number[][] = [];
+
+            for (const object of presentation.getModel().slides[0]?.objects ?? []) {
+                if (object.kind === "text") {
+                    result.push(object.text.margin.map(value => Number(value.toFixed(3))));
+                } else if (object.kind === "table") {
+                    result.push((object.table.rows[0]?.cells[0]?.text.margin ?? []).map(value => Number(value.toFixed(3))));
+                }
+            }
+
+            return result;
+        };
+        const physical = [4.8, 9.6, 4.8, 9.6];
+        const turned = [9.6, 4.8, 9.6, 4.8];
+        const written = [32, 13.333, 21.333, 5.333];
+        const inset = [19.2, 19.2, 19.2, 19.2];
+        const cell = margins(new PuppeteerGenPowerPoint())[6];
+
+        expect(margins(new PuppeteerGen())).toEqual([turned, turned, written, inset, physical, physical, cell ?? []]);
+        expect(margins(new PuppeteerGenPowerPoint()).slice(0, 5)).toEqual([physical, physical, written, inset, physical]);
     });
 
     // PptxGenJS writes no clip on a text body; PowerPoint and LibreOffice draw text past the box from its anchor.

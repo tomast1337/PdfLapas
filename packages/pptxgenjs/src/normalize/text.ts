@@ -1,5 +1,5 @@
 import type PptxGenJS from "pptxgenjs";
-import { type FontBand, type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#src/defaults";
+import { type FontBand, type FourSideMargin, type FontMetricsLookup, type FontMetricsResult, PPTX_DEFAULTS } from "#src/defaults";
 import { DEFAULT_RENDERING_TARGET, RENDERING_TARGETS, type RenderingTarget, UNDERLINE_TYPES, type UnderlineType } from "#src/target/index";
 import { builtInFontMetrics } from "#src/fontMetrics";
 import type { NormalizedDecorationPiece, NormalizedTextBox, NormalizedTextBullet, NormalizedTextParagraph, NormalizedTextRun, NormalizedUnderlineBand } from "@pdflapas/model";
@@ -1040,10 +1040,23 @@ export function normalizeText(
     }
 
     const valign = verticalAlign(options.valign, writing.cell ? "tableCell" : "textBox");
+    const margin = textMarginPixels(options.margin, options.inset);
+    const [top, right, bottom, left] = margin;
+    // Turned default insets (RENDERING_TARGETS.turnsDefaultInsets): the text's top inset lies at the box's right in a
+    // `vert` box, turned a quarter clockwise, and at its left in a `vert270` box (#690).
+    // shortcut: text boxes in `vert` and `vert270` only; stacked text and table cells were not measured.
+    const turnsInsets = options.margin == null && options.inset == null && !writing.cell && RENDERING_TARGETS[target].turnsDefaultInsets;
+    let turned: FourSideMargin = margin;
+
+    if (turnsInsets && direction === "vertical") {
+        turned = [left, top, right, bottom];
+    } else if (turnsInsets && direction === "vertical270") {
+        turned = [right, bottom, left, top];
+    }
 
     return {
         paragraphs: spaced,
-        margin: textMarginPixels(options.margin, options.inset),
+        margin: turned,
         // Unset: a text box's <a:bodyPr> gets anchor="ctr" from PptxGenJS 4.0.1; a cell's <a:tcPr> gets no anchor, which
         // OOXML reads as top. Only a cell `valign` of 0 reaches here unset (inheritedCellOptions fills the other falsy ones).
         verticalAlign: valign.kind === "align" ? valign.align : writing.cell ? PPTX_DEFAULTS.table.valign : PPTX_DEFAULTS.text.valign,

@@ -594,8 +594,8 @@ const MASTER_CASES = [
 // These tight crops include the stroke but exclude labels and unused slide area.
 /**
  * populateVerticalTextFixture()'s boxes, on the last page: a `vert` and a `vert270` box per anchor, two lines each, so
- * the order of the lines and the anchor across them show (#654). Inset 0: LibreOffice applies the 0.05in top and bottom
- * insets in the turned frame, a separate question.
+ * the order of the lines and the anchor across them show (#654). Default insets, which LibreOffice turns with the text
+ * (#690).
  */
 const VERTICAL_TEXT_PAGE = MASTER_PAGE + 47;
 const VERTICAL_TEXT_CASES = (["vert", "vert270"] as const).flatMap((vert, turn) =>
@@ -1863,7 +1863,7 @@ export function populateParityFixture(presentation: Presentation): void {
             ],
             [
                 // LibreOffice 26.2 puts a vertical cell's lines at its left whatever the anchor; Chromium and pdf-core anchor
-                // `top` at the right, as in a text box (#654), which costs this crop 0.034 to 0.048.
+                // `top` at the right, as PowerPoint does (#654, #690), which costs this crop 0.034 to 0.048.
                 { text: "Vertical", options: { textDirection: "vert", align: "center" } },
                 { text: "Bottom", options: { valign: "bottom", align: "right" } },
             ],
@@ -3961,7 +3961,7 @@ export function populateVerticalTextFixture(presentation: Presentation): void {
 
     slide.addText("Vertical text order and anchor", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
     for (const { vert, valign, x, y, w, h } of VERTICAL_TEXT_CASES) {
-        slide.addText(runs, { x, y, w, h, vert, valign, fontFace: "Arial", fontSize: 16, color: "363636", margin: 0, line: { color: "A6A6A6", width: 0.5 } });
+        slide.addText(runs, { x, y, w, h, vert, valign, fontFace: "Arial", fontSize: 16, color: "363636", line: { color: "A6A6A6", width: 0.5 } });
     }
 }
 

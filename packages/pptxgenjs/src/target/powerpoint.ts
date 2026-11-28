@@ -341,12 +341,16 @@ const POWERPOINT_DECORATION: DecorationRules = Object.freeze<DecorationRules>({
  * Its underlines and strikes are POWERPOINT_DECORATION's (`decoration`).
  * It draws a doughnut's hole `holeSize` percent of its outer diameter (`readsDoughnutHoleSize`), as OOXML defines
  * `<c:holeSize>`: in its PDF export of examples/company-report.ts slide 6, `holeSize: 55`, the hole is 0.55 of the ring.
+ * It keeps a `vert` or `vert270` text box's insets on the shape's sides, written or not (`turnsDefaultInsets` off, #690):
+ * in its PDF export of synthetic 1.4 x 4.6in boxes (16pt Arial) without `margin`, the lines start 7.5pt from the left
+ * and right sides (0.1in) and 3.5pt below the top (0.05in), and vertical table cells anchor as these boxes do.
  */
 export const POWERPOINT: RenderingTargetProfile = Object.freeze({
     readsKern: true,
     contentRowSlackMm: 0,
     addsParagraphSpacing: true,
     spacesFirstParagraph: false,
+    turnsDefaultInsets: false,
     spacedLineBaseline: 0.75,
     fontLineBaseline: true,
     emptyNumberedParagraph: "skipped",

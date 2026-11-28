@@ -199,12 +199,18 @@ const GENERIC_FALLBACK: GenericFallback = Object.freeze({
  * whose first type is bar keeps its categories between the ticks (`barComboKeepsCategoriesBetweenTicks`) though
  * PptxGenJS writes `<c:crossBetween val="midCat"/>`: Q1's label is centered half a category step (35.5pt) right of the
  * value axis, where the line and area combo puts it on the axis.
+ * A `vert` or `vert270` text box without `margin` or `inset`, whose `<a:bodyPr>` PptxGenJS writes without insets, takes
+ * the default ones in its turned frame (`turnsDefaultInsets`, #690): in LibreOffice 26.2's PDF export of synthetic
+ * 1.4 x 4.6in boxes (16pt Arial), the lines anchored at the top or bottom start 3.5pt nearer the box's side across
+ * them than in the same boxes with inset 0 (0.05in, the top and bottom inset) and 6.5pt from its end along them
+ * (0.1in); written insets (`margin: [4, 10, 16, 24]`) stay on the shape's sides, within 0.5pt.
  */
 export const LIBREOFFICE: RenderingTargetProfile = Object.freeze({
     readsKern: false,
     contentRowSlackMm: 0.01,
     addsParagraphSpacing: false,
     spacesFirstParagraph: true,
+    turnsDefaultInsets: true,
     spacedLineBaseline: undefined,
     fontLineBaseline: false,
     emptyNumberedParagraph: "restarts",

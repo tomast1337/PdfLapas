@@ -72,6 +72,11 @@ export type RenderingTargetProfile = {
     /** Whether a text box's first paragraph keeps its space before. */
     readonly spacesFirstParagraph: boolean;
     /**
+     * Whether a `vert` or `vert270` text box whose insets PptxGenJS leaves out of `<a:bodyPr>` (no `margin` or `inset`)
+     * takes the default insets in its turned frame, or on the shape's sides as written ones always are.
+     */
+    readonly turnsDefaultInsets: boolean;
+    /**
      * With explicit line spacing (`lineSpacing`, or a `lineSpacingMultiple` other than 1), each line's baseline below its
      * top as a fraction of the line height; undefined keeps `text.lineDescentEm` above its bottom.
      */

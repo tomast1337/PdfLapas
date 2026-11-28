@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { crc32, deflateSync, inflateSync } from "node:zlib";
 import { MAX_TEXT_FIT_STEPS } from "@pdflapas/model";
 import { create as createFont, type Font } from "fontkit";
+import { decodePng } from "image-in-browser";
 import { JSDOM } from "jsdom";
 import PDFDocument from "pdfkit";
 import type PptxGenJS from "pptxgenjs";
@@ -463,11 +464,14 @@ describe("PDFKit renderer", () => {
             expect((await render(renderer, pres => pres.addSlide().addImage({ data: png(deflateSync(Buffer.alloc(68))), x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
             // #448: 255 KB of IDAT inflating to 256 MB took image-in-browser 3.7.0 1.9 s and 500 MB; 3.8.0 stops at the
             // 68 bytes the header declares and draws them, as a browser does.
+            // Timed on the decode alone, 6 ms here: the whole render's fonts and layout took over a second under a loaded
+            // test run, and inflating the 256 MB alone takes 240 ms, so 100 ms tells the two apart.
             const bomb = png(deflateSync(Buffer.alloc(256 * 1024 * 1024)));
             const start = performance.now();
 
+            decodePng({ data: Buffer.from(bomb.split(",")[1] ?? "", "base64") });
+            expect(performance.now() - start).toBeLessThan(100);
             expect((await render(renderer, pres => pres.addSlide().addImage({ data: bomb, x: 1, y: 1, w: 1, h: 1 }))).length).toBeGreaterThan(0);
-            expect(performance.now() - start).toBeLessThan(500);
 
             // An RGB PNG goes to PDFKit as it is, whose reader copies as many bytes as a chunk's length says, one at a
             // time: an IDAT claiming 3 GB ran minutes and took gigabytes. A bad colour type wrote an image no viewer reads.

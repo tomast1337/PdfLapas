@@ -160,6 +160,30 @@ jobs:
       - name: Type-check
         run: bun run typecheck
 
+      # The tests measured against PowerPoint skip without Arial, Times New Roman and poppler's pdftotext, pdffonts
+      # and pdfinfo. Arial and Times come from Microsoft's core fonts (version 2.82, 1998): their Latin
+      # advances and kern pairs pass the same tests as the current Windows faces. The archives are pinned by hash;
+      # the EULA allows downloading and using them unmodified. Noto Sans CJK draws the full-width characters the
+      # East Asian boxes measure, as on the machines that measured them.
+      - name: Install PDF tools, Arial and Times New Roman
+        env:
+          COREFONTS_URL: https://master.dl.sourceforge.net/project/corefonts/the%20fonts/final
+          ARIAL32_SHA256: 85297a4d146e9c87ac6f74822734bdee5f4b2a722d7eaa584b7f2cbf76f478f6
+          TIMES32_SHA256: db56595ec6ef5d3de5c24994f001f03b2a13e37cee27bc25c58f6f43e8f807ab
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends poppler-utils cabextract fonts-noto-cjk
+          fonts="$HOME/.local/share/fonts/corefonts"
+          mkdir -p "$fonts"
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o arial32.exe "$COREFONTS_URL/arial32.exe?viasf=1"
+          curl -fsSL --retry 3 -o times32.exe "$COREFONTS_URL/times32.exe?viasf=1"
+          printf '%s  arial32.exe\n%s  times32.exe\n' "$ARIAL32_SHA256" "$TIMES32_SHA256" | sha256sum -c -
+          cabextract -q -L -d "$fonts" -F '*.ttf' arial32.exe times32.exe
+          fc-cache -f
+          fc-match -f '%{file}\n' Arial
+          fc-match -f '%{file}\n' "Times New Roman"
+
       - name: Run unit tests
         run: bun test
 

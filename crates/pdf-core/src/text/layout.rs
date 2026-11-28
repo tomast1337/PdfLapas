@@ -16,6 +16,10 @@ use crate::effect::Effect;
 use crate::model::{Decoration, LineBox, ParagraphAlign, Synthesis, TextBox, TextDirection, TextFit};
 use crate::text::tabs::{MAX_TAB_REBREAK_BYTES, TAB_PLACEHOLDER, TabRuler, place_tabs, tab_box};
 
+/// What an empty paragraph holds so it still lays out one line; its glyph is never drawn, so PDF text extraction does
+/// not read it as a word.
+pub(crate) const EMPTY_PARAGRAPH_TEXT: &str = "\u{200B}";
+
 /// Blink's `LayoutUnit`, the grid its line breaker measures on: 1/64 CSS px (`kFractionalBits` = 6 in
 /// third_party/blink/renderer/platform/geometry/layout_unit.h).
 const LAYOUT_UNIT: f32 = 1.0 / 64.0;
@@ -174,7 +178,7 @@ impl Renderer {
             }
             let first = paragraph.runs.first();
             if s.is_empty() {
-                s.push('\u{200B}');
+                s.push_str(EMPTY_PARAGRAPH_TEXT);
                 spans.clear();
                 spans.push(0..s.len());
             }

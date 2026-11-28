@@ -500,6 +500,27 @@ describe.skipIf(!canRender)("WASM backend render", () => {
         expect(await shear(new PuppeteerGenPowerPoint(PAGE, { renderer }))).toBeCloseTo(0.25, 5);
     });
 
+    // An empty run's U+200B only holds its line. Printed as a glyph, PDF text extraction reads it as a word and joins
+    // the cells beside it into one line; PowerPoint's PDF has no text for an empty cell.
+    test("prints no text for an empty table cell or paragraph, in Chromium and in WASM", async () => {
+        const pres = new PuppeteerGenPowerPoint(PAGE);
+
+        pres.addSlide()
+            .addTable(
+                [
+                    [{ text: "" }, { text: "Lorem" }],
+                    [{ text: "" }, { text: "" }],
+                ],
+                { x: 0.5, y: 0.5, w: 4, fontFace: "Arial", fontSize: 10 },
+            )
+            .addText([{ text: "", options: { breakLine: true } }, { text: "Ipsum" }], { x: 5, y: 0.5, w: 3, h: 1, fontFace: "Arial" });
+        const textObjects = (contents: string[]) => contents.join("\n").match(/\bBT\b/g)?.length;
+
+        // One text object for each word: "Lorem" and "Ipsum".
+        expect(textObjects(pdfContentStreams(await pres.toPdf()))).toBe(2);
+        expect(textObjects(pdfContentStreams(await (await createWasmRenderer({ fonts: systemFonts })).render(await pres.toHtml())))).toBe(2);
+    });
+
     // #298: PowerPoint keeps the line where a lowered run sticks out of it, LibreOffice grows it. Middle-anchored 20pt
     // Arial "Hxg" then "Hxg" at baseline -1000 (10pt down, drawn at the target's escapement size), beside a plain box.
     test("puts the base line of a line with a lowered run where the target does, in Chromium and in WASM", async () => {

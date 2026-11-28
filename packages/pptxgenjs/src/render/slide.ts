@@ -264,6 +264,12 @@ body {
     line-height: 0;
 }
 
+/* An empty run's U+200B only gives its paragraph a line box. Hidden, it keeps the box but Chromium prints no
+   glyph for it, which PDF text extraction would read as a word and join with the cells beside it. */
+.text-run[data-empty] {
+    visibility: hidden;
+}
+
 /* The marker is an inline-block, which would indent its own text by the paragraph's hanging text-indent. */
 .text-bullet {
     text-indent: 0;

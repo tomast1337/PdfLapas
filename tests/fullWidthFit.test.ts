@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pointsToPixels } from "@pdflapas/model";
 import type { GlyphAdvances } from "../packages/pptxgenjs/src/defaults";
 import { PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
-import { installedAdvances } from "./installedFonts";
+import { chromiumHanFallbackMeasured, installedAdvances } from "./installedFonts";
 import { advanceGridWordSpacing, fullWidthStretches, type GridCursor } from "../packages/pptxgenjs/src/normalize/advanceGrid";
 import { RENDERING_TARGETS } from "../packages/pptxgenjs/src/target";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
@@ -111,7 +111,7 @@ describe("the measured boxes of Han next to digits, Latin words and ASCII parent
         return font;
     };
 
-    test.skipIf(!arial || !times || !pdftotext)(
+    test.skipIf(!arial || !times || !pdftotext || !chromiumHanFallbackMeasured())(
         "breaks each box where PowerPoint does, in Chromium",
         async () => {
             const pdf = await fullWidthFitDeck(new PuppeteerGenPowerPoint(), cases, fonts).toPdf();

@@ -16,7 +16,7 @@ async function printedPage(presentation: PuppeteerGen): Promise<Document> {
 afterAll(() => closeBrowser());
 
 describe("Puppeteer print workarounds", () => {
-    test("moves each horizontal paragraph so the strut's centred baseline lands on data-line-baseline", async () => {
+    test("moves each paragraph so the strut's centred baseline lands on data-line-baseline", async () => {
         const presentation = new PuppeteerGen();
         const slide = presentation.addSlide();
 
@@ -28,7 +28,8 @@ describe("Puppeteer print workarounds", () => {
         // layout px of the line below its top (half, floored to a whole px), 14.375px, so the paragraph moves 9.625px.
         expect(horizontal?.style.position).toBe("relative");
         expect(parseFloat(horizontal?.style.top ?? "")).toBeCloseTo(9.625, 9);
-        expect([vertical?.style.position, vertical?.style.top]).toEqual(["", ""]);
+        // A `vertical270` box's lines stack left to right, its glyphs' under side to the right: it moves right as much (#654).
+        expect([vertical?.style.position, vertical?.style.top, parseFloat(vertical?.style.left ?? "")]).toEqual(["relative", "", parseFloat(horizontal?.style.top ?? "")]);
     });
 
     test("prints each baseline at data-line-baseline, within half a print device px", async () => {
@@ -404,7 +405,7 @@ describe("Puppeteer print workarounds", () => {
         expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
     }, 60_000);
 
-    test("draws a vertical box's underline and strike across its line, left of the baseline for the underline (#570)", async () => {
+    test("draws a vertical box's underline and strike across its line, on the glyphs' under side of the baseline (#570, #654)", async () => {
         for (const vert of ["vert", "vert270"] as const) {
             const presentation = new PuppeteerGen();
 
@@ -413,15 +414,16 @@ describe("Puppeteer print workarounds", () => {
             const [, thickness = "", offset = ""] = document.html.match(/text-decoration-thickness: ([\d.]+)em; text-underline-offset: ([\d.]+)em;/) ?? [];
             const [, strikeOffset = "", strikeThickness = ""] = document.html.match(/data-strike-band="(-[\d.]+)em ([\d.]+)em"/) ?? [];
             const content = pdfContentStreams(await new PuppeteerPdfRenderer().render(document)).join("\n");
-            // The SVG's group turned a quarter clockwise (`0 scale -scale 0 x y cm`), so a fill's y is across the line,
-            // growing leftwards; the text's `cm` is turned the same way, its baseline the `Tm`'s y.
+            // The SVG's group turned a quarter (`0 -c c 0 x y cm`: clockwise for `vert`, c < 0, so a fill's y grows leftwards;
+            // counter-clockwise for `vert270`, rightwards), so a fill's y is across the line towards the glyphs' under
+            // side; the text's `cm` is turned the same way, its baseline the `Tm`'s y.
             const [, scale = "", x = "", underlineTop = "", underlineHeight = "", strikeTop = "", strikeHeight = ""] =
-                content.match(/\n0 ([\d.]+) -\1 0 ([\d.]+) [\d.]+ cm\n(?:(?!Q\n).*\n)*?[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n/) ?? [];
-            const [, textScale = "", textX = "", text = ""] = content.match(/\n0 ([\d.]+) -\1 0 ([\d.]+) -?[\d.]+ cm\n(?:(?!Q\n).*\n)*?1 0 0 -1 [\d.]+ ([\d.]+) Tm\n/) ?? [];
-            const baseline = (Number(x) - (Number(textX) - Number(textScale) * Number(text))) / Number(scale);
+                content.match(/\n0 -?[\d.]+ (-?[\d.]+) 0 (-?[\d.]+) [\d.]+ cm\n(?:(?!Q\n).*\n)*?-?[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n-?[\d.]+ (-?[\d.]+) [\d.]+ ([\d.]+) re\nf\n/) ?? [];
+            const [, textScale = "", textX = "", text = ""] = content.match(/\n0 -?[\d.]+ (-?[\d.]+) 0 (-?[\d.]+) -?[\d.]+ cm\n(?:(?!Q\n).*\n)*?1 0 0 -1 [\d.]+ ([\d.]+) Tm\n/) ?? [];
+            const baseline = (Number(textX) + Number(textScale) * Number(text) - Number(x)) / Number(scale);
             const size = inchesToPixels(24 / 72);
 
-            expect(Number(scale)).toBeGreaterThan(0);
+            expect(Math.sign(Number(scale))).toBe(vert === "vert" ? -1 : 1);
             expect(Math.abs(Number(underlineTop) - baseline - Number(offset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
             expect(Math.abs(Number(strikeTop) - baseline - Number(strikeOffset) * size)).toBeLessThanOrEqual(0.5 / PRINT_ZOOM + 0.01);
             expect([underlineHeight, strikeHeight].map(value => Number(value).toFixed(3))).toEqual([thickness, strikeThickness].map(value => (Number(value) * size).toFixed(3)));
@@ -599,6 +601,22 @@ describe("Puppeteer print workarounds", () => {
         // Numbers are written as JavaScript prints them, the same text the in-page step gave the CSSOM setters.
         expect(printed).toContain('line-height: 28.799999999999997px; tab-size: 96px; position: relative; top: 9.624999999999996px;"');
         expect(printed).toContain('style="overflow: visible; transform: translate(0.05px, -0.025px);"');
+    });
+
+    // #654: a turned box stacks its lines across the page, so the paragraph moves sideways towards the glyphs' under side.
+    test("moves a turned box's paragraph sideways by the shift a horizontal one moves down", async () => {
+        const shifts: string[] = [];
+
+        for (const vert of ["horz", "vert", "vert270", "wordArtVert"] as const) {
+            const presentation = new PuppeteerGen();
+
+            presentation.addSlide().addText("Text", { x: 1, y: 1, w: 4, h: 1, vert });
+            const paragraph = new JSDOM(printHtml((await presentation.toHtml()).html)).window.document.querySelector<HTMLElement>(".text-paragraph");
+
+            shifts.push(`${paragraph?.style.top ?? ""}|${paragraph?.style.left ?? ""}`);
+        }
+
+        expect(shifts).toEqual(["9.624999999999996px|", "|-9.624999999999996px", "|9.624999999999996px", "|"]);
     });
 
     test("keeps data: URI payloads byte for byte while it skips them in the parse", async () => {

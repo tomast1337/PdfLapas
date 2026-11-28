@@ -265,8 +265,11 @@ There is no media, notes or master element: the model has no such kinds.
 ```
 
 `render/text.ts`. The box is a flex container: `align-items` is the vertical anchor (`flex-start`,
-`center`, `flex-end`). Vertical text sets `writing-mode` (`vertical-rl` for `vertical270`, `vertical-lr`
-otherwise) and `text-orientation` (`upright` for `stacked`) on `.text-content`. A box flipped one way only
+`center`, `flex-end`). Vertical text sets `writing-mode` on `.text-content`: `sideways-rl` for `vertical`
+(every glyph turned a quarter clockwise, the first line at the right), `sideways-lr` for `vertical270` (a quarter
+counter-clockwise, read bottom to top, the first line at the left), each with `align-content` (`start`, `center`,
+`end`) anchoring the lines across the box from the first line's side, and `vertical-lr` with `text-orientation:
+upright` for `stacked`. Renderers read the direction from `data-text-direction`; the CSS is Chromium's layout of it. A box flipped one way only
 (`flipH` or `flipV`, not both) sets `transform: scaleX(-1)` on `.text-content`, which mirrors the text back
 about the middle of its text area: PowerPoint and LibreOffice flip the shape and the text area but never
 mirror glyphs, so `flipH` text reads as unflipped and `flipV` text is turned 180 degrees. With `fit: resize` the

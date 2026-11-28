@@ -721,9 +721,10 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
     // own double, wavy and thick underlines, and one band per run (#396). A segment is the run's part on one line,
     // measured from its text's client rects; its baseline sits where a probe in the run's font puts it in the text's
     // content box. The pieces go into one SVG per text box, after its .text-content, in the box's CSS px, so they turn
-    // with the box. Read after the text has settled: shrinking, raises and justification move it. In a vertical box
-    // (`vertical`, `vertical270`) the glyphs lie turned a quarter clockwise, so a segment runs down its text's rects
-    // and its band lies left of the baseline, where the glyphs' under side is, as pdf-core draws it in its turned frame.
+    // with the box. Read after the text has settled: shrinking, raises and justification move it. In a `vertical` box
+    // the glyphs lie turned a quarter clockwise, so a segment runs down its text's rects and its band lies left of the
+    // baseline, where the glyphs' under side is; in a `vertical270` box they lie turned a quarter counter-clockwise, so
+    // a segment runs up and its band lies right of the baseline, as pdf-core draws both in its turned frame.
     // shortcut: stacked text (upright glyphs) keeps Chromium's decorations at the same em bands, until Chromium lays
     // stacked text out one character per line as LibreOffice and pdf-core do (#654).
     {
@@ -760,11 +761,13 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
             type Band = { offset: number; thickness: number };
             // A segment in client px in its line's axes, with its band; `joined` once an earlier one of its line continues
             // over it. Along the line from start to end, across it from top, the glyphs' over side, down height. A
-            // vertical line's across axis points left (its glyphs turned a quarter clockwise), so its top is minus the
-            // rects' right edge.
+            // clockwise line's across axis points left, so its top is minus the rects' right edge, and its along axis points
+            // down; a counter-clockwise one's across axis points right and its along axis up.
             type Segment = { start: number; end: number; top: number; height: number; band: Band; joined: boolean };
             type Decoration = { pieces: Piece[]; color: string; segments: Segment[] };
-            type Placed = { run: HTMLElement; svg: SVGSVGElement; origin: DOMRect; vertical: boolean; baseline: number; decorations: Decoration[] };
+            // How a run's glyphs lie: upright, or turned a quarter clockwise (`vertical`) or counter-clockwise (`vertical270`).
+            type Turn = "none" | "clockwise" | "counterclockwise";
+            type Placed = { run: HTMLElement; svg: SVGSVGElement; origin: DOMRect; turn: Turn; baseline: number; decorations: Decoration[] };
             const fail: (run: HTMLElement, what: string) => never = (run, what) => {
                 throw new Error(`Cannot print '${run.closest<HTMLElement>("[data-object-name]")?.dataset.objectName ?? "unnamed object"}': a .text-run has ${what} (PdfLapas HTML profile, Text, Underline and strike geometry)`);
             };
@@ -871,7 +874,7 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
              * The segments of `run`'s text in client px, each with `band`: its text's rects merged where they share a line
              * (they overlap by more than half the smaller one's height).
              */
-            const segments = (run: HTMLElement, band: Band, vertical: boolean): Segment[] => {
+            const segments = (run: HTMLElement, band: Band, turn: Turn): Segment[] => {
                 const found: Segment[] = [];
                 const walker = document.createTreeWalker(run, NodeFilter.SHOW_TEXT);
 
@@ -879,10 +882,10 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
                     range.selectNodeContents(node);
 
                     for (const rect of Array.from(range.getClientRects())) {
-                        const start = vertical ? rect.top : rect.left;
-                        const end = vertical ? rect.bottom : rect.right;
-                        const top = vertical ? -rect.right : rect.top;
-                        const height = vertical ? rect.width : rect.height;
+                        const start = turn === "clockwise" ? rect.top : turn === "counterclockwise" ? -rect.bottom : rect.left;
+                        const end = turn === "clockwise" ? rect.bottom : turn === "counterclockwise" ? -rect.top : rect.right;
+                        const top = turn === "clockwise" ? -rect.right : turn === "counterclockwise" ? rect.left : rect.top;
+                        const height = turn === "none" ? rect.height : rect.width;
 
                         if (!(end > start)) {
                             continue;
@@ -914,7 +917,8 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
                 const probe = probes.get(fontKey(run));
                 const size = parseFloat(run.style.fontSize);
                 const lines = run.dataset.printDecoration ?? "";
-                const vertical = run.closest<HTMLElement>("[data-text-direction]")?.dataset.textDirection !== "horizontal";
+                const direction = run.closest<HTMLElement>("[data-text-direction]")?.dataset.textDirection;
+                const turn: Turn = direction === "vertical270" ? "counterclockwise" : direction === "vertical" ? "clockwise" : "none";
 
                 if (!svg || !probe || !(size > 0)) {
                     fail(run, "no font-size in px or no .text-content around it");
@@ -927,7 +931,7 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
                 if (lines.includes("underline")) {
                     const offset = em(run, run.style.textUnderlineOffset, "text-underline-offset");
                     const thickness = em(run, run.style.textDecorationThickness, "text-decoration-thickness");
-                    const found = segments(run, band(offset, thickness), vertical);
+                    const found = segments(run, band(offset, thickness), turn);
                     const paragraph = run.closest(".text-paragraph");
 
                     if (paragraph && run.hasAttribute("data-underline-line-band")) {
@@ -948,10 +952,10 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
                     const written = run.dataset.strikeBand ?? "";
                     const [, offset = "", thickness = ""] = written.match(STRIKE_BAND) ?? fail(run, `data-strike-band="${written}", which is not '<offset>em <thickness>em'`);
 
-                    decorations.push({ pieces: pieces(run, "data-strike"), color: style.color, segments: segments(run, band(Number(offset), Number(thickness)), vertical) });
+                    decorations.push({ pieces: pieces(run, "data-strike"), color: style.color, segments: segments(run, band(Number(offset), Number(thickness)), turn) });
                 }
 
-                placed.push({ run, svg, origin: svg.getBoundingClientRect(), vertical, baseline: probe.baseline, decorations });
+                placed.push({ run, svg, origin: svg.getBoundingClientRect(), turn, baseline: probe.baseline, decorations });
             }
 
             flat.remove();
@@ -1008,15 +1012,15 @@ async function prepareForPrint(maxTextFitSteps: number): Promise<string[]> {
 
             const number = (value: number) => String(Number(value.toFixed(4)));
 
-            for (const { run, svg, origin, vertical, baseline, decorations } of placed) {
-                // The SVG's origin in the segments' axes; a vertical run's pieces are drawn in its line's axes, turned
-                // back a quarter clockwise into the SVG's.
-                const originStart = vertical ? origin.top : origin.left;
-                const originTop = vertical ? -origin.left : origin.top;
-                const layer = vertical ? document.createElementNS(SVG, "g") : svg;
+            for (const { run, svg, origin, turn, baseline, decorations } of placed) {
+                // The SVG's origin in the segments' axes; a turned run's pieces are drawn in its line's axes, turned back
+                // a quarter into the SVG's.
+                const originStart = turn === "clockwise" ? origin.top : turn === "counterclockwise" ? -origin.top : origin.left;
+                const originTop = turn === "clockwise" ? -origin.left : turn === "counterclockwise" ? origin.left : origin.top;
+                const layer = turn === "none" ? svg : document.createElementNS(SVG, "g");
 
-                if (vertical) {
-                    layer.setAttribute("transform", "matrix(0 1 -1 0 0 0)");
+                if (turn !== "none") {
+                    layer.setAttribute("transform", turn === "clockwise" ? "matrix(0 1 -1 0 0 0)" : "matrix(0 -1 1 0 0 0)");
                     svg.append(layer);
                 }
 

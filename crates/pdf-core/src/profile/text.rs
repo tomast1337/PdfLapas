@@ -29,7 +29,7 @@ pub(crate) const BOX_CSS: &[&str] = &[
     "border-radius",
     "overflow",
 ];
-const CONTENT_CSS: &[&str] = &["width", "writing-mode", "text-orientation", "height", "transform"];
+const CONTENT_CSS: &[&str] = &["width", "writing-mode", "text-orientation", "height", "transform", "align-content"];
 const PARAGRAPH_ATTRS: &[&str] = &[
     "data-line-baseline",
     "data-mark-baseline",
@@ -153,6 +153,10 @@ pub(crate) fn text_box(dom: &Dom<'_>, element: &Element<'_>, style: &Style<'_>, 
         Some("scaleX(-1)") => true,
         Some(other) => return Err(format!("CSS property 'transform' on .text-content: '{other}' is not scaleX(-1)")),
     };
+    // Chromium's anchor across a turned box's lines; pdf-core anchors from `align-items` and the direction.
+    if let Some(value) = content_style.get("align-content") {
+        one_of("CSS property 'align-content' on .text-content", value, &["start", "center", "end"])?;
+    }
     let paragraphs = dom
         .elements_of(&content.children)?
         .into_iter()
@@ -652,6 +656,23 @@ mod tests {
         assert_eq!(content("width: 100%;"), Ok(false));
         assert_eq!(content("width: 100%; transform: scaleX(-1);"), Ok(true));
         assert!(content("width: 100%; transform: rotate(1deg);").unwrap_err().contains("is not scaleX(-1)"));
+    }
+
+    #[test]
+    fn accepts_the_anchor_of_turned_lines_and_rejects_other_values() {
+        let content = |style: &str| {
+            parse(&document(&format!(
+                r#"<div class="slide-element slide-text" data-object-name="T" data-text-fit="none" data-text-direction="vertical" style="left: 0px; top: 0px; width: 100px; height: 50px; padding: 0px 0px 0px 0px; align-items: flex-end; white-space: pre-wrap; overflow-wrap: break-word; direction: ltr; border-radius: 0%;"><div class="text-content" style="{style}"></div></div>"#
+            )))
+            .map(|_| ())
+        };
+        for value in ["start", "center", "end"] {
+            assert_eq!(
+                content(&format!("width: 100%; writing-mode: sideways-rl; height: 100%; align-content: {value};")),
+                Ok(())
+            );
+        }
+        assert!(content("width: 100%; align-content: space-between;").unwrap_err().contains("align-content"));
     }
 
     #[test]

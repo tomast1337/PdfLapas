@@ -43,6 +43,15 @@ test("each distinct set of launch options gets its own shared browser", async ()
     expect(custom.connected).toBe(false);
 });
 
+test("Chromium draws unhinted glyphs whatever args the caller passes (#684)", async () => {
+    // The caller's own args, without the flag; the sandbox stays off because CI runners cannot start it.
+    const args = ["--no-sandbox", "--disable-setuid-sandbox", "--mute-audio"];
+    const spawnArgs = await withBrowser(async browser => browser.process()?.spawnargs ?? [], { ...DEFAULT_LAUNCH_OPTIONS, args });
+
+    expect(spawnArgs).toContain("--font-render-hinting=none");
+    await closeBrowser();
+});
+
 test("PuppeteerPdfRenderer launches Chromium with its launch options", async () => {
     // A missing executable proves the options reached puppeteer.launch.
     const renderer = new PuppeteerPdfRenderer({ launchOptions: { executablePath: "/nonexistent/chromium" } });

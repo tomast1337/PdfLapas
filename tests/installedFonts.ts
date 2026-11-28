@@ -12,7 +12,8 @@ export function installedAdvances(fontFace: string, bold = false, italic = false
 
 // The faces Chromium fell back to for Han when the East Asian boxes were measured against it: MS Gothic (with the
 // Office fonts installed) and Droid Sans Fallback (without them). Under Noto Sans CJK, the first CJK face Ubuntu's
-// fontconfig offers, Chromium breaks hundreds of those boxes elsewhere (#684), so its tests run only with these.
+// fontconfig offers, Chromium breaks two of the Han-next-to-digits boxes elsewhere (#686), so that test runs only
+// with these.
 const MEASURED_HAN_FALLBACKS: ReadonlySet<string> = new Set(["MS Gothic", "Droid Sans", "Droid Sans Fallback"]);
 
 /** Whether fontconfig gives Chromium a Han fallback face the East Asian boxes were measured with. */

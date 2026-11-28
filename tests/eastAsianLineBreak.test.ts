@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NormalizedTextRun } from "@pdflapas/model";
 import { PuppeteerGenLibreOffice, PuppeteerGenPowerPoint } from "../packages/pptxgenjs/src/node";
-import { chromiumHanFallbackMeasured, installedAdvances } from "./installedFonts";
+import { installedAdvances } from "./installedFonts";
 import { closeBrowser } from "../packages/puppeteer/src/browser";
 import { breakAroundHanPunctuation, hangingMarkRuns, hangingSegments, languageHangingMarks } from "../packages/pptxgenjs/src/normalize/eastAsianLineBreak";
 import { RENDERING_TARGETS } from "../packages/pptxgenjs/src/target";
@@ -221,7 +221,7 @@ describe("the measured boxes of full-width punctuation next to digits and Latin 
         return font;
     };
 
-    test.skipIf(!ready || !chromiumHanFallbackMeasured())(
+    test.skipIf(!ready)(
         "breaks each box where PowerPoint does, in Chromium",
         async () => {
             const pdf = await mixedBreakDeck(new PuppeteerGenPowerPoint(), cases, fonts).toPdf();

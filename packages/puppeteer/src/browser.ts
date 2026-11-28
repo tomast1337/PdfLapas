@@ -6,6 +6,11 @@ import { DEFAULT_LAUNCH_OPTIONS, type PuppeteerLaunchOptions } from "./launchOpt
 // without calling closeBrowser().
 const IDLE_CLOSE_MS = 1000;
 
+// Hinted glyphs advance by rounded widths: under fontconfig's usual hinting Noto Sans CJK draws each 10pt Han
+// 10.023pt wide, so a line PowerPoint fits on its unrounded advances breaks a character early (#684). Added to
+// every launch, whatever `args` the caller passes, so line breaks never depend on the sandbox choice.
+const UNHINTED_FONTS_ARG = "--font-render-hinting=none";
+
 type SharedBrowser = {
     browser: Promise<Browser> | undefined;
     active: number;
@@ -33,7 +38,7 @@ export async function withBrowser<T>(task: (browser: Browser) => Promise<T>, opt
     current.active++;
     try {
         if (current.browser === undefined) {
-            const launching = puppeteer.launch({ ...options, args: options.args && [...options.args] });
+            const launching = puppeteer.launch({ ...options, args: [...(options.args ?? []), UNHINTED_FONTS_ARG] });
             // A browser that fails to launch or later disconnects is launched again by the next task.
             const forget = () => {
                 if (current.browser === launching) {

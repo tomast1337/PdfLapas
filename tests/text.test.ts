@@ -944,8 +944,25 @@ describe("text DOM rendering", () => {
         const { step, maxSteps, tolerancePx } = PPTX_DEFAULTS.text.shrink;
 
         expect({ step: box?.dataset.textFitStep, maxSteps: box?.dataset.textFitMaxSteps, tolerance: box?.dataset.textFitTolerance }).toEqual({ step: String(step), maxSteps: String(maxSteps), tolerance: String(tolerancePx) });
-        expect(content?.style.writingMode).toBe("vertical-rl");
+        expect(content?.style.writingMode).toBe("sideways-lr");
         expect(run?.style.color).toBe("rgba(0, 0, 0, 0.6)");
+    });
+
+    // #654: PowerPoint and LibreOffice turn a `vert` box's whole text area, East Asian glyphs too, and anchor across its lines.
+    test("turns vertical text sideways and anchors it across the lines, stacked text upright", () => {
+        const presentation = new PuppeteerGen();
+        const slide = presentation.addSlide();
+
+        slide.addText("Down 中文", { x: 1, y: 1, w: 1, h: 3, vert: "vert", valign: "middle" });
+        slide.addText("Up", { x: 3, y: 1, w: 1, h: 3, vert: "vert270", valign: "bottom" });
+        slide.addText("Stacked", { x: 5, y: 1, w: 1, h: 3, vert: "wordArtVert", valign: "bottom" });
+        const styles = [...renderedPage(presentation).querySelectorAll<HTMLElement>(".text-content")].map(content => [content.style.writingMode, content.style.textOrientation, content.style.alignContent]);
+
+        expect(styles).toEqual([
+            ["sideways-rl", "", "center"],
+            ["sideways-lr", "", "end"],
+            ["vertical-lr", "upright", ""],
+        ]);
     });
 
     // PptxGenJS 4.0.1 writes cy="0" without `h`; a box shorter than its insets centres the text area on its midline.

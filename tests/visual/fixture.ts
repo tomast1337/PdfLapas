@@ -592,6 +592,16 @@ const MASTER_CASES = [
 ] as const;
 
 // These tight crops include the stroke but exclude labels and unused slide area.
+/**
+ * populateVerticalTextFixture()'s boxes, on the last page: a `vert` and a `vert270` box per anchor, two lines each, so
+ * the order of the lines and the anchor across them show (#654). Inset 0: LibreOffice applies the 0.05in top and bottom
+ * insets in the turned frame, a separate question.
+ */
+const VERTICAL_TEXT_PAGE = MASTER_PAGE + 47;
+const VERTICAL_TEXT_CASES = (["vert", "vert270"] as const).flatMap((vert, turn) =>
+    (["top", "middle", "bottom"] as const).map((valign, anchor) => ({ page: VERTICAL_TEXT_PAGE, name: `vertical-text-${vert}-${valign}`, vert, valign, x: 0.2 + (turn * 3 + anchor) * 1.6, y: 0.9, w: 1.4, h: 4.4 })),
+);
+
 export const PARITY_REGIONS = [
     ...CURVED_CASES,
     ...CIRCULAR_CASES,
@@ -632,6 +642,7 @@ export const PARITY_REGIONS = [
     ...[NUMBER_SCHEME_CASE, NUMBER_LEVELS_CASE].map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.15, y: y - 0.15, w: w + 0.3, h: h + 0.3 })),
     { ...COLW_LENGTH_CASE, x: COLW_LENGTH_CASE.x - 0.15, y: COLW_LENGTH_CASE.y - 0.15, w: COLW_LENGTH_CASE.w + 0.3, h: COLW_LENGTH_CASE.h + 0.3 },
     ...MASTER_CASES,
+    ...VERTICAL_TEXT_CASES.map(({ page, name, x, y, w, h }) => ({ page, name, x: x - 0.1, y: y - 0.1, w: w + 0.2, h: h + 0.2 })),
 ].map(({ page, name, x, y, w, h }) => ({
     page,
     name,
@@ -1851,6 +1862,8 @@ export function populateParityFixture(presentation: Presentation): void {
                 { text: "Transparent", options: { color: "C00000", transparency: 55 } },
             ],
             [
+                // LibreOffice 26.2 puts a vertical cell's lines at its left whatever the anchor; Chromium and pdf-core anchor
+                // `top` at the right, as in a text box (#654), which costs this crop 0.034 to 0.048.
                 { text: "Vertical", options: { textDirection: "vert", align: "center" } },
                 { text: "Bottom", options: { valign: "bottom", align: "right" } },
             ],
@@ -2357,6 +2370,7 @@ export function populateParityFixture(presentation: Presentation): void {
     populateChartDateSlotFixture(presentation);
     populateVerticalDecorationFixture(presentation);
     populateChartComboPercentFixture(presentation);
+    populateVerticalTextFixture(presentation);
 }
 
 /**
@@ -3899,11 +3913,9 @@ export function populateChartDateSlotFixture(presentation: Presentation): void {
 /**
  * Underline and strike in vertical text (#570): the Puppeteer print step draws a `vert` box's pieces as it draws a
  * horizontal one's, along its lines and left of the baseline, on the glyphs' under side. One line per box, in a box as
- * wide as the line (1.2 x 20pt, 32px), so the anchor across the line has no room to act: Chromium anchors a `vert`
- * box's lines at its left and orders them left to right, where LibreOffice and pdf-core start at the right (#654).
- * Page score only: the print step places only horizontal lines on data-line-baseline, so Chromium's vertical line sits
- * 1px right of LibreOffice's and a tight crop of the box scores 0.11 to 0.12 (0.07 shifted back). A parity slide after
- * the others (no page number moves).
+ * wide as the line (1.2 x 20pt, 32px), so the anchor across the line has no room to act; populateVerticalTextFixture()
+ * covers the anchor and the order of the lines (#654). Page score only. A parity slide after the others (no page
+ * number moves).
  */
 export function populateVerticalDecorationFixture(presentation: Presentation): void {
     const slide = presentation.addSlide();
@@ -3934,6 +3946,22 @@ export function populateVerticalDecorationFixture(presentation: Presentation): v
     slide.addText("Underline and strike in vertical text", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
     for (const { x, runs } of boxes) {
         slide.addText(runs, { x, y: 1, w: 1 / 3, h: 4.2, vert: "vert", fontFace: "Arial", fontSize: 20, color: "363636", align: "center", valign: "middle", margin: 0 });
+    }
+}
+
+/**
+ * Vertical text's line order and anchor (#654): PowerPoint and LibreOffice turn a `vert` box's text area a quarter
+ * clockwise, its first line at the right and `top` anchoring there, and a `vert270` box's a quarter counter-clockwise,
+ * read bottom to top, its first line at the left. Underline and strike sit on the glyphs' under side. A parity slide
+ * after the others (no page number moves).
+ */
+export function populateVerticalTextFixture(presentation: Presentation): void {
+    const slide = presentation.addSlide();
+    const runs: PptxGenJS.TextProps[] = [{ text: "Lorem ipsum dolor ", options: { underline: { style: "sng" } } }, { text: "sit amet", options: { strike: "sngStrike", breakLine: true } }, { text: "Second line" }];
+
+    slide.addText("Vertical text order and anchor", { x: 0.5, y: 0.2, w: 9, h: 0.5, fontFace: "Arial", fontSize: 24, bold: true, color: "17365D", margin: 0 });
+    for (const { vert, valign, x, y, w, h } of VERTICAL_TEXT_CASES) {
+        slide.addText(runs, { x, y, w, h, vert, valign, fontFace: "Arial", fontSize: 16, color: "363636", margin: 0, line: { color: "A6A6A6", width: 0.5 } });
     }
 }
 

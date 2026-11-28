@@ -282,12 +282,15 @@ export function printHtml(html: string): string {
             }
         } else if (hasClass(element, "text-paragraph")) {
             // Line box: the paragraph's 0px-font strut (stylesheet) puts the baseline about the middle of `line-height`
-            // (the strut baseline below); moving the paragraph puts it at data-line-baseline, where LibreOffice puts it.
-            // shortcut: vertical text keeps the centred baseline; shift along the block axis once it is measured.
+            // (the strut baseline below); moving the paragraph puts it at data-line-baseline, where LibreOffice puts it. A
+            // turned box's lines stack across the page, so the paragraph moves left (`vertical`, glyphs turned clockwise)
+            // or right (`vertical270`) by the same amount (#654).
+            // shortcut: stacked text keeps the centred baseline; its upright columns have no alphabetic baseline to move.
             const content = parentElement(element);
             const box = content && parentElement(content);
+            const direction = box && attribute(box, "data-text-direction");
 
-            if (!content || !box || !hasClass(content, "text-content") || attribute(box, "data-text-direction") !== "horizontal") {
+            if (!content || !box || !hasClass(content, "text-content") || (direction !== "horizontal" && direction !== "vertical" && direction !== "vertical270")) {
                 continue;
             }
 
@@ -302,7 +305,9 @@ export function printHtml(html: string): string {
             // 1e-6 keeps float noise in `height x PRINT_ZOOM` from flooring a whole layout unit away.
             const strutBaseline = Math.floor(Math.floor(height * PRINT_ZOOM * LAYOUT_UNITS_PER_PX + 1e-6) / (2 * LAYOUT_UNITS_PER_PX)) / PRINT_ZOOM;
 
-            edits.push(addStyle(element, `position: relative; top: ${baseline - strutBaseline}px;`));
+            const shift = baseline - strutBaseline;
+
+            edits.push(addStyle(element, `position: relative; ${direction === "horizontal" ? `top: ${shift}` : `left: ${direction === "vertical" ? -shift : shift}`}px;`));
         } else if (hasClass(element, "slide-text")) {
             // Text outline: DrawingML centres a text box's line on its edge and measures the inset from the edge;
             // a CSS border lies inside the box and pushes the text in by its width. An outline moves nothing.

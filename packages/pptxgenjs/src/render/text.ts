@@ -92,10 +92,19 @@ export function renderText(css: InlineStyle, text: NormalizedTextBox, mirrored: 
 
     const contentCss: InlineStyle = new Map([["width", "100%"]]);
 
-    if (text.direction !== "horizontal") {
-        contentCss.set("writing-mode", text.direction === "vertical270" ? "vertical-rl" : "vertical-lr");
-        contentCss.set("text-orientation", text.direction === "stacked" ? "upright" : "mixed");
+    if (text.direction === "stacked") {
+        // shortcut: upright characters in columns left to right, as PowerPoint stacks them; LibreOffice and pdf-core put one
+        // character per line (#654), which needs a RenderingTargetProfile flag.
+        contentCss.set("writing-mode", "vertical-lr");
+        contentCss.set("text-orientation", "upright");
         contentCss.set("height", "100%");
+    } else if (text.direction !== "horizontal") {
+        // PowerPoint and LibreOffice turn the whole text area, so every glyph turns with it, East Asian ones too: `vert`
+        // a quarter clockwise, its first line at the right; `vert270` a quarter counter-clockwise, read bottom to top,
+        // its first line at the left. The anchor stands across the lines, from the first line's side (#654).
+        contentCss.set("writing-mode", text.direction === "vertical270" ? "sideways-lr" : "sideways-rl");
+        contentCss.set("height", "100%");
+        contentCss.set("align-content", text.verticalAlign === "top" ? "start" : text.verticalAlign === "bottom" ? "end" : "center");
     }
 
     if (mirrored) {

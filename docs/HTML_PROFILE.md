@@ -608,7 +608,8 @@ of this profile never sees either.
 
 Other Chromium-specific details that stay in the markup or stylesheet: `z-index: 0` stacking contexts
 (stylesheet), the clamped `viewBox` with `height="1"` for zero-height lines and `width="1"` for zero-width ones (`render/shape.ts`), U+200B for
-empty runs (`render/text.ts`). Each also states a profile value or is plain CSS layout, so none is a
+empty runs (`render/text.ts`), hidden by the stylesheet so no renderer prints a glyph that PDF text extraction
+would read as a word. Each also states a profile value or is plain CSS layout, so none is a
 second spelling.
 
 ## Parsing (WASM)

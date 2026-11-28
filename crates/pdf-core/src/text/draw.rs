@@ -19,7 +19,7 @@ use crate::effect::EffectSource;
 use crate::link::page_quad;
 use crate::model::{DecorationPiece, DecorationShape, TextBox, TextDirection, VerticalAlign, ZigzagLine};
 use crate::path::{rect_path, stroke_width, to_path};
-use crate::text::layout::{BoxLayout, Brush, BulletMarker, RunPaint, RunRef, TextStroke};
+use crate::text::layout::{BoxLayout, Brush, BulletMarker, EMPTY_PARAGRAPH_TEXT, RunPaint, RunRef, TextStroke};
 use crate::text::outline::glyph_outlines;
 
 /// Most distinct glows drawn under one text box.
@@ -499,6 +499,9 @@ impl Renderer {
                 &rect_path(start, baseline - metrics.ascent, advance, metrics.ascent + metrics.descent, 0.0),
                 hl,
             );
+        }
+        if text == EMPTY_PARAGRAPH_TEXT {
+            return;
         }
         let Some(font) = self.pdf_font(run.font()) else {
             self.warn("font could not be embedded");
